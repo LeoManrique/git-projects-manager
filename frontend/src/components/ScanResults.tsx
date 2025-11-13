@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 // @ts-ignore - Wails binding not properly typed
 import { ScanFolder } from '../../wailsjs/go/main/App';
 import { services } from '../../wailsjs/go/models';
@@ -17,29 +17,92 @@ interface ScanResultsProps {
 
 export default function ScanResults({ folders }: ScanResultsProps) {
   const [results, setResults] = useState<Record<string, ScanResult>>({});
-  const [isScanning, setIsScanning] = useState(false);
+  const [scanningFolders, setScanningFolders] = useState<Record<string, boolean>>({});
+  const [isFullScanActive, setIsFullScanActive] = useState(false);
   const [error, setError] = useState('');
   const [expandedFolder, setExpandedFolder] = useState<string | null>(null);
+  const scanVersionRef = useRef(0);
 
-  const scan = async (foldersToScan: MonitoredFolder[]) => {
+  const scan = async (foldersToScan: MonitoredFolder[], isFullScan: boolean = false) => {
+    // Increment version for full scans to cancel previous scans
+    let currentVersion = scanVersionRef.current;
+    if (isFullScan) {
+      currentVersion = ++scanVersionRef.current;
+      setIsFullScanActive(true);
+    }
+
     try {
       setError('');
-      setIsScanning(true);
-      const newResults: Record<string, ScanResult> = {};
 
+      // Mark folders as scanning
+      const scanningState: Record<string, boolean> = { ...scanningFolders };
       for (const folder of foldersToScan) {
-        newResults[folder.id] = await ScanFolder(folder.path);
+        scanningState[folder.id] = true;
+      }
+      setScanningFolders(scanningState);
+
+      // Scan folders in parallel
+      const scanPromises = foldersToScan.map(async (folder) => {
+        try {
+          const result = await ScanFolder(folder.path);
+          return { id: folder.id, result, error: null };
+        } catch (err) {
+          return { id: folder.id, result: null, error: err };
+        }
+      });
+
+      const scanResults = await Promise.allSettled(scanPromises);
+
+      // Only update if this version is still current (for Scan All cancellation)
+      if (currentVersion !== scanVersionRef.current) {
+        setScanningFolders({});
+        if (isFullScan) {
+          setIsFullScanActive(false);
+        }
+        return;
+      }
+
+      // Update results
+      const newResults: Record<string, ScanResult> = { ...results };
+      const updatedFolderIds = new Set<string>();
+
+      for (const result of scanResults) {
+        if (result.status === 'fulfilled') {
+          const { id, result: scanResult } = result.value;
+          updatedFolderIds.add(id);
+          if (scanResult) {
+            newResults[id] = scanResult;
+          }
+        }
       }
 
       setResults(newResults);
-      if (foldersToScan.length === 1) {
+
+      if (isFullScan && foldersToScan.length === 1) {
         setExpandedFolder(foldersToScan[0].id);
+      }
+
+      // Clear scanning state only for the folders we just scanned
+      const newScanningState = { ...scanningFolders };
+      for (const folderId of updatedFolderIds) {
+        delete newScanningState[folderId];
+      }
+      setScanningFolders(newScanningState);
+
+      if (isFullScan) {
+        setIsFullScanActive(false);
       }
     } catch (err) {
       setError('Failed to scan folder(s)');
       console.error(err);
-    } finally {
-      setIsScanning(false);
+      const newScanningState = { ...scanningFolders };
+      for (const folder of foldersToScan) {
+        delete newScanningState[folder.id];
+      }
+      setScanningFolders(newScanningState);
+      if (isFullScan) {
+        setIsFullScanActive(false);
+      }
     }
   };
 
@@ -48,11 +111,11 @@ export default function ScanResults({ folders }: ScanResultsProps) {
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-bold text-white">Repository Status</h2>
         <button
-          onClick={() => scan(folders)}
-          disabled={isScanning || folders.length === 0}
+          onClick={() => scan(folders, true)}
+          disabled={folders.length === 0}
           className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {isScanning ? 'Scanning...' : '🔍 Scan All'}
+          {isFullScanActive ? 'Scanning...' : '🔍 Scan All'}
         </button>
       </div>
 
@@ -71,6 +134,7 @@ export default function ScanResults({ folders }: ScanResultsProps) {
           {folders.map((folder) => {
             const result = results[folder.id];
             const isExpanded = expandedFolder === folder.id;
+            const isFolderScanning = scanningFolders[folder.id] ?? false;
 
             return (
               <div
@@ -78,16 +142,17 @@ export default function ScanResults({ folders }: ScanResultsProps) {
                 className="bg-dark-bg rounded-lg border border-dark-border overflow-hidden hover:border-blue-500 transition-colors"
               >
                 <button
-                  onClick={() => !isScanning && scan([folder])}
-                  disabled={isScanning}
-                  className="w-full flex justify-between items-center p-4 hover:bg-dark-surface transition-colors disabled:cursor-not-allowed"
+                  onClick={() => setExpandedFolder(isExpanded ? null : folder.id)}
+                  className="w-full flex justify-between items-center p-4 hover:bg-dark-surface transition-colors text-left"
                 >
-                  <div className="flex-1 text-left">
+                  <div className="flex-1">
                     <h3 className="text-white font-semibold">{folder.name}</h3>
                     <p className="text-gray-400 text-sm">{folder.path}</p>
                   </div>
-                  <div className="text-right ml-4">
-                    {result ? (
+                  <div className="text-right mx-4">
+                    {isFolderScanning ? (
+                      <span className="text-gray-400 text-sm">Scanning...</span>
+                    ) : result ? (
                       <div className="text-sm">
                         <span className="text-gray-300">
                           {result.totalRepositories} repos
@@ -106,14 +171,19 @@ export default function ScanResults({ folders }: ScanResultsProps) {
                         </span>
                       </div>
                     ) : (
-                      <span className="text-gray-400 text-sm">
-                        {isScanning ? 'Scanning...' : 'Not scanned'}
-                      </span>
+                      <span className="text-gray-400 text-sm">Not scanned</span>
                     )}
                   </div>
-                  <span className="ml-4 text-gray-400">
-                    {isExpanded ? '▼' : '▶'}
-                  </span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      scan([folder]);
+                    }}
+                    disabled={isFolderScanning}
+                    className="ml-2 px-3 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+                  >
+                    🔍
+                  </button>
                 </button>
 
                 {result && isExpanded && (
