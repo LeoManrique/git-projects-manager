@@ -24,8 +24,6 @@ export default function FolderManager({ folders, onRefresh }: FolderManagerProps
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
-  console.log('[FolderManager] Rendering with folders:', folders);
-
   const resetForm = () => {
     setFormPath('');
     setFormName('');
@@ -34,61 +32,47 @@ export default function FolderManager({ folders, onRefresh }: FolderManagerProps
     setError('');
   };
 
-  const handleAdd = async () => {
+  const executeOperation = async (operation: () => Promise<any>, errorMsg: string) => {
+    try {
+      setIsLoading(true);
+      await operation();
+      await onRefresh();
+      resetForm();
+    } catch (err) {
+      setError(errorMsg);
+      console.error(err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleAdd = () => {
     if (!formPath.trim() || !formName.trim()) {
       setError('Path and name are required');
       return;
     }
-
-    try {
-      console.log('[FolderManager] Adding folder:', formPath, formName);
-      setIsLoading(true);
-      await AddMonitoredFolder(formPath, formName);
-      console.log('[FolderManager] Folder added, refreshing...');
-      await onRefresh();
-      console.log('[FolderManager] Refresh complete');
-      resetForm();
-    } catch (err) {
-      setError('Failed to add folder');
-      console.error(err);
-    } finally {
-      setIsLoading(false);
-    }
+    executeOperation(() => AddMonitoredFolder(formPath, formName), 'Failed to add folder');
   };
 
-  const handleUpdate = async () => {
+  const handleUpdate = () => {
     if (!formPath.trim() || !formName.trim() || !editingId) {
       setError('Path and name are required');
       return;
     }
-
-    try {
-      setIsLoading(true);
-      await UpdateMonitoredFolder(editingId, formPath, formName);
-      await onRefresh();
-      resetForm();
-    } catch (err) {
-      setError('Failed to update folder');
-      console.error(err);
-    } finally {
-      setIsLoading(false);
-    }
+    executeOperation(() => UpdateMonitoredFolder(editingId, formPath, formName), 'Failed to update folder');
   };
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this folder?')) {
-      return;
-    }
+  const handleDelete = (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this folder?')) return;
+    executeOperation(() => DeleteMonitoredFolder(id), 'Failed to delete folder');
+  };
 
-    try {
-      setIsLoading(true);
-      await DeleteMonitoredFolder(id);
-      await onRefresh();
-    } catch (err) {
-      setError('Failed to delete folder');
-      console.error(err);
-    } finally {
-      setIsLoading(false);
+  const toggleForm = () => {
+    if (showAddForm && !editingId) {
+      setShowAddForm(false);
+    } else {
+      resetForm();
+      setShowAddForm(true);
     }
   };
 
@@ -104,17 +88,7 @@ export default function FolderManager({ folders, onRefresh }: FolderManagerProps
     <div className="bg-dark-surface rounded-lg shadow-lg p-6 border border-dark-border">
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-bold text-white">Monitored Folders</h2>
-        <button
-          onClick={() => {
-            if (showAddForm && !editingId) {
-              setShowAddForm(false);
-            } else {
-              resetForm();
-              setShowAddForm(true);
-            }
-          }}
-          className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
-        >
+        <button onClick={toggleForm} className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors">
           {showAddForm && !editingId ? 'Cancel' : '+ Add Folder'}
         </button>
       </div>

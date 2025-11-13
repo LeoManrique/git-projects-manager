@@ -21,42 +21,22 @@ export default function ScanResults({ folders }: ScanResultsProps) {
   const [error, setError] = useState('');
   const [expandedFolder, setExpandedFolder] = useState<string | null>(null);
 
-  console.log('[ScanResults] Rendering with folders:', folders, 'results:', results);
-
-  const handleScanFolder = async (folder: MonitoredFolder) => {
-    try {
-      console.log('[ScanResults] Scanning folder:', folder.name, folder.path);
-      setError('');
-      setIsScanning(true);
-      const result = await ScanFolder(folder.path);
-      console.log('[ScanResults] Scan result:', result);
-      setResults((prev) => ({
-        ...prev,
-        [folder.id]: result,
-      }));
-      setExpandedFolder(folder.id);
-    } catch (err) {
-      setError(`Failed to scan folder: ${folder.name}`);
-      console.error(err);
-    } finally {
-      setIsScanning(false);
-    }
-  };
-
-  const handleScanAll = async () => {
+  const scan = async (foldersToScan: MonitoredFolder[]) => {
     try {
       setError('');
       setIsScanning(true);
       const newResults: Record<string, ScanResult> = {};
 
-      for (const folder of folders) {
-        const result = await ScanFolder(folder.path);
-        newResults[folder.id] = result;
+      for (const folder of foldersToScan) {
+        newResults[folder.id] = await ScanFolder(folder.path);
       }
 
       setResults(newResults);
+      if (foldersToScan.length === 1) {
+        setExpandedFolder(foldersToScan[0].id);
+      }
     } catch (err) {
-      setError('Failed to scan folders');
+      setError('Failed to scan folder(s)');
       console.error(err);
     } finally {
       setIsScanning(false);
@@ -68,7 +48,7 @@ export default function ScanResults({ folders }: ScanResultsProps) {
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-bold text-white">Repository Status</h2>
         <button
-          onClick={handleScanAll}
+          onClick={() => scan(folders)}
           disabled={isScanning || folders.length === 0}
           className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
@@ -98,11 +78,7 @@ export default function ScanResults({ folders }: ScanResultsProps) {
                 className="bg-dark-bg rounded-lg border border-dark-border overflow-hidden hover:border-blue-500 transition-colors"
               >
                 <button
-                  onClick={() => {
-                    if (!isScanning) {
-                      handleScanFolder(folder);
-                    }
-                  }}
+                  onClick={() => !isScanning && scan([folder])}
                   disabled={isScanning}
                   className="w-full flex justify-between items-center p-4 hover:bg-dark-surface transition-colors disabled:cursor-not-allowed"
                 >

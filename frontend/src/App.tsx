@@ -15,33 +15,18 @@ function App() {
     const [folders, setFolders] = useState<MonitoredFolder[]>([]);
     const [activeTab, setActiveTab] = useState<'manage' | 'scan'>('manage');
 
-    // Load folders on app mount
-    useEffect(() => {
-        const loadFolders = async () => {
-            console.log('[App] Loading folders...');
-            try {
-                const loadedFolders = await GetMonitoredFolders();
-                console.log('[App] Folders loaded:', loadedFolders);
-                setFolders(loadedFolders || []);
-            } catch (err) {
-                console.error('[App] Failed to load folders:', err);
-            }
-        };
-
-        loadFolders();
-    }, []);
-
-    // Callback to refresh folders after changes
-    const refreshFolders = useCallback(async () => {
+    const loadFolders = useCallback(async () => {
         try {
-            const loadedFolders = await GetMonitoredFolders();
-            setFolders(loadedFolders || []);
+            const loaded = await GetMonitoredFolders();
+            setFolders(loaded || []);
         } catch (err) {
-            console.error('Failed to refresh folders:', err);
+            console.error('Failed to load folders:', err);
         }
     }, []);
 
-    console.log('[App] Rendering with tabs:', activeTab, 'folders:', folders.length);
+    useEffect(() => {
+        loadFolders();
+    }, [loadFolders]);
 
     return (
         <div className="min-h-screen bg-dark-bg text-white">
@@ -89,7 +74,7 @@ function App() {
             {/* Main Content */}
             <main className="max-w-6xl mx-auto px-6 py-8">
                 {activeTab === 'manage' && (
-                    <FolderManager folders={folders} onRefresh={refreshFolders} />
+                    <FolderManager folders={folders} onRefresh={loadFolders} />
                 )}
                 {activeTab === 'scan' && (
                     <ScanResults folders={folders} />
