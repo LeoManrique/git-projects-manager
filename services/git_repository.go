@@ -17,6 +17,12 @@ func NewGitRepository() *GitRepository {
 	return &GitRepository{}
 }
 
+// shouldSkipFolder checks if a folder should be excluded from scanning
+func shouldSkipFolder(path string) bool {
+	folderName := filepath.Base(path)
+	return ExcludedFolders[folderName]
+}
+
 // RepoStatus holds the status of a git repository
 type RepoStatus struct {
 	Path         string `json:"path"`
@@ -105,8 +111,8 @@ func (gr *GitRepository) ScanDirectory(rootDir string) ScanResult {
 			return nil
 		}
 
-		// Skip if this is inside a .git directory
-		if strings.Contains(filepath.ToSlash(path), ".git") {
+		// Skip excluded folders
+		if shouldSkipFolder(path) {
 			return filepath.SkipDir
 		}
 
