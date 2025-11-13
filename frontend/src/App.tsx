@@ -13,7 +13,7 @@ export interface MonitoredFolder {
 
 function App() {
     const [folders, setFolders] = useState<MonitoredFolder[]>([]);
-    const [activeTab, setActiveTab] = useState<'manage' | 'scan'>('manage');
+    const [activeTab, setActiveTab] = useState<'manage' | 'scan'>('scan');
 
     const loadFolders = useCallback(async () => {
         try {
@@ -48,16 +48,6 @@ function App() {
                 <div className="max-w-6xl mx-auto px-6">
                     <div className="flex gap-8">
                         <button
-                            onClick={() => setActiveTab('manage')}
-                            className={`py-4 px-2 font-semibold border-b-2 transition-colors ${
-                                activeTab === 'manage'
-                                    ? 'border-blue-600 text-blue-400'
-                                    : 'border-transparent text-gray-400 hover:text-gray-300'
-                            }`}
-                        >
-                            Manage Folders
-                        </button>
-                        <button
                             onClick={() => setActiveTab('scan')}
                             className={`py-4 px-2 font-semibold border-b-2 transition-colors ${
                                 activeTab === 'scan'
@@ -66,6 +56,16 @@ function App() {
                             }`}
                         >
                             Scan Results
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('manage')}
+                            className={`py-4 px-2 font-semibold border-b-2 transition-colors ${
+                                activeTab === 'manage'
+                                    ? 'border-blue-600 text-blue-400'
+                                    : 'border-transparent text-gray-400 hover:text-gray-300'
+                            }`}
+                        >
+                            Manage Folders
                         </button>
                     </div>
                 </div>
@@ -84,7 +84,7 @@ function App() {
             {/* Footer */}
             <footer className="bg-dark-surface border-t border-dark-border mt-12">
                 <div className="max-w-6xl mx-auto px-6 py-4 text-center text-gray-400 text-sm">
-                    <p>Git Projects Manager © 2024</p>
+                    <p>Git Projects Manager © 2025</p>
                 </div>
             </footer>
         </div>

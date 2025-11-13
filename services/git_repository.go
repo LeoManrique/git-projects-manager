@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -96,10 +97,9 @@ func (gr *GitRepository) HasUnpushedCommits(repoPath string) *bool {
 func (gr *GitRepository) ScanDirectory(rootDir string) ScanResult {
 	startTime := time.Now()
 
-	reposWithChanges := []RepoStatus{}
-	reposWithUnpushed := []RepoStatus{}
-	reposClean := []RepoStatus{}
-	reposError := []RepoStatus{}
+	// Channel for collecting repo statuses
+	statusChan := make(chan RepoStatus, 100)
+	var wg sync.WaitGroup
 
 	// Walk through all subdirectories
 	filepath.Walk(rootDir, func(path string, info os.FileInfo, err error) error {
@@ -118,37 +118,65 @@ func (gr *GitRepository) ScanDirectory(rootDir string) ScanResult {
 
 		// Check if current directory is a git repo
 		if gr.IsGitRepo(path) {
-			relPath, _ := filepath.Rel(rootDir, path)
-			hasChanges := gr.HasPendingChanges(path)
-			hasUnpushed := gr.HasUnpushedCommits(path)
+			// Spawn goroutine to check status concurrently
+			wg.Add(1)
+			go func(repoPath string) {
+				defer wg.Done()
 
-			status := RepoStatus{
-				Path:        relPath,
-				HasChanges:  hasChanges,
-				HasUnpushed: hasUnpushed,
-				HasError:    false,
-			}
+				relPath, _ := filepath.Rel(rootDir, repoPath)
+				hasChanges := gr.HasPendingChanges(repoPath)
+				hasUnpushed := gr.HasUnpushedCommits(repoPath)
 
-			if hasChanges == nil && hasUnpushed == nil {
-				status.HasError = true
-				status.ErrorMessage = "Failed to check repository status"
-				reposError = append(reposError, status)
-			} else if (hasChanges != nil && *hasChanges) || (hasUnpushed != nil && *hasUnpushed) {
-				if hasChanges != nil && *hasChanges {
-					reposWithChanges = append(reposWithChanges, status)
+				status := RepoStatus{
+					Path:        relPath,
+					HasChanges:  hasChanges,
+					HasUnpushed: hasUnpushed,
+					HasError:    false,
 				}
-				if hasUnpushed != nil && *hasUnpushed {
-					reposWithUnpushed = append(reposWithUnpushed, status)
+
+				if hasChanges == nil && hasUnpushed == nil {
+					status.HasError = true
+					status.ErrorMessage = "Failed to check repository status"
 				}
-			} else {
-				reposClean = append(reposClean, status)
-			}
+
+				statusChan <- status
+			}(path)
 
 			return filepath.SkipDir
 		}
 
 		return nil
 	})
+
+	// Close channel once all goroutines are done
+	go func() {
+		wg.Wait()
+		close(statusChan)
+	}()
+
+	// Collect results
+	reposWithChanges := []RepoStatus{}
+	reposWithUnpushed := []RepoStatus{}
+	reposClean := []RepoStatus{}
+	reposError := []RepoStatus{}
+	uniqueRepos := make(map[string]bool)
+
+	for status := range statusChan {
+		uniqueRepos[status.Path] = true
+
+		if status.HasError {
+			reposError = append(reposError, status)
+		} else if (status.HasChanges != nil && *status.HasChanges) || (status.HasUnpushed != nil && *status.HasUnpushed) {
+			if status.HasChanges != nil && *status.HasChanges {
+				reposWithChanges = append(reposWithChanges, status)
+			}
+			if status.HasUnpushed != nil && *status.HasUnpushed {
+				reposWithUnpushed = append(reposWithUnpushed, status)
+			}
+		} else {
+			reposClean = append(reposClean, status)
+		}
+	}
 
 	// Sort results
 	sort.Slice(reposWithChanges, func(i, j int) bool {
@@ -163,21 +191,6 @@ func (gr *GitRepository) ScanDirectory(rootDir string) ScanResult {
 	sort.Slice(reposError, func(i, j int) bool {
 		return reposError[i].Path < reposError[j].Path
 	})
-
-	// Calculate total unique repos
-	uniqueRepos := make(map[string]bool)
-	for _, r := range reposWithChanges {
-		uniqueRepos[r.Path] = true
-	}
-	for _, r := range reposWithUnpushed {
-		uniqueRepos[r.Path] = true
-	}
-	for _, r := range reposClean {
-		uniqueRepos[r.Path] = true
-	}
-	for _, r := range reposError {
-		uniqueRepos[r.Path] = true
-	}
 
 	elapsedTime := time.Since(startTime)
 
