@@ -18,6 +18,7 @@ func NewGitRepository() *GitRepository {
 	return &GitRepository{}
 }
 
+
 // shouldSkipFolder checks if a folder should be excluded from scanning
 func shouldSkipFolder(path string) bool {
 	folderName := filepath.Base(path)
@@ -55,6 +56,7 @@ func (gr *GitRepository) IsGitRepo(path string) bool {
 func (gr *GitRepository) HasPendingChanges(repoPath string) *bool {
 	cmd := exec.Command("git", "status", "--porcelain")
 	cmd.Dir = repoPath
+	hideConsoleWindow(cmd)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil
@@ -68,6 +70,7 @@ func (gr *GitRepository) HasUnpushedCommits(repoPath string) *bool {
 	// Get current branch
 	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
 	cmd.Dir = repoPath
+	hideConsoleWindow(cmd)
 	branchOutput, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil
@@ -77,6 +80,7 @@ func (gr *GitRepository) HasUnpushedCommits(repoPath string) *bool {
 	// Check if branch has upstream
 	cmd = exec.Command("git", "rev-parse", "--abbrev-ref", branch+"@{upstream}")
 	cmd.Dir = repoPath
+	hideConsoleWindow(cmd)
 	_, err = cmd.CombinedOutput()
 	if err != nil {
 		return nil // No upstream configured
@@ -85,6 +89,7 @@ func (gr *GitRepository) HasUnpushedCommits(repoPath string) *bool {
 	// Check for unpushed commits
 	cmd = exec.Command("git", "log", "@{upstream}..HEAD", "--oneline")
 	cmd.Dir = repoPath
+	hideConsoleWindow(cmd)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil
