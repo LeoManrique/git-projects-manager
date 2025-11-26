@@ -2,27 +2,57 @@
 @tailwind components;
 @tailwind utilities;
 
+* {
+    box-sizing: border-box;
+}
+
 html {
-    background-color: rgba(27, 38, 54, 1);
-    color: white;
+    background-color: #0d1117;
+    color: #e6edf3;
 }
 
 body {
     margin: 0;
-    color: white;
-    font-family: "Nunito", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto",
-    "Oxygen", "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
-    sans-serif;
-}
-
-@font-face {
-    font-family: "Nunito";
-    font-style: normal;
-    font-weight: 400;
-    src: local(""),
-    url("assets/fonts/nunito-v16-latin-regular.woff2") format("woff2");
+    color: #e6edf3;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
 }
 
 #app {
-    height: 100%;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* Scrollbar styling for desktop feel */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #30363d;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #484f58;
+}
+
+/* Remove focus outlines and use subtle border instead */
+button:focus-visible,
+input:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 1px #388bfd;
+}
+
+/* Selection styling */
+::selection {
+    background: rgba(56, 139, 253, 0.3);
 }

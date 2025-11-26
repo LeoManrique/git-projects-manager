@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import FolderManager from './components/FolderManager';
 import ScanResults from './components/ScanResults';
 import { GetMonitoredFolders } from '../wailsjs/go/main/App';
+import { WindowMinimise, WindowToggleMaximise, Quit } from '../wailsjs/runtime/runtime';
 import './App.css';
 import logo from './assets/images/logo-universal.png';
 
@@ -10,6 +11,9 @@ export interface MonitoredFolder {
     path: string;
     name: string;
 }
+
+// Detect platform for conditional styling
+const isMac = navigator.userAgent.toUpperCase().indexOf('MAC') >= 0;
 
 function App() {
     const [folders, setFolders] = useState<MonitoredFolder[]>([]);
@@ -29,50 +33,89 @@ function App() {
     }, [loadFolders]);
 
     return (
-        <div className="min-h-screen bg-dark-bg text-white">
-            {/* Header */}
-            <header className="bg-dark-surface border-b border-dark-border shadow-lg">
-                <div className="max-w-6xl mx-auto px-6 py-6">
-                    <div className="flex items-center gap-4">
-                        <img src={logo} alt="logo" className="w-10 h-10" />
-                        <div>
-                            <h1 className="text-3xl font-bold">Git Projects Manager</h1>
-                            <p className="text-gray-400 text-sm">Monitor and manage multiple Git repositories</p>
-                        </div>
-                    </div>
+        <div className="h-screen flex flex-col bg-dark-bg text-text-primary overflow-hidden">
+            {/* Title Bar */}
+            <header
+                className="flex-shrink-0 bg-dark-surface border-b border-dark-border h-9 flex items-center"
+                style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+            >
+                {/* Left section: Logo + App name (with macOS traffic light padding) */}
+                <div className={`flex items-center h-full ${isMac ? 'pl-[70px]' : 'pl-3'}`}>
+                    <img src={logo} alt="logo" className="w-4 h-4 mr-2" />
+                    <span className="text-sm font-medium text-text-primary">Git Projects Manager</span>
                 </div>
+
+                {/* Spacer */}
+                <div className="flex-1" />
+
+                {/* Window controls (Windows/Linux only) */}
+                {!isMac && (
+                    <div className="flex h-full" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+                        <button
+                            onClick={() => WindowMinimise()}
+                            className="w-12 h-full flex items-center justify-center text-text-secondary hover:bg-dark-elevated transition-colors"
+                            title="Minimize"
+                        >
+                            <svg width="10" height="1" viewBox="0 0 10 1" fill="currentColor">
+                                <rect width="10" height="1" />
+                            </svg>
+                        </button>
+                        <button
+                            onClick={() => WindowToggleMaximise()}
+                            className="w-12 h-full flex items-center justify-center text-text-secondary hover:bg-dark-elevated transition-colors"
+                            title="Maximize"
+                        >
+                            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor">
+                                <rect x="0.5" y="0.5" width="9" height="9" strokeWidth="1" />
+                            </svg>
+                        </button>
+                        <button
+                            onClick={() => Quit()}
+                            className="w-12 h-full flex items-center justify-center text-text-secondary hover:bg-accent-red hover:text-white transition-colors"
+                            title="Close"
+                        >
+                            <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
+                                <path d="M1 1L9 9M9 1L1 9" stroke="currentColor" strokeWidth="1.2" />
+                            </svg>
+                        </button>
+                    </div>
+                )}
             </header>
 
             {/* Tab Navigation */}
-            <nav className="bg-dark-surface border-b border-dark-border sticky top-0 z-10">
-                <div className="max-w-6xl mx-auto px-6">
-                    <div className="flex gap-8">
-                        <button
-                            onClick={() => setActiveTab('scan')}
-                            className={`py-4 px-2 font-semibold border-b-2 transition-colors ${
-                                activeTab === 'scan'
-                                    ? 'border-blue-600 text-blue-400'
-                                    : 'border-transparent text-gray-400 hover:text-gray-300'
-                            }`}
-                        >
-                            Scan Results
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('manage')}
-                            className={`py-4 px-2 font-semibold border-b-2 transition-colors ${
-                                activeTab === 'manage'
-                                    ? 'border-blue-600 text-blue-400'
-                                    : 'border-transparent text-gray-400 hover:text-gray-300'
-                            }`}
-                        >
-                            Manage Folders
-                        </button>
-                    </div>
+            <nav className="flex-shrink-0 bg-dark-surface border-b border-dark-border px-3">
+                <div className="flex">
+                    <button
+                        onClick={() => setActiveTab('scan')}
+                        className={`px-3 py-2 text-sm font-medium transition-colors relative ${
+                            activeTab === 'scan'
+                                ? 'text-text-primary'
+                                : 'text-text-secondary hover:text-text-primary'
+                        }`}
+                    >
+                        Scan Results
+                        {activeTab === 'scan' && (
+                            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent-blue" />
+                        )}
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('manage')}
+                        className={`px-3 py-2 text-sm font-medium transition-colors relative ${
+                            activeTab === 'manage'
+                                ? 'text-text-primary'
+                                : 'text-text-secondary hover:text-text-primary'
+                        }`}
+                    >
+                        Manage Folders
+                        {activeTab === 'manage' && (
+                            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent-blue" />
+                        )}
+                    </button>
                 </div>
             </nav>
 
             {/* Main Content */}
-            <main className="max-w-6xl mx-auto px-6 py-8">
+            <main className="flex-1 overflow-auto p-4">
                 {activeTab === 'manage' && (
                     <FolderManager folders={folders} onRefresh={loadFolders} />
                 )}
@@ -80,13 +123,6 @@ function App() {
                     <ScanResults folders={folders} />
                 )}
             </main>
-
-            {/* Footer */}
-            <footer className="bg-dark-surface border-t border-dark-border mt-12">
-                <div className="max-w-6xl mx-auto px-6 py-4 text-center text-gray-400 text-sm">
-                    <p>Git Projects Manager © 2025</p>
-                </div>
-            </footer>
         </div>
     );
 }

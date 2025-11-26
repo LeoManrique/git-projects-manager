@@ -85,38 +85,42 @@ export default function FolderManager({ folders, onRefresh }: FolderManagerProps
   };
 
   return (
-    <div className="bg-dark-surface rounded-lg shadow-lg p-6 border border-dark-border">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold text-white">Monitored Folders</h2>
-        <button onClick={toggleForm} className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors">
-          {showAddForm && !editingId ? 'Cancel' : '+ Add Folder'}
+    <div className="h-full flex flex-col">
+      {/* Header */}
+      <div className="flex-shrink-0 flex justify-between items-center mb-3">
+        <h2 className="text-base font-semibold text-text-primary">Monitored Folders</h2>
+        <button
+          onClick={toggleForm}
+          className="bg-accent-blue hover:brightness-110 text-white text-xs font-medium py-1.5 px-3 rounded transition-all"
+        >
+          {showAddForm && !editingId ? 'Cancel' : 'Add Folder'}
         </button>
       </div>
 
       {error && (
-        <div className="bg-red-900 border border-red-700 text-red-100 px-4 py-3 rounded-lg mb-4">
+        <div className="flex-shrink-0 bg-accent-red/10 border border-accent-red/30 text-accent-red px-3 py-2 rounded text-xs mb-3">
           {error}
         </div>
       )}
 
       {showAddForm && (
-        <div className="bg-dark-bg rounded-lg p-4 mb-6 border border-dark-border">
-          <div className="space-y-4">
+        <div className="flex-shrink-0 bg-dark-surface rounded border border-dark-border p-3 mb-3">
+          <div className="space-y-3">
             <div>
-              <label className="block text-gray-300 text-sm font-medium mb-2">
+              <label className="block text-text-secondary text-xs font-medium mb-1.5">
                 Folder Path
               </label>
               <input
                 type="text"
                 value={formPath}
                 onChange={(e) => setFormPath(e.target.value)}
-                placeholder="e.g., C:\\Users\\YourName\\GitProjects"
-                className="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                placeholder="e.g., C:\Users\YourName\GitProjects"
+                className="w-full px-2.5 py-1.5 bg-dark-bg border border-dark-border rounded text-text-primary text-sm placeholder-text-muted focus:outline-none focus:border-accent-blue"
               />
             </div>
 
             <div>
-              <label className="block text-gray-300 text-sm font-medium mb-2">
+              <label className="block text-text-secondary text-xs font-medium mb-1.5">
                 Display Name
               </label>
               <input
@@ -124,22 +128,22 @@ export default function FolderManager({ folders, onRefresh }: FolderManagerProps
                 value={formName}
                 onChange={(e) => setFormName(e.target.value)}
                 placeholder="e.g., My Projects"
-                className="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                className="w-full px-2.5 py-1.5 bg-dark-bg border border-dark-border rounded text-text-primary text-sm placeholder-text-muted focus:outline-none focus:border-accent-blue"
               />
             </div>
 
-            <div className="flex gap-3 justify-end">
+            <div className="flex gap-2 justify-end">
               <button
                 onClick={resetForm}
                 disabled={isLoading}
-                className="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-white font-medium transition-colors disabled:opacity-50"
+                className="px-3 py-1.5 rounded bg-dark-elevated hover:bg-dark-border text-text-secondary text-xs font-medium transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 onClick={editingId ? handleUpdate : handleAdd}
                 disabled={isLoading}
-                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition-colors disabled:opacity-50"
+                className="px-3 py-1.5 rounded bg-accent-blue hover:brightness-110 text-white text-xs font-medium transition-all disabled:opacity-50"
               >
                 {isLoading ? 'Saving...' : editingId ? 'Update' : 'Add'}
               </button>
@@ -148,31 +152,31 @@ export default function FolderManager({ folders, onRefresh }: FolderManagerProps
         </div>
       )}
 
-      <div className="space-y-3">
+      <div className="flex-1 overflow-auto space-y-2">
         {folders.length === 0 ? (
-          <p className="text-gray-400 text-center py-8">No folders configured yet.</p>
+          <p className="text-text-muted text-sm text-center py-8">No folders configured yet.</p>
         ) : (
           folders.map((folder) => (
             <div
               key={folder.id}
-              className="flex justify-between items-center bg-dark-bg rounded-lg p-4 border border-dark-border hover:border-blue-500 transition-colors"
+              className="flex justify-between items-center bg-dark-surface rounded border border-dark-border px-3 py-2.5 hover:bg-dark-elevated transition-colors"
             >
               <div className="flex-1 min-w-0">
-                <h3 className="text-white font-semibold truncate">{folder.name}</h3>
-                <p className="text-gray-400 text-sm truncate">{folder.path}</p>
+                <h3 className="text-text-primary text-sm font-medium truncate">{folder.name}</h3>
+                <p className="text-text-muted text-xs truncate">{folder.path}</p>
               </div>
-              <div className="flex gap-2 ml-4 flex-shrink-0">
+              <div className="flex gap-2 ml-3 flex-shrink-0">
                 <button
                   onClick={() => handleEdit(folder)}
                   disabled={isLoading}
-                  className="px-3 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors disabled:opacity-50"
+                  className="px-2 py-1 rounded bg-accent-blue/20 hover:bg-accent-blue/30 text-accent-blue text-xs font-medium transition-colors disabled:opacity-50"
                 >
                   Edit
                 </button>
                 <button
                   onClick={() => handleDelete(folder.id)}
                   disabled={isLoading}
-                  className="px-3 py-1 rounded bg-red-600 hover:bg-red-700 text-white text-sm font-medium transition-colors disabled:opacity-50"
+                  className="px-2 py-1 rounded bg-accent-red/20 hover:bg-accent-red/30 text-accent-red text-xs font-medium transition-colors disabled:opacity-50"
                 >
                   Delete
                 </button>
