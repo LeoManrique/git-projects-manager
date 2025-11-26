@@ -6,6 +6,10 @@ export function AddMonitoredFolder(arg1, arg2) {
   return window['go']['main']['App']['AddMonitoredFolder'](arg1, arg2);
 }
 
+export function BrowseFolder() {
+  return window['go']['main']['App']['BrowseFolder']();
+}
+
 export function DeleteMonitoredFolder(arg1) {
   return window['go']['main']['App']['DeleteMonitoredFolder'](arg1);
 }

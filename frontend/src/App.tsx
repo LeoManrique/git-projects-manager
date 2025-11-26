@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import FolderManager from './components/FolderManager';
-import ScanResults from './components/ScanResults';
+import ScanResults, { ScanResultsState } from './components/ScanResults';
 import { GetMonitoredFolders } from '../wailsjs/go/main/App';
 import { WindowMinimise, WindowToggleMaximise, Quit } from '../wailsjs/runtime/runtime';
 import './App.css';
@@ -18,6 +18,10 @@ const isMac = navigator.userAgent.toUpperCase().indexOf('MAC') >= 0;
 function App() {
     const [folders, setFolders] = useState<MonitoredFolder[]>([]);
     const [activeTab, setActiveTab] = useState<'manage' | 'scan'>('scan');
+    const [scanState, setScanState] = useState<ScanResultsState>({
+        results: {},
+        expandedFolder: null,
+    });
 
     const loadFolders = useCallback(async () => {
         try {
@@ -120,7 +124,11 @@ function App() {
                     <FolderManager folders={folders} onRefresh={loadFolders} />
                 )}
                 {activeTab === 'scan' && (
-                    <ScanResults folders={folders} />
+                    <ScanResults
+                        folders={folders}
+                        scanState={scanState}
+                        onScanStateChange={setScanState}
+                    />
                 )}
             </main>
         </div>

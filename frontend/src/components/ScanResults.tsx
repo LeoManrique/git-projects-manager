@@ -11,17 +11,31 @@ interface MonitoredFolder {
 
 type ScanResult = services.ScanResult;
 
-interface ScanResultsProps {
-  folders: MonitoredFolder[];
+export interface ScanResultsState {
+  results: Record<string, ScanResult>;
+  expandedFolder: string | null;
 }
 
-export default function ScanResults({ folders }: ScanResultsProps) {
-  const [results, setResults] = useState<Record<string, ScanResult>>({});
+interface ScanResultsProps {
+  folders: MonitoredFolder[];
+  scanState: ScanResultsState;
+  onScanStateChange: (state: ScanResultsState) => void;
+}
+
+export default function ScanResults({ folders, scanState, onScanStateChange }: ScanResultsProps) {
+  const { results, expandedFolder } = scanState;
   const [scanningFolders, setScanningFolders] = useState<Record<string, boolean>>({});
   const [isFullScanActive, setIsFullScanActive] = useState(false);
   const [error, setError] = useState('');
-  const [expandedFolder, setExpandedFolder] = useState<string | null>(null);
   const scanVersionRef = useRef(0);
+
+  const setResults = (newResults: Record<string, ScanResult>) => {
+    onScanStateChange({ ...scanState, results: newResults });
+  };
+
+  const setExpandedFolder = (folderId: string | null) => {
+    onScanStateChange({ ...scanState, expandedFolder: folderId });
+  };
 
   const scan = async (foldersToScan: MonitoredFolder[], isFullScan: boolean = false) => {
     // Increment version for full scans to cancel previous scans
@@ -148,7 +162,7 @@ export default function ScanResults({ folders }: ScanResultsProps) {
                 >
                   <div className="flex-1 min-w-0">
                     <h3 className="text-text-primary text-sm font-medium truncate">{folder.name}</h3>
-                    <p className="text-text-muted text-xs truncate">{folder.path}</p>
+                    <p className="text-text-muted text-xs truncate font-mono">{folder.path}</p>
                   </div>
                   <div className="text-right mx-3 flex-shrink-0">
                     {isFolderScanning ? (
@@ -199,7 +213,7 @@ export default function ScanResults({ folders }: ScanResultsProps) {
                           {(result.withChanges || []).map((repo: services.RepoStatus, idx: number) => (
                             <li
                               key={idx}
-                              className="text-text-secondary text-xs py-0.5 pl-2 border-l border-accent-yellow/50 hover:text-text-primary transition-colors"
+                              className="text-text-secondary text-xs py-0.5 pl-2 border-l border-accent-yellow/50 hover:text-text-primary transition-colors font-mono"
                             >
                               {repo.path}
                             </li>
@@ -218,7 +232,7 @@ export default function ScanResults({ folders }: ScanResultsProps) {
                           {(result.withUnpushed || []).map((repo: services.RepoStatus, idx: number) => (
                             <li
                               key={idx}
-                              className="text-text-secondary text-xs py-0.5 pl-2 border-l border-accent-orange/50 hover:text-text-primary transition-colors"
+                              className="text-text-secondary text-xs py-0.5 pl-2 border-l border-accent-orange/50 hover:text-text-primary transition-colors font-mono"
                             >
                               {repo.path}
                             </li>
@@ -237,7 +251,7 @@ export default function ScanResults({ folders }: ScanResultsProps) {
                           {(result.clean || []).map((repo: services.RepoStatus, idx: number) => (
                             <li
                               key={idx}
-                              className="text-text-muted text-xs py-0.5 pl-2 border-l border-accent-green/50 hover:text-text-secondary transition-colors"
+                              className="text-text-muted text-xs py-0.5 pl-2 border-l border-accent-green/50 hover:text-text-secondary transition-colors font-mono"
                             >
                               {repo.path}
                             </li>
@@ -255,7 +269,7 @@ export default function ScanResults({ folders }: ScanResultsProps) {
                         <ul className="space-y-1">
                           {(result.errors || []).map((repo: services.RepoStatus, idx: number) => (
                             <li key={idx} className="text-xs">
-                              <p className="text-text-secondary pl-2 border-l border-accent-red/50">
+                              <p className="text-text-secondary pl-2 border-l border-accent-red/50 font-mono">
                                 {repo.path}
                               </p>
                               {repo.errorMessage && (

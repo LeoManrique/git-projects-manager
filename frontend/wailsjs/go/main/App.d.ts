@@ -4,6 +4,8 @@ import {services} from '../models';
 
 export function AddMonitoredFolder(arg1:string,arg2:string):Promise<services.MonitoredFolder>;
 
+export function BrowseFolder():Promise<string>;
+
 export function DeleteMonitoredFolder(arg1:string):Promise<void>;
 
 export function GetMonitoredFolders():Promise<Array<services.MonitoredFolder>>;

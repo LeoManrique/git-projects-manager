@@ -3,6 +3,7 @@ import {
   AddMonitoredFolder,
   UpdateMonitoredFolder,
   DeleteMonitoredFolder,
+  BrowseFolder,
 } from '../../wailsjs/go/main/App';
 
 export interface MonitoredFolder {
@@ -84,6 +85,17 @@ export default function FolderManager({ folders, onRefresh }: FolderManagerProps
     setError('');
   };
 
+  const handleBrowse = async () => {
+    try {
+      const path = await BrowseFolder();
+      if (path) {
+        setFormPath(path);
+      }
+    } catch (err) {
+      console.error('Failed to browse folder:', err);
+    }
+  };
+
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
@@ -103,20 +115,33 @@ export default function FolderManager({ folders, onRefresh }: FolderManagerProps
         </div>
       )}
 
-      {showAddForm && (
+      {/* Add new folder form (only when not editing existing) */}
+      {showAddForm && !editingId && (
         <div className="flex-shrink-0 bg-dark-surface rounded border border-dark-border p-3 mb-3">
           <div className="space-y-3">
             <div>
               <label className="block text-text-secondary text-xs font-medium mb-1.5">
                 Folder Path
               </label>
-              <input
-                type="text"
-                value={formPath}
-                onChange={(e) => setFormPath(e.target.value)}
-                placeholder="e.g., C:\Users\YourName\GitProjects"
-                className="w-full px-2.5 py-1.5 bg-dark-bg border border-dark-border rounded text-text-primary text-sm placeholder-text-muted focus:outline-none focus:border-accent-blue"
-              />
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={formPath}
+                  onChange={(e) => setFormPath(e.target.value)}
+                  placeholder="e.g., C:\Users\YourName\GitProjects"
+                  className="flex-1 px-2.5 py-1.5 bg-dark-bg border border-dark-border rounded text-text-primary text-sm font-mono placeholder-text-muted focus:outline-none focus:border-accent-blue"
+                />
+                <button
+                  type="button"
+                  onClick={handleBrowse}
+                  className="px-2.5 py-1.5 bg-dark-elevated hover:bg-dark-border border border-dark-border rounded text-text-secondary hover:text-text-primary transition-colors"
+                  title="Browse for folder"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                  </svg>
+                </button>
+              </div>
             </div>
 
             <div>
@@ -141,11 +166,11 @@ export default function FolderManager({ folders, onRefresh }: FolderManagerProps
                 Cancel
               </button>
               <button
-                onClick={editingId ? handleUpdate : handleAdd}
+                onClick={handleAdd}
                 disabled={isLoading}
                 className="px-3 py-1.5 rounded bg-accent-blue hover:brightness-110 text-white text-xs font-medium transition-all disabled:opacity-50"
               >
-                {isLoading ? 'Saving...' : editingId ? 'Update' : 'Add'}
+                {isLoading ? 'Adding...' : 'Add'}
               </button>
             </div>
           </div>
@@ -156,33 +181,98 @@ export default function FolderManager({ folders, onRefresh }: FolderManagerProps
         {folders.length === 0 ? (
           <p className="text-text-muted text-sm text-center py-8">No folders configured yet.</p>
         ) : (
-          folders.map((folder) => (
-            <div
-              key={folder.id}
-              className="flex justify-between items-center bg-dark-surface rounded border border-dark-border px-3 py-2.5 hover:bg-dark-elevated transition-colors"
-            >
-              <div className="flex-1 min-w-0">
-                <h3 className="text-text-primary text-sm font-medium truncate">{folder.name}</h3>
-                <p className="text-text-muted text-xs truncate">{folder.path}</p>
+          folders.map((folder) => {
+            const isEditing = editingId === folder.id;
+
+            return (
+              <div
+                key={folder.id}
+                className="bg-dark-surface rounded border border-dark-border overflow-hidden"
+              >
+                {/* Folder header */}
+                <div className="flex justify-between items-center px-3 py-2.5 hover:bg-dark-elevated transition-colors">
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-text-primary text-sm font-medium truncate">{folder.name}</h3>
+                    <p className="text-text-muted text-xs truncate font-mono">{folder.path}</p>
+                  </div>
+                  <div className="flex gap-2 ml-3 flex-shrink-0">
+                    <button
+                      onClick={() => isEditing ? resetForm() : handleEdit(folder)}
+                      disabled={isLoading}
+                      className="px-2 py-1 rounded bg-accent-blue/20 hover:bg-accent-blue/30 text-accent-blue text-xs font-medium transition-colors disabled:opacity-50"
+                    >
+                      {isEditing ? 'Cancel' : 'Edit'}
+                    </button>
+                    <button
+                      onClick={() => handleDelete(folder.id)}
+                      disabled={isLoading || isEditing}
+                      className="px-2 py-1 rounded bg-accent-red/20 hover:bg-accent-red/30 text-accent-red text-xs font-medium transition-colors disabled:opacity-50"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+
+                {/* Inline edit form */}
+                {isEditing && (
+                  <div className="bg-dark-bg border-t border-dark-border px-3 py-3 space-y-3">
+                    <div>
+                      <label className="block text-text-secondary text-xs font-medium mb-1.5">
+                        Folder Path
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={formPath}
+                          onChange={(e) => setFormPath(e.target.value)}
+                          className="flex-1 px-2.5 py-1.5 bg-dark-surface border border-dark-border rounded text-text-primary text-sm font-mono placeholder-text-muted focus:outline-none focus:border-accent-blue"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleBrowse}
+                          className="px-2.5 py-1.5 bg-dark-elevated hover:bg-dark-border border border-dark-border rounded text-text-secondary hover:text-text-primary transition-colors"
+                          title="Browse for folder"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-text-secondary text-xs font-medium mb-1.5">
+                        Display Name
+                      </label>
+                      <input
+                        type="text"
+                        value={formName}
+                        onChange={(e) => setFormName(e.target.value)}
+                        className="w-full px-2.5 py-1.5 bg-dark-surface border border-dark-border rounded text-text-primary text-sm placeholder-text-muted focus:outline-none focus:border-accent-blue"
+                      />
+                    </div>
+
+                    <div className="flex gap-2 justify-end">
+                      <button
+                        onClick={resetForm}
+                        disabled={isLoading}
+                        className="px-3 py-1.5 rounded bg-dark-elevated hover:bg-dark-border text-text-secondary text-xs font-medium transition-colors disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleUpdate}
+                        disabled={isLoading}
+                        className="px-3 py-1.5 rounded bg-accent-blue hover:brightness-110 text-white text-xs font-medium transition-all disabled:opacity-50"
+                      >
+                        {isLoading ? 'Saving...' : 'Save'}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
-              <div className="flex gap-2 ml-3 flex-shrink-0">
-                <button
-                  onClick={() => handleEdit(folder)}
-                  disabled={isLoading}
-                  className="px-2 py-1 rounded bg-accent-blue/20 hover:bg-accent-blue/30 text-accent-blue text-xs font-medium transition-colors disabled:opacity-50"
-                >
-                  Edit
-                </button>
-                <button
-                  onClick={() => handleDelete(folder.id)}
-                  disabled={isLoading}
-                  className="px-2 py-1 rounded bg-accent-red/20 hover:bg-accent-red/30 text-accent-red text-xs font-medium transition-colors disabled:opacity-50"
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>

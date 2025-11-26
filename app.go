@@ -6,6 +6,8 @@ import (
 	"os"
 
 	"git-projects-manager/services"
+
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // App struct
@@ -59,4 +61,11 @@ func (a *App) DeleteMonitoredFolder(id string) error {
 // ScanFolder scans a folder for git repositories
 func (a *App) ScanFolder(path string) services.ScanResult {
 	return a.gitRepository.ScanDirectory(path)
+}
+
+// BrowseFolder opens a directory picker dialog and returns the selected path
+func (a *App) BrowseFolder() (string, error) {
+	return runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "Select Folder",
+	})
 }
