@@ -64,3 +64,12 @@ input:focus-visible {
 ::selection {
     background: rgba(56, 139, 253, 0.3);
 }
+
+/* Wails window dragging */
+.wails-drag {
+    --wails-draggable: drag;
+}
+
+.wails-no-drag {
+    --wails-draggable: no-drag;
+}

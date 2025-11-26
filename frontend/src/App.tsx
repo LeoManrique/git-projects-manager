@@ -20,7 +20,7 @@ function App() {
     const [activeTab, setActiveTab] = useState<'manage' | 'scan'>('scan');
     const [scanState, setScanState] = useState<ScanResultsState>({
         results: {},
-        expandedFolder: null,
+        expandedFolders: new Set(),
     });
 
     const loadFolders = useCallback(async () => {
@@ -40,12 +40,11 @@ function App() {
         <div className="h-screen flex flex-col bg-dark-bg text-text-primary overflow-hidden">
             {/* Title Bar */}
             <header
-                className="flex-shrink-0 bg-dark-surface border-b border-dark-border h-9 flex items-center"
-                style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+                className="flex-shrink-0 bg-dark-surface border-b border-dark-border h-9 flex items-center select-none wails-drag"
             >
                 {/* Left section: Logo + App name (with macOS traffic light padding) */}
                 <div className={`flex items-center h-full ${isMac ? 'pl-[70px]' : 'pl-3'}`}>
-                    <img src={logo} alt="logo" className="w-4 h-4 mr-2" />
+                    <img src={logo} alt="logo" className="w-4 h-4 mr-2 pointer-events-none" />
                     <span className="text-sm font-medium text-text-primary">Git Projects Manager</span>
                 </div>
 
@@ -54,7 +53,7 @@ function App() {
 
                 {/* Window controls (Windows/Linux only) */}
                 {!isMac && (
-                    <div className="flex h-full" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+                    <div className="flex h-full wails-no-drag">
                         <button
                             onClick={() => WindowMinimise()}
                             className="w-12 h-full flex items-center justify-center text-text-secondary hover:bg-dark-elevated transition-colors"

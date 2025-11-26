@@ -13,7 +13,7 @@ type ScanResult = services.ScanResult;
 
 export interface ScanResultsState {
   results: Record<string, ScanResult>;
-  expandedFolder: string | null;
+  expandedFolders: Set<string>;
 }
 
 interface ScanResultsProps {
@@ -23,7 +23,7 @@ interface ScanResultsProps {
 }
 
 export default function ScanResults({ folders, scanState, onScanStateChange }: ScanResultsProps) {
-  const { results, expandedFolder } = scanState;
+  const { results, expandedFolders } = scanState;
   const [scanningFolders, setScanningFolders] = useState<Record<string, boolean>>({});
   const [isFullScanActive, setIsFullScanActive] = useState(false);
   const [error, setError] = useState('');
@@ -33,8 +33,14 @@ export default function ScanResults({ folders, scanState, onScanStateChange }: S
     onScanStateChange({ ...scanState, results: newResults });
   };
 
-  const setExpandedFolder = (folderId: string | null) => {
-    onScanStateChange({ ...scanState, expandedFolder: folderId });
+  const toggleExpandedFolder = (folderId: string) => {
+    const newExpanded = new Set(expandedFolders);
+    if (newExpanded.has(folderId)) {
+      newExpanded.delete(folderId);
+    } else {
+      newExpanded.add(folderId);
+    }
+    onScanStateChange({ ...scanState, expandedFolders: newExpanded });
   };
 
   const scan = async (foldersToScan: MonitoredFolder[], isFullScan: boolean = false) => {
@@ -92,8 +98,8 @@ export default function ScanResults({ folders, scanState, onScanStateChange }: S
 
       setResults(newResults);
 
-      if (isFullScan && foldersToScan.length === 1) {
-        setExpandedFolder(foldersToScan[0].id);
+      if (isFullScan && foldersToScan.length === 1 && !expandedFolders.has(foldersToScan[0].id)) {
+        toggleExpandedFolder(foldersToScan[0].id);
       }
 
       // Clear scanning state only for the folders we just scanned
@@ -148,7 +154,7 @@ export default function ScanResults({ folders, scanState, onScanStateChange }: S
         <div className="flex-1 overflow-auto space-y-2">
           {folders.map((folder) => {
             const result = results[folder.id];
-            const isExpanded = expandedFolder === folder.id;
+            const isExpanded = expandedFolders.has(folder.id);
             const isFolderScanning = scanningFolders[folder.id] ?? false;
 
             return (
@@ -157,7 +163,7 @@ export default function ScanResults({ folders, scanState, onScanStateChange }: S
                 className="bg-dark-surface rounded border border-dark-border overflow-hidden"
               >
                 <button
-                  onClick={() => setExpandedFolder(isExpanded ? null : folder.id)}
+                  onClick={() => toggleExpandedFolder(folder.id)}
                   className="w-full flex justify-between items-center px-3 py-2.5 hover:bg-dark-elevated transition-colors text-left"
                 >
                   <div className="flex-1 min-w-0">
