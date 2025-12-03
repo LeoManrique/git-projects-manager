@@ -18,6 +18,7 @@ export namespace services {
 	}
 	export class RepoStatus {
 	    path: string;
+	    branch?: string;
 	    hasChanges?: boolean;
 	    hasUnpushed?: boolean;
 	    hasError: boolean;
@@ -30,6 +31,7 @@ export namespace services {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.path = source["path"];
+	        this.branch = source["branch"];
 	        this.hasChanges = source["hasChanges"];
 	        this.hasUnpushed = source["hasUnpushed"];
 	        this.hasError = source["hasError"];

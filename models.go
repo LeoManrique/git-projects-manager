@@ -3,6 +3,7 @@ package main
 // RepoStatus holds the status of a git repository
 type RepoStatus struct {
 	Path           string `json:"path"`
+	Branch         string `json:"branch,omitempty"`
 	HasChanges     *bool  `json:"hasChanges"`
 	HasUnpushed    *bool  `json:"hasUnpushed"`
 	HasError       bool   `json:"hasError"`

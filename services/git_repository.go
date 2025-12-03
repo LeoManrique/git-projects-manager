@@ -28,6 +28,7 @@ func shouldSkipFolder(path string) bool {
 // RepoStatus holds the status of a git repository
 type RepoStatus struct {
 	Path         string `json:"path"`
+	Branch       string `json:"branch,omitempty"`
 	HasChanges   *bool  `json:"hasChanges"`
 	HasUnpushed  *bool  `json:"hasUnpushed"`
 	HasError     bool   `json:"hasError"`
@@ -50,6 +51,18 @@ func (gr *GitRepository) IsGitRepo(path string) bool {
 	gitPath := filepath.Join(path, ".git")
 	info, err := os.Stat(gitPath)
 	return err == nil && info.IsDir()
+}
+
+// GetCurrentBranch gets the current branch name of a git repository
+func (gr *GitRepository) GetCurrentBranch(repoPath string) string {
+	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+	cmd.Dir = repoPath
+	hideConsoleWindow(cmd)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(output))
 }
 
 // HasPendingChanges checks if a git repository has pending changes
@@ -129,11 +142,13 @@ func (gr *GitRepository) ScanDirectory(rootDir string) ScanResult {
 				defer wg.Done()
 
 				relPath, _ := filepath.Rel(rootDir, repoPath)
+				branch := gr.GetCurrentBranch(repoPath)
 				hasChanges := gr.HasPendingChanges(repoPath)
 				hasUnpushed := gr.HasUnpushedCommits(repoPath)
 
 				status := RepoStatus{
 					Path:        relPath,
+					Branch:      branch,
 					HasChanges:  hasChanges,
 					HasUnpushed: hasUnpushed,
 					HasError:    false,

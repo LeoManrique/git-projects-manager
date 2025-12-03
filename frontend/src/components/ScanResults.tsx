@@ -222,6 +222,11 @@ export default function ScanResults({ folders, scanState, onScanStateChange }: S
                               className="text-text-secondary text-xs py-0.5 pl-2 border-l border-accent-yellow/50 hover:text-text-primary transition-colors font-mono"
                             >
                               {repo.path}
+                              {repo.branch && (
+                                <span className="ml-1.5 text-[#58a6ff]/80 font-light tracking-wide">
+                                  ({repo.branch})
+                                </span>
+                              )}
                             </li>
                           ))}
                         </ul>
@@ -241,6 +246,11 @@ export default function ScanResults({ folders, scanState, onScanStateChange }: S
                               className="text-text-secondary text-xs py-0.5 pl-2 border-l border-accent-orange/50 hover:text-text-primary transition-colors font-mono"
                             >
                               {repo.path}
+                              {repo.branch && (
+                                <span className="ml-1.5 text-[#58a6ff]/80 font-light tracking-wide">
+                                  ({repo.branch})
+                                </span>
+                              )}
                             </li>
                           ))}
                         </ul>
@@ -260,6 +270,11 @@ export default function ScanResults({ folders, scanState, onScanStateChange }: S
                               className="text-text-muted text-xs py-0.5 pl-2 border-l border-accent-green/50 hover:text-text-secondary transition-colors font-mono"
                             >
                               {repo.path}
+                              {repo.branch && (
+                                <span className="ml-1.5 text-[#58a6ff]/80 font-light tracking-wide">
+                                  ({repo.branch})
+                                </span>
+                              )}
                             </li>
                           ))}
                         </ul>
@@ -277,6 +292,11 @@ export default function ScanResults({ folders, scanState, onScanStateChange }: S
                             <li key={idx} className="text-xs">
                               <p className="text-text-secondary pl-2 border-l border-accent-red/50 font-mono">
                                 {repo.path}
+                                {repo.branch && (
+                                  <span className="ml-1.5 text-[#58a6ff]/80 font-light tracking-wide">
+                                    ({repo.branch})
+                                  </span>
+                                )}
                               </p>
                               {repo.errorMessage && (
                                 <p className="text-text-muted text-xs mt-0.5 pl-2">
