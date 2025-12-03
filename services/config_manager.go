@@ -44,9 +44,8 @@ func NewConfigManager() (*ConfigManager, error) {
 	// Load existing config if it exists
 	_ = cm.Load()
 
-	// Initialize with defaults if no config exists
+	// Save empty config if none exists
 	if len(cm.config.Folders) == 0 {
-		cm.initializeDefaults()
 		_ = cm.Save()
 	}
 
@@ -79,21 +78,6 @@ func getConfigDirectory() (string, error) {
 	return appConfigDir, nil
 }
 
-// initializeDefaults sets up default monitored folders
-func (cm *ConfigManager) initializeDefaults() {
-	defaultPaths := []string{
-		`C:\Users\Leo\GitProjects`,
-		`\\wsl.localhost\Ubuntu\home\leo\GitProjects`,
-	}
-
-	for _, path := range defaultPaths {
-		cm.config.Folders = append(cm.config.Folders, MonitoredFolder{
-			ID:   uuid.New().String(),
-			Path: path,
-			Name: path,
-		})
-	}
-}
 
 // Load loads the configuration from disk
 func (cm *ConfigManager) Load() error {
