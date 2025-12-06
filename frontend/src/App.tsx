@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import FolderManager from './components/FolderManager';
 import ScanResults, { ScanResultsState } from './components/ScanResults';
-import { GetMonitoredFolders } from '../wailsjs/go/main/App';
+import { GetMonitoredFolders } from '../wailsjs/go/app/App';
 import { WindowMinimise, WindowToggleMaximise, Quit } from '../wailsjs/runtime/runtime';
 import './App.css';
 import logo from './assets/images/logo-universal.png';

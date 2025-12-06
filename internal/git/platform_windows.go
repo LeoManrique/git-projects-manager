@@ -1,7 +1,7 @@
 //go:build windows
 // +build windows
 
-package services
+package git
 
 import (
 	"os/exec"

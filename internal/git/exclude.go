@@ -1,4 +1,4 @@
-package services
+package git
 
 // ExcludedFolders contains a comprehensive list of folders to exclude from git repository scanning.
 // This includes build artifacts, dependencies, and cache directories for multiple programming languages.

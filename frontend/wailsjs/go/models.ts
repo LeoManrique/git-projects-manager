@@ -1,4 +1,4 @@
-export namespace services {
+export namespace domain {
 	
 	export class MonitoredFolder {
 	    id: string;

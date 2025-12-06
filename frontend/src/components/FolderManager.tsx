@@ -4,7 +4,7 @@ import {
   UpdateMonitoredFolder,
   DeleteMonitoredFolder,
   BrowseFolder,
-} from '../../wailsjs/go/main/App';
+} from '../../wailsjs/go/app/App';
 
 export interface MonitoredFolder {
   id: string;

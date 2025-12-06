@@ -4,6 +4,8 @@ import (
 	"embed"
 	"runtime"
 
+	"git-projects-manager/internal/app"
+
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
@@ -16,7 +18,7 @@ var assets embed.FS
 
 func main() {
 	// Create an instance of the app structure
-	app := NewApp()
+	application := app.New()
 
 	// Create application with options
 	err := wails.Run(&options.App{
@@ -28,9 +30,9 @@ func main() {
 			Assets: assets,
 		},
 		BackgroundColour: &options.RGBA{R: 13, G: 17, B: 23, A: 1}, // Match dark-bg color
-		OnStartup:        app.startup,
+		OnStartup:        application.Startup,
 		Bind: []interface{}{
-			app,
+			application,
 		},
 		Windows: &windows.Options{
 			WebviewIsTransparent: false,

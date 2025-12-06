@@ -1,7 +1,6 @@
 import { useState, useRef } from 'react';
-// @ts-ignore - Wails binding not properly typed
-import { ScanFolder } from '../../wailsjs/go/main/App';
-import { services } from '../../wailsjs/go/models';
+import { ScanFolder } from '../../wailsjs/go/app/App';
+import { domain } from '../../wailsjs/go/models';
 
 interface MonitoredFolder {
   id: string;
@@ -9,7 +8,7 @@ interface MonitoredFolder {
   name: string;
 }
 
-type ScanResult = services.ScanResult;
+type ScanResult = domain.ScanResult;
 
 export interface ScanResultsState {
   results: Record<string, ScanResult>;
@@ -216,7 +215,7 @@ export default function ScanResults({ folders, scanState, onScanStateChange }: S
                           Uncommitted Changes ({result.withChanges?.length ?? 0})
                         </h4>
                         <ul className="space-y-0.5">
-                          {(result.withChanges || []).map((repo: services.RepoStatus, idx: number) => (
+                          {(result.withChanges || []).map((repo: domain.RepoStatus, idx: number) => (
                             <li
                               key={idx}
                               className="text-text-secondary text-xs py-0.5 pl-2 border-l border-accent-yellow/50 hover:text-text-primary transition-colors font-mono"
@@ -240,7 +239,7 @@ export default function ScanResults({ folders, scanState, onScanStateChange }: S
                           Unpushed Commits ({result.withUnpushed?.length ?? 0})
                         </h4>
                         <ul className="space-y-0.5">
-                          {(result.withUnpushed || []).map((repo: services.RepoStatus, idx: number) => (
+                          {(result.withUnpushed || []).map((repo: domain.RepoStatus, idx: number) => (
                             <li
                               key={idx}
                               className="text-text-secondary text-xs py-0.5 pl-2 border-l border-accent-orange/50 hover:text-text-primary transition-colors font-mono"
@@ -264,7 +263,7 @@ export default function ScanResults({ folders, scanState, onScanStateChange }: S
                           Clean ({result.clean?.length ?? 0})
                         </h4>
                         <ul className="space-y-0.5 max-h-32 overflow-y-auto">
-                          {(result.clean || []).map((repo: services.RepoStatus, idx: number) => (
+                          {(result.clean || []).map((repo: domain.RepoStatus, idx: number) => (
                             <li
                               key={idx}
                               className="text-text-muted text-xs py-0.5 pl-2 border-l border-accent-green/50 hover:text-text-secondary transition-colors font-mono"
@@ -288,7 +287,7 @@ export default function ScanResults({ folders, scanState, onScanStateChange }: S
                           Errors ({result.errors?.length ?? 0})
                         </h4>
                         <ul className="space-y-1">
-                          {(result.errors || []).map((repo: services.RepoStatus, idx: number) => (
+                          {(result.errors || []).map((repo: domain.RepoStatus, idx: number) => (
                             <li key={idx} className="text-xs">
                               <p className="text-text-secondary pl-2 border-l border-accent-red/50 font-mono">
                                 {repo.path}
