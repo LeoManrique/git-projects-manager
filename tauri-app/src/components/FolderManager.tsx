@@ -1,274 +1,270 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { api } from '../lib/api';
 import { MonitoredFolder } from '../types';
 
 interface FolderManagerProps {
   folders: MonitoredFolder[];
-  onFoldersChange: () => void;
+  onRefresh: () => Promise<void>;
 }
 
-export const FolderManager: React.FC<FolderManagerProps> = ({ folders, onFoldersChange }) => {
-  const [isAdding, setIsAdding] = useState(false);
+export default function FolderManager({ folders, onRefresh }: FolderManagerProps) {
+  const [showAddForm, setShowAddForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [newFolder, setNewFolder] = useState({ path: '', name: '' });
-  const [editFolder, setEditFolder] = useState({ path: '', name: '' });
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [formPath, setFormPath] = useState('');
+  const [formName, setFormName] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleAddFolder = async () => {
-    if (!newFolder.path || !newFolder.name) {
-      setError('Please provide both path and name');
-      return;
-    }
+  const resetForm = () => {
+    setFormPath('');
+    setFormName('');
+    setEditingId(null);
+    setShowAddForm(false);
+    setError('');
+  };
 
-    setLoading(true);
-    setError(null);
-
+  const executeOperation = async (operation: () => Promise<unknown>, errorMsg: string) => {
     try {
-      await api.addMonitoredFolder(newFolder.path, newFolder.name);
-      setNewFolder({ path: '', name: '' });
-      setIsAdding(false);
-      onFoldersChange();
+      setIsLoading(true);
+      await operation();
+      await onRefresh();
+      resetForm();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add folder');
+      setError(errorMsg);
+      console.error(err);
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
-  const handleUpdateFolder = async (id: string) => {
-    if (!editFolder.path || !editFolder.name) {
-      setError('Please provide both path and name');
+  const handleAdd = () => {
+    if (!formPath.trim() || !formName.trim()) {
+      setError('Path and name are required');
       return;
     }
+    executeOperation(() => api.addMonitoredFolder(formPath, formName), 'Failed to add folder');
+  };
 
-    setLoading(true);
-    setError(null);
+  const handleUpdate = () => {
+    if (!formPath.trim() || !formName.trim() || !editingId) {
+      setError('Path and name are required');
+      return;
+    }
+    executeOperation(() => api.updateMonitoredFolder(editingId, formPath, formName), 'Failed to update folder');
+  };
 
-    try {
-      await api.updateMonitoredFolder(id, editFolder.path, editFolder.name);
-      setEditingId(null);
-      setEditFolder({ path: '', name: '' });
-      onFoldersChange();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update folder');
-    } finally {
-      setLoading(false);
+  const handleDelete = (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this folder?')) return;
+    executeOperation(() => api.deleteMonitoredFolder(id), 'Failed to delete folder');
+  };
+
+  const toggleForm = () => {
+    if (showAddForm && !editingId) {
+      setShowAddForm(false);
+    } else {
+      resetForm();
+      setShowAddForm(true);
     }
   };
 
-  const handleDeleteFolder = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this folder?')) {
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      await api.deleteMonitoredFolder(id);
-      onFoldersChange();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete folder');
-    } finally {
-      setLoading(false);
-    }
+  const handleEdit = (folder: MonitoredFolder) => {
+    setEditingId(folder.id);
+    setFormPath(folder.path);
+    setFormName(folder.name);
+    setShowAddForm(true);
+    setError('');
   };
 
-  const handleBrowseFolder = async () => {
+  const handleBrowse = async () => {
     try {
-      const selectedPath = await api.browseFolder();
-      if (selectedPath) {
-        if (isAdding) {
-          setNewFolder({ ...newFolder, path: selectedPath });
-        } else if (editingId) {
-          setEditFolder({ ...editFolder, path: selectedPath });
-        }
+      const path = await api.browseFolder();
+      if (path) {
+        setFormPath(path);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to browse folder');
+      console.error('Failed to browse folder:', err);
     }
-  };
-
-  const startEdit = (folder: MonitoredFolder) => {
-    setEditingId(folder.id);
-    setEditFolder({ path: folder.path, name: folder.name });
-    setIsAdding(false);
-  };
-
-  const cancelEdit = () => {
-    setEditingId(null);
-    setEditFolder({ path: '', name: '' });
-    setError(null);
-  };
-
-  const startAdd = () => {
-    setIsAdding(true);
-    setEditingId(null);
-    setNewFolder({ path: '', name: '' });
-    setError(null);
-  };
-
-  const cancelAdd = () => {
-    setIsAdding(false);
-    setNewFolder({ path: '', name: '' });
-    setError(null);
   };
 
   return (
-    <div className="folder-manager">
-      <div className="header">
-        <h2>Monitored Folders</h2>
-        {!isAdding && (
-          <button
-            onClick={startAdd}
-            disabled={loading}
-            className="btn btn-primary"
-          >
-            Add Folder
-          </button>
-        )}
+    <div className="h-full flex flex-col">
+      {/* Header */}
+      <div className="flex-shrink-0 flex justify-between items-center mb-3">
+        <h2 className="text-base font-semibold text-text-primary">Monitored Folders</h2>
+        <button
+          onClick={toggleForm}
+          className="bg-accent-blue hover:brightness-110 text-white text-xs font-medium py-1.5 px-3 rounded transition-all"
+        >
+          {showAddForm && !editingId ? 'Cancel' : 'Add Folder'}
+        </button>
       </div>
 
       {error && (
-        <div className="error-message">
+        <div className="flex-shrink-0 bg-accent-red/10 border border-accent-red/30 text-accent-red px-3 py-2 rounded text-xs mb-3">
           {error}
         </div>
       )}
 
-      {isAdding && (
-        <div className="folder-form">
-          <div className="form-group">
-            <label>Path:</label>
-            <div className="input-with-button">
+      {/* Add new folder form (only when not editing existing) */}
+      {showAddForm && !editingId && (
+        <div className="flex-shrink-0 bg-dark-surface rounded border border-dark-border p-3 mb-3">
+          <div className="space-y-3">
+            <div>
+              <label className="block text-text-secondary text-xs font-medium mb-1.5">
+                Folder Path
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={formPath}
+                  onChange={(e) => setFormPath(e.target.value)}
+                  placeholder="e.g., /Users/YourName/Projects"
+                  className="flex-1 px-2.5 py-1.5 bg-dark-bg border border-dark-border rounded text-text-primary text-sm font-mono placeholder-text-muted focus:outline-none focus:border-accent-blue"
+                />
+                <button
+                  type="button"
+                  onClick={handleBrowse}
+                  className="px-2.5 py-1.5 bg-dark-elevated hover:bg-dark-border border border-dark-border rounded text-text-secondary hover:text-text-primary transition-colors"
+                  title="Browse for folder"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-text-secondary text-xs font-medium mb-1.5">
+                Display Name
+              </label>
               <input
                 type="text"
-                value={newFolder.path}
-                onChange={(e) => setNewFolder({ ...newFolder, path: e.target.value })}
-                placeholder="Enter folder path"
-                disabled={loading}
+                value={formName}
+                onChange={(e) => setFormName(e.target.value)}
+                placeholder="e.g., My Projects"
+                className="w-full px-2.5 py-1.5 bg-dark-bg border border-dark-border rounded text-text-primary text-sm placeholder-text-muted focus:outline-none focus:border-accent-blue"
               />
+            </div>
+
+            <div className="flex gap-2 justify-end">
               <button
-                onClick={handleBrowseFolder}
-                disabled={loading}
-                className="btn btn-secondary"
+                onClick={resetForm}
+                disabled={isLoading}
+                className="px-3 py-1.5 rounded bg-dark-elevated hover:bg-dark-border text-text-secondary text-xs font-medium transition-colors disabled:opacity-50"
               >
-                Browse
+                Cancel
+              </button>
+              <button
+                onClick={handleAdd}
+                disabled={isLoading}
+                className="px-3 py-1.5 rounded bg-accent-blue hover:brightness-110 text-white text-xs font-medium transition-all disabled:opacity-50"
+              >
+                {isLoading ? 'Adding...' : 'Add'}
               </button>
             </div>
-          </div>
-          <div className="form-group">
-            <label>Name:</label>
-            <input
-              type="text"
-              value={newFolder.name}
-              onChange={(e) => setNewFolder({ ...newFolder, name: e.target.value })}
-              placeholder="Enter display name"
-              disabled={loading}
-            />
-          </div>
-          <div className="form-actions">
-            <button
-              onClick={handleAddFolder}
-              disabled={loading}
-              className="btn btn-success"
-            >
-              {loading ? 'Adding...' : 'Add'}
-            </button>
-            <button
-              onClick={cancelAdd}
-              disabled={loading}
-              className="btn btn-cancel"
-            >
-              Cancel
-            </button>
           </div>
         </div>
       )}
 
-      <div className="folder-list">
+      <div className="flex-1 overflow-auto space-y-2">
         {folders.length === 0 ? (
-          <div className="empty-state">
-            <p>No folders monitored yet.</p>
-            <p>Click "Add Folder" to start monitoring Git repositories.</p>
-          </div>
+          <p className="text-text-muted text-sm text-center py-8">No folders configured yet.</p>
         ) : (
-          folders.map((folder) => (
-            <div key={folder.id} className="folder-item">
-              {editingId === folder.id ? (
-                <div className="folder-edit-form">
-                  <div className="form-group">
-                    <label>Path:</label>
-                    <div className="input-with-button">
-                      <input
-                        type="text"
-                        value={editFolder.path}
-                        onChange={(e) => setEditFolder({ ...editFolder, path: e.target.value })}
-                        disabled={loading}
-                      />
-                      <button
-                        onClick={handleBrowseFolder}
-                        disabled={loading}
-                        className="btn btn-secondary"
-                      >
-                        Browse
-                      </button>
-                    </div>
+          folders.map((folder) => {
+            const isEditing = editingId === folder.id;
+
+            return (
+              <div
+                key={folder.id}
+                className="bg-dark-surface rounded border border-dark-border overflow-hidden"
+              >
+                {/* Folder header */}
+                <div className="flex justify-between items-center px-3 py-2.5 hover:bg-dark-elevated transition-colors">
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-text-primary text-sm font-medium truncate">{folder.name}</h3>
+                    <p className="text-text-muted text-xs truncate font-mono">{folder.path}</p>
                   </div>
-                  <div className="form-group">
-                    <label>Name:</label>
-                    <input
-                      type="text"
-                      value={editFolder.name}
-                      onChange={(e) => setEditFolder({ ...editFolder, name: e.target.value })}
-                      disabled={loading}
-                    />
-                  </div>
-                  <div className="form-actions">
+                  <div className="flex gap-2 ml-3 flex-shrink-0">
                     <button
-                      onClick={() => handleUpdateFolder(folder.id)}
-                      disabled={loading}
-                      className="btn btn-success"
+                      onClick={() => isEditing ? resetForm() : handleEdit(folder)}
+                      disabled={isLoading}
+                      className="px-2 py-1 rounded bg-accent-blue/20 hover:bg-accent-blue/30 text-accent-blue text-xs font-medium transition-colors disabled:opacity-50"
                     >
-                      {loading ? 'Saving...' : 'Save'}
+                      {isEditing ? 'Cancel' : 'Edit'}
                     </button>
                     <button
-                      onClick={cancelEdit}
-                      disabled={loading}
-                      className="btn btn-cancel"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="folder-display">
-                  <div className="folder-info">
-                    <h3>{folder.name}</h3>
-                    <p className="folder-path">{folder.path}</p>
-                  </div>
-                  <div className="folder-actions">
-                    <button
-                      onClick={() => startEdit(folder)}
-                      disabled={loading}
-                      className="btn btn-secondary"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => handleDeleteFolder(folder.id)}
-                      disabled={loading}
-                      className="btn btn-danger"
+                      onClick={() => handleDelete(folder.id)}
+                      disabled={isLoading || isEditing}
+                      className="px-2 py-1 rounded bg-accent-red/20 hover:bg-accent-red/30 text-accent-red text-xs font-medium transition-colors disabled:opacity-50"
                     >
                       Delete
                     </button>
                   </div>
                 </div>
-              )}
-            </div>
-          ))
+
+                {/* Inline edit form */}
+                {isEditing && (
+                  <div className="bg-dark-bg border-t border-dark-border px-3 py-3 space-y-3">
+                    <div>
+                      <label className="block text-text-secondary text-xs font-medium mb-1.5">
+                        Folder Path
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={formPath}
+                          onChange={(e) => setFormPath(e.target.value)}
+                          className="flex-1 px-2.5 py-1.5 bg-dark-surface border border-dark-border rounded text-text-primary text-sm font-mono placeholder-text-muted focus:outline-none focus:border-accent-blue"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleBrowse}
+                          className="px-2.5 py-1.5 bg-dark-elevated hover:bg-dark-border border border-dark-border rounded text-text-secondary hover:text-text-primary transition-colors"
+                          title="Browse for folder"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-text-secondary text-xs font-medium mb-1.5">
+                        Display Name
+                      </label>
+                      <input
+                        type="text"
+                        value={formName}
+                        onChange={(e) => setFormName(e.target.value)}
+                        className="w-full px-2.5 py-1.5 bg-dark-surface border border-dark-border rounded text-text-primary text-sm placeholder-text-muted focus:outline-none focus:border-accent-blue"
+                      />
+                    </div>
+
+                    <div className="flex gap-2 justify-end">
+                      <button
+                        onClick={resetForm}
+                        disabled={isLoading}
+                        className="px-3 py-1.5 rounded bg-dark-elevated hover:bg-dark-border text-text-secondary text-xs font-medium transition-colors disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleUpdate}
+                        disabled={isLoading}
+                        className="px-3 py-1.5 rounded bg-accent-blue hover:brightness-110 text-white text-xs font-medium transition-all disabled:opacity-50"
+                      >
+                        {isLoading ? 'Saving...' : 'Save'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })
         )}
       </div>
     </div>
   );
-};
+}

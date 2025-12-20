@@ -1,83 +1,112 @@
+/* Import Inter font for UI - must come before tailwindcss */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+
 @import "tailwindcss";
 
-/* Custom theme colors */
+/* Tailwind v4 CSS-first theme configuration */
 @theme {
-  --color-dark-50: #f8fafc;
-  --color-dark-100: #f1f5f9;
-  --color-dark-200: #e2e8f0;
-  --color-dark-300: #cbd5e1;
-  --color-dark-400: #94a3b8;
-  --color-dark-500: #64748b;
-  --color-dark-600: #475569;
-  --color-dark-700: #334155;
-  --color-dark-800: #1e293b;
-  --color-dark-850: #161b22;
-  --color-dark-900: #0f172a;
-  --color-dark-950: #0d1117;
+  /* Dark theme colors (GitHub-inspired) */
+  --color-dark-bg: #0d1117;
+  --color-dark-surface: #161b22;
+  --color-dark-elevated: #1c2128;
+  --color-dark-border: #30363d;
+  --color-dark-borderSubtle: #21262d;
 
-  --color-accent-green: #10b981;
-  --color-accent-yellow: #eab308;
-  --color-accent-orange: #f97316;
-  --color-accent-red: #ef4444;
-  --color-accent-blue: #3b82f6;
+  /* Accent colors */
+  --color-accent-blue: #388bfd;
+  --color-accent-blueHover: #58a6ff;
+  --color-accent-green: #3fb950;
+  --color-accent-yellow: #d29922;
+  --color-accent-orange: #db6d28;
+  --color-accent-red: #f85149;
 
-  --font-family-mono: 'JetBrains Mono', 'Consolas', 'Monaco', 'Courier New', monospace;
+  /* Text colors */
+  --color-text-primary: #e6edf3;
+  --color-text-secondary: #8b949e;
+  --color-text-muted: #6e7681;
+
+  /* Font families */
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", "Cascadia Code", "SF Mono", Consolas, monospace;
+
+  /* Border radius */
+  --radius-sm: 4px;
+  --radius: 6px;
+
+  /* Font sizes */
+  --text-xs: 13px;
+  --text-xs--line-height: 19px;
+  --text-sm: 14px;
+  --text-sm--line-height: 21px;
+  --text-base: 15px;
+  --text-base--line-height: 23px;
+  --text-lg: 17px;
+  --text-lg--line-height: 25px;
 }
 
-/* Global Styles */
-@layer base {
-  :root {
-    font-synthesis: none;
-    text-rendering: optimizeLegibility;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    -webkit-text-size-adjust: 100%;
-  }
-
-  * {
-    box-sizing: border-box;
-  }
-
-  body {
-    @apply bg-dark-950 text-gray-200 m-0;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-      'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-      sans-serif;
-    min-width: 320px;
-    min-height: 100vh;
-  }
-
-  #root {
-    @apply w-full h-screen overflow-hidden;
-  }
-
-  code {
-    @apply font-mono;
-  }
+* {
+  box-sizing: border-box;
 }
 
-/* Custom scrollbar styles */
-@layer utilities {
-  ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
-  }
+html {
+  background-color: var(--color-dark-bg);
+  color: var(--color-text-primary);
+}
 
-  ::-webkit-scrollbar-track {
-    @apply bg-dark-900;
-  }
+body {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
 
-  ::-webkit-scrollbar-thumb {
-    @apply bg-dark-600 rounded;
-  }
+#root {
+  height: 100vh;
+  overflow: hidden;
+}
 
-  ::-webkit-scrollbar-thumb:hover {
-    @apply bg-dark-500;
-  }
+/* Scrollbar styling for desktop feel */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
 
-  /* Disable text selection on drag regions */
-  [data-tauri-drag-region] {
-    user-select: none;
-    -webkit-user-select: none;
-  }
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-dark-border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #484f58;
+}
+
+/* Remove focus outlines and use subtle border instead */
+button:focus-visible,
+input:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 1px var(--color-accent-blue);
+}
+
+/* Selection styling */
+::selection {
+  background: rgba(56, 139, 253, 0.3);
+}
+
+/* Tauri window dragging */
+[data-tauri-drag-region] {
+  -webkit-app-region: drag;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+[data-tauri-drag-region] button,
+[data-tauri-drag-region] a {
+  -webkit-app-region: no-drag;
 }
