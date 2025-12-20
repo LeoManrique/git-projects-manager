@@ -1,61 +1,108 @@
-# Git Projects Manager
+# Git Projects Manager - Tauri v2
 
-A cross-platform desktop application that helps developers monitor and manage multiple Git repositories across their file system.
-
-## About
-
-Git Projects Manager scans directories for Git repositories and provides a unified interface to track repository status at a glance. It identifies repositories with uncommitted changes, unpushed commits, and scanning errors across multiple folders in parallel, making it easy to stay on top of your Git workspace.
-
-Built with **Wails** (Go + React), this application provides native performance with a modern web-based UI.
+A desktop application built with Tauri v2, React, and TypeScript for managing and monitoring Git repositories.
 
 ## Features
 
-- **Multi-folder monitoring**: Add and manage multiple directories to scan for Git repositories
-- **Parallel scanning**: Recursively scan directories and check repository status concurrently for fast results
-- **Status tracking**: Identify repositories with:
-  - Uncommitted changes (staging area and working directory)
-  - Unpushed commits (local commits not yet pushed to remote)
-  - Clean status (no changes, everything pushed)
-  - Scanning errors (permission issues, invalid repos)
-- **Persistent configuration**: Monitored folders are saved automatically and restored on app restart
-- **Cross-platform**: Works on Windows, macOS, and Linux (including WSL)
-- **Smart exclusions**: Automatically skips common directories (node_modules, venv, .git, build artifacts, etc.) to improve scanning speed
+- Monitor multiple folders for Git repositories
+- Scan repositories for pending changes and unpushed commits
+- Fast parallel scanning using Rust
+- Cross-platform support (Windows, macOS, Linux)
 
-## How It Works
+## Project Structure
 
-### Architecture
+```
+tauri-app/
+├── src-tauri/              # Rust backend
+│   ├── src/
+│   │   ├── commands/       # Tauri command handlers
+│   │   ├── domain/         # Business logic
+│   │   ├── infrastructure/ # External integrations
+│   │   ├── main.rs         # Entry point
+│   │   └── state.rs        # Application state
+│   ├── Cargo.toml          # Rust dependencies
+│   └── tauri.conf.json     # Tauri configuration
+├── src/                    # React frontend
+│   ├── components/         # React components
+│   ├── lib/                # API wrapper
+│   ├── types/              # TypeScript types
+│   ├── App.tsx             # Main app component
+│   └── main.tsx            # Entry point
+├── package.json            # Node dependencies
+└── vite.config.ts          # Vite configuration
+```
 
-The application uses a **backend-frontend separation** pattern:
+## Prerequisites
 
-- **Backend (Go)**: Handles Git operations, file system scanning, and configuration management
-  - `git_repository.go` - Git command execution and repository detection
-  - `config_manager.go` - Persistent folder configuration
-  - `exclude_patterns.go` - Optimized directory traversal with smart skipping
+- [Node.js](https://nodejs.org/) (v16 or later)
+- [Rust](https://www.rust-lang.org/tools/install)
+- [Git](https://git-scm.com/)
 
-- **Frontend (React)**: Provides the user interface with two main sections:
-  - **Scan Results** tab - View repository status and initiate scans
-  - **Manage Folders** tab - Add, edit, and delete monitored folders
+### Platform-specific requirements:
 
-### Scanning Process
+**Windows:**
+- Microsoft Visual Studio C++ Build Tools
 
-1. User selects a folder to scan or scans all monitored folders
-2. Backend walks the directory tree recursively, skipping excluded patterns
-3. For each Git repository found, status is checked in parallel using goroutines:
-   - `git status --porcelain` - Check for uncommitted changes
-   - `git log @{upstream}..HEAD` - Check for unpushed commits
-4. Results are categorized and displayed with execution time
-5. Color-coded indicators show repository status at a glance
+**macOS:**
+- Xcode Command Line Tools
 
-## Live Development
+**Linux:**
+- See [Tauri prerequisites](https://tauri.app/v2/guides/prerequisites/)
 
-To run in live development mode, run `wails dev` in the project directory. This will run a Vite development
-server that will provide very fast hot reload of your frontend changes. If you want to develop in a browser
-and have access your Go methods, there is also a dev server that runs on http://localhost:34115. Connect
-to this in your browser, and you can call your Go code from devtools.
+## Development
+
+1. Install dependencies:
+```bash
+npm install
+```
+
+2. Run in development mode:
+```bash
+npm run tauri:dev
+```
 
 ## Building
 
-To build a redistributable, production mode package, use `wails build`.
+Build for your current platform:
+```bash
+npm run tauri:build
+```
 
-You can configure the project by editing `wails.json`. More information about the project settings can be found
-here: https://wails.io/docs/reference/project-config
+Platform-specific builds:
+```bash
+# Windows
+npm run tauri:build:windows
+
+# macOS
+npm run tauri:build:mac
+
+# Linux
+npm run tauri:build:linux
+```
+
+## Architecture
+
+The application follows a domain-driven architecture:
+
+- **Commands Layer**: Tauri command handlers that expose functionality to the frontend
+- **Domain Layer**: Core business logic and models
+- **Infrastructure Layer**: Git operations, file system access, and external integrations
+
+## Technology Stack
+
+### Backend (Rust)
+- Tauri 2.0 - Desktop application framework
+- git2 - Git operations
+- rayon - Parallel processing
+- serde - Serialization/deserialization
+- tokio - Async runtime
+
+### Frontend (React/TypeScript)
+- React 18 - UI framework
+- TypeScript - Type safety
+- Vite - Build tool and dev server
+- Tauri API - Native functionality access
+
+## License
+
+MIT
