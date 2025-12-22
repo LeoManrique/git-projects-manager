@@ -10,7 +10,7 @@ export interface ScanResultsState {
 interface ScanResultsProps {
   folders: MonitoredFolder[];
   scanState: ScanResultsState;
-  onScanStateChange: (state: ScanResultsState) => void;
+  onScanStateChange: React.Dispatch<React.SetStateAction<ScanResultsState>>;
 }
 
 export default function ScanResults({ folders, scanState, onScanStateChange }: ScanResultsProps) {
@@ -20,18 +20,16 @@ export default function ScanResults({ folders, scanState, onScanStateChange }: S
   const [error, setError] = useState('');
   const scanVersionRef = useRef(0);
 
-  const setResults = (newResults: Record<string, ScanResult>) => {
-    onScanStateChange({ ...scanState, results: newResults });
-  };
-
   const toggleExpandedFolder = (folderId: string) => {
-    const newExpanded = new Set(expandedFolders);
-    if (newExpanded.has(folderId)) {
-      newExpanded.delete(folderId);
-    } else {
-      newExpanded.add(folderId);
-    }
-    onScanStateChange({ ...scanState, expandedFolders: newExpanded });
+    onScanStateChange(prev => {
+      const newExpanded = new Set(prev.expandedFolders);
+      if (newExpanded.has(folderId)) {
+        newExpanded.delete(folderId);
+      } else {
+        newExpanded.add(folderId);
+      }
+      return { ...prev, expandedFolders: newExpanded };
+    });
   };
 
   const scan = async (foldersToScan: MonitoredFolder[], isFullScan: boolean = false) => {
@@ -46,11 +44,13 @@ export default function ScanResults({ folders, scanState, onScanStateChange }: S
       setError('');
 
       // Mark folders as scanning
-      const scanningState: Record<string, boolean> = { ...scanningFolders };
-      for (const folder of foldersToScan) {
-        scanningState[folder.id] = true;
-      }
-      setScanningFolders(scanningState);
+      setScanningFolders(prev => {
+        const newState = { ...prev };
+        for (const folder of foldersToScan) {
+          newState[folder.id] = true;
+        }
+        return newState;
+      });
 
       // Scan folders in parallel
       const scanPromises = foldersToScan.map(async (folder) => {
@@ -74,7 +74,7 @@ export default function ScanResults({ folders, scanState, onScanStateChange }: S
       }
 
       // Update results
-      const newResults: Record<string, ScanResult> = { ...results };
+      const newResults: Record<string, ScanResult> = {};
       const updatedFolderIds = new Set<string>();
 
       for (const result of scanResults) {
@@ -87,18 +87,24 @@ export default function ScanResults({ folders, scanState, onScanStateChange }: S
         }
       }
 
-      setResults(newResults);
+      // Merge new results with existing (functional update handles stale closure)
+      onScanStateChange(prev => ({
+        ...prev,
+        results: { ...prev.results, ...newResults }
+      }));
 
       if (isFullScan && foldersToScan.length === 1 && !expandedFolders.has(foldersToScan[0].id)) {
         toggleExpandedFolder(foldersToScan[0].id);
       }
 
       // Clear scanning state only for the folders we just scanned
-      const newScanningState = { ...scanningFolders };
-      for (const folderId of updatedFolderIds) {
-        delete newScanningState[folderId];
-      }
-      setScanningFolders(newScanningState);
+      setScanningFolders(prev => {
+        const newState = { ...prev };
+        for (const folderId of updatedFolderIds) {
+          delete newState[folderId];
+        }
+        return newState;
+      });
 
       if (isFullScan) {
         setIsFullScanActive(false);
@@ -106,11 +112,13 @@ export default function ScanResults({ folders, scanState, onScanStateChange }: S
     } catch (err) {
       setError('Failed to scan folder(s)');
       console.error(err);
-      const newScanningState = { ...scanningFolders };
-      for (const folder of foldersToScan) {
-        delete newScanningState[folder.id];
-      }
-      setScanningFolders(newScanningState);
+      setScanningFolders(prev => {
+        const newState = { ...prev };
+        for (const folder of foldersToScan) {
+          delete newState[folder.id];
+        }
+        return newState;
+      });
       if (isFullScan) {
         setIsFullScanActive(false);
       }
