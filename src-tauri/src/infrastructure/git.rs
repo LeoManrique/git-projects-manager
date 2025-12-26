@@ -82,4 +82,22 @@ impl GitOperations {
 
         Ok(!output.stdout.is_empty())
     }
+
+    pub fn pull(repo_path: &Path) -> Result<String> {
+        // First fetch
+        Self::fetch(repo_path)?;
+
+        // Then pull
+        let output = Command::new("git")
+            .arg("pull")
+            .current_dir(repo_path)
+            .output()?;
+
+        if output.status.success() {
+            Ok(String::from_utf8_lossy(&output.stdout).to_string())
+        } else {
+            let error = String::from_utf8_lossy(&output.stderr).to_string();
+            anyhow::bail!("Pull failed: {}", error)
+        }
+    }
 }

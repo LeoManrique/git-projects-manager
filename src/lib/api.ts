@@ -29,6 +29,11 @@ export const api = {
     await invoke('cancel_scan');
   },
 
+  // Git operations
+  async pullRepo(path: string): Promise<string> {
+    return await invoke('pull_repo', { path });
+  },
+
   // Dialog
   async browseFolder(): Promise<string | null> {
     const selected = await open({

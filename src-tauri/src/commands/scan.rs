@@ -1,7 +1,13 @@
 use crate::domain::ScanResult;
+use crate::infrastructure::git::GitOperations;
 use crate::state::AppState;
 use std::path::Path;
 use tauri::State;
+
+#[tauri::command]
+pub async fn pull_repo(path: String) -> Result<String, String> {
+    GitOperations::pull(Path::new(&path)).map_err(|e| e.to_string())
+}
 
 #[tauri::command]
 pub async fn scan_folder(

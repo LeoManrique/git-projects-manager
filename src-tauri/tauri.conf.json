@@ -18,14 +18,14 @@
         "height": 680,
         "minWidth": 800,
         "minHeight": 540,
-        "maxWidth": 1920,
-        "maxHeight" : 1080,
         "decorations": true,
         "transparent": false,
         "center": true,
         "resizable": true,
         "alwaysOnTop": false,
-        "skipTaskbar": false
+        "skipTaskbar": false,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true
       }
     ],
     "security": {

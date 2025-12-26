@@ -39,6 +39,7 @@ fn main() {
             commands::folder::delete_monitored_folder,
             commands::scan::scan_folder,
             commands::scan::cancel_scan,
+            commands::scan::pull_repo,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
