@@ -15,7 +15,11 @@
       {
         "title": "Git Projects Manager",
         "width": 1024,
-        "height": 768,
+        "height": 680,
+        "minWidth": 800,
+        "minHeight": 540,
+        "maxWidth": 1920,
+        "maxHeight" : 1080,
         "decorations": true,
         "transparent": false,
         "center": true,

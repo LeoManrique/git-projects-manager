@@ -61,4 +61,25 @@ impl GitOperations {
 
         Ok(output.status.success())
     }
+
+    pub fn fetch(repo_path: &Path) -> Result<()> {
+        Command::new("git")
+            .arg("fetch")
+            .arg("--quiet")
+            .current_dir(repo_path)
+            .output()?;
+
+        Ok(())
+    }
+
+    pub fn has_unpulled_commits(repo_path: &Path) -> Result<bool> {
+        let output = Command::new("git")
+            .arg("log")
+            .arg("HEAD..@{upstream}")
+            .arg("--oneline")
+            .current_dir(repo_path)
+            .output()?;
+
+        Ok(!output.stdout.is_empty())
+    }
 }

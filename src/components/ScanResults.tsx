@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { api } from '../lib/api';
 import { MonitoredFolder, ScanResult, RepoStatus } from '../types';
 
@@ -13,12 +13,110 @@ interface ScanResultsProps {
   onScanStateChange: React.Dispatch<React.SetStateAction<ScanResultsState>>;
 }
 
+// Color variant mappings for Tailwind (must be explicit for JIT compiler)
+type ColorVariant = 'green' | 'yellow' | 'orange' | 'purple' | 'red';
+
+const colorStyles: Record<ColorVariant, { badge: string; text: string; border: string; borderMuted: string }> = {
+  green: {
+    badge: 'bg-accent-green/10 text-accent-green',
+    text: 'text-accent-green',
+    border: 'border-accent-green/40',
+    borderMuted: 'border-accent-green/30',
+  },
+  yellow: {
+    badge: 'bg-accent-yellow/10 text-accent-yellow',
+    text: 'text-accent-yellow',
+    border: 'border-accent-yellow/40',
+    borderMuted: 'border-accent-yellow/30',
+  },
+  orange: {
+    badge: 'bg-accent-orange/10 text-accent-orange',
+    text: 'text-accent-orange',
+    border: 'border-accent-orange/40',
+    borderMuted: 'border-accent-orange/30',
+  },
+  purple: {
+    badge: 'bg-purple-500/10 text-purple-400',
+    text: 'text-purple-400',
+    border: 'border-purple-400/40',
+    borderMuted: 'border-purple-400/30',
+  },
+  red: {
+    badge: 'bg-accent-red/10 text-accent-red',
+    text: 'text-accent-red',
+    border: 'border-accent-red/40',
+    borderMuted: 'border-accent-red/30',
+  },
+};
+
+// Status badge component for the summary row
+function StatusBadge({ count, label, color }: { count: number; label: string; color: ColorVariant }) {
+  return (
+    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm ${colorStyles[color].badge}`}>
+      <span className="w-1.5 h-1.5 rounded-full bg-current" />
+      {count} {label}
+    </span>
+  );
+}
+
+// Repository list section component
+interface RepoSectionProps {
+  title: string;
+  repos: RepoStatus[];
+  color: ColorVariant;
+  muted?: boolean;
+  scrollable?: boolean;
+  showErrors?: boolean;
+}
+
+function RepoSection({ title, repos, color, muted = false, scrollable = false, showErrors = false }: RepoSectionProps) {
+  if (repos.length === 0) return null;
+
+  const styles = colorStyles[color];
+
+  return (
+    <div>
+      <h4 className={`${styles.text} text-xs font-medium mb-1.5 uppercase tracking-wider opacity-90`}>
+        {title} ({repos.length})
+      </h4>
+      <ul className={`space-y-px ${scrollable ? 'max-h-64 overflow-y-auto' : ''}`}>
+        {repos.map((repo, idx) => (
+          <li key={idx} className={showErrors ? 'text-xs' : undefined}>
+            <p className={`${muted ? 'text-text-muted' : 'text-text-secondary'} text-xs py-0.5 pl-2 border-l-2 ${muted ? styles.borderMuted : styles.border} hover:text-text-primary hover:bg-dark-borderSubtle transition-colors font-mono rounded-r-sm`}>
+              {repo.path}
+              {repo.branch && (
+                <span className={`ml-1.5 ${muted ? 'text-accent-blue/60' : 'text-accent-blue/70'}`}>
+                  ({repo.branch})
+                </span>
+              )}
+            </p>
+            {showErrors && repo.errorMessage && (
+              <p className="text-text-muted text-xs mt-0.5 pl-2 opacity-80">
+                {repo.errorMessage}
+              </p>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export default function ScanResults({ folders, scanState, onScanStateChange }: ScanResultsProps) {
   const { results, expandedFolders } = scanState;
   const [scanningFolders, setScanningFolders] = useState<Record<string, boolean>>({});
   const [isFullScanActive, setIsFullScanActive] = useState(false);
   const [error, setError] = useState('');
   const scanVersionRef = useRef(0);
+  const hasInitialScanRef = useRef(false);
+
+  // Auto-scan all folders on app startup
+  useEffect(() => {
+    if (folders.length > 0 && !hasInitialScanRef.current) {
+      hasInitialScanRef.current = true;
+      scan(folders, true);
+    }
+  }, [folders]);
 
   const toggleExpandedFolder = (folderId: string) => {
     onScanStateChange(prev => {
@@ -128,29 +226,29 @@ export default function ScanResults({ folders, scanState, onScanStateChange }: S
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="flex-shrink-0 flex justify-between items-center mb-3">
-        <h2 className="text-base font-semibold text-text-primary">Repository Status</h2>
+      <div className="flex-shrink-0 flex justify-between items-center mb-2">
+        <h2 className="text-sm font-medium text-text-primary">Repository Status</h2>
         <button
           onClick={() => scan(folders, true)}
           disabled={folders.length === 0}
-          className="bg-accent-green hover:brightness-110 text-dark-bg text-xs font-medium py-1.5 px-3 rounded transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          className="bg-accent-green/90 hover:bg-accent-green text-dark-bg text-xs font-medium py-1 px-2.5 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {isFullScanActive ? 'Scanning...' : 'Scan All'}
         </button>
       </div>
 
       {error && (
-        <div className="flex-shrink-0 bg-accent-red/10 border border-accent-red/30 text-accent-red px-3 py-2 rounded text-xs mb-3">
+        <div className="flex-shrink-0 bg-accent-red/10 border border-accent-red/20 text-accent-red px-2.5 py-1.5 rounded text-xs mb-2">
           {error}
         </div>
       )}
 
       {folders.length === 0 ? (
-        <p className="text-text-muted text-sm text-center py-8">
+        <p className="text-text-muted text-xs text-center py-6">
           No folders configured. Add a folder to get started.
         </p>
       ) : (
-        <div className="flex-1 overflow-auto space-y-2">
+        <div className="flex-1 overflow-auto space-y-1.5">
           {folders.map((folder) => {
             const result = results[folder.id];
             const isExpanded = expandedFolders.has(folder.id);
@@ -163,32 +261,24 @@ export default function ScanResults({ folders, scanState, onScanStateChange }: S
               >
                 <button
                   onClick={() => toggleExpandedFolder(folder.id)}
-                  className="w-full flex justify-between items-center px-3 py-2.5 hover:bg-dark-elevated transition-colors text-left"
+                  className="w-full flex justify-between items-center px-2.5 py-2 hover:bg-dark-elevated/50 transition-colors text-left"
                 >
                   <div className="flex-1 min-w-0">
-                    <h3 className="text-text-primary text-sm font-medium truncate">{folder.name}</h3>
-                    <p className="text-text-muted text-xs truncate font-mono">{folder.path}</p>
+                    <h3 className="text-text-primary text-xs font-medium truncate">{folder.name}</h3>
+                    <p className="text-text-muted text-xs truncate font-mono mt-0.5">{folder.path}</p>
                   </div>
-                  <div className="text-right mx-3 flex-shrink-0">
+                  <div className="text-right mx-2 flex-shrink-0">
                     {isFolderScanning ? (
                       <span className="text-text-muted text-xs">Scanning...</span>
                     ) : result ? (
                       <div className="text-xs flex items-center gap-1.5">
-                        <span className="text-text-secondary mr-1">
+                        <span className="text-text-secondary mr-0.5">
                           {result.totalRepositories} repos
                         </span>
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-accent-green/15 text-accent-green">
-                          <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                          {(result.clean?.length ?? 0)} clean
-                        </span>
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-accent-yellow/15 text-accent-yellow">
-                          <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                          {(result.withChanges?.length ?? 0)} changed
-                        </span>
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-accent-orange/15 text-accent-orange">
-                          <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                          {(result.withUnpushed?.length ?? 0)} unpushed
-                        </span>
+                        <StatusBadge count={result.clean?.length ?? 0} label="clean" color="green" />
+                        <StatusBadge count={result.withChanges?.length ?? 0} label="changed" color="yellow" />
+                        <StatusBadge count={result.withUnpushed?.length ?? 0} label="unpushed" color="orange" />
+                        <StatusBadge count={result.withUnpulled?.length ?? 0} label="unpulled" color="purple" />
                       </div>
                     ) : (
                       <span className="text-text-muted text-xs">Not scanned</span>
@@ -200,116 +290,22 @@ export default function ScanResults({ folders, scanState, onScanStateChange }: S
                       scan([folder]);
                     }}
                     disabled={isFolderScanning}
-                    className="px-2 py-1 rounded bg-accent-blue/20 hover:bg-accent-blue/30 text-accent-blue text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+                    className="px-2 py-0.5 rounded-sm bg-dark-borderStrong hover:bg-dark-elevated text-text-secondary hover:text-text-primary text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
                   >
                     Scan
                   </button>
                 </button>
 
                 {result && isExpanded && (
-                  <div className="bg-dark-bg border-t border-dark-border px-3 py-3 space-y-4">
-                    {/* Uncommitted Changes */}
-                    {(result.withChanges?.length ?? 0) > 0 && (
-                      <div>
-                        <h4 className="text-accent-yellow text-xs font-medium mb-2">
-                          Uncommitted Changes ({result.withChanges?.length ?? 0})
-                        </h4>
-                        <ul className="space-y-0.5">
-                          {(result.withChanges || []).map((repo: RepoStatus, idx: number) => (
-                            <li
-                              key={idx}
-                              className="text-text-secondary text-xs py-0.5 pl-2 border-l border-accent-yellow/50 hover:text-text-primary transition-colors font-mono"
-                            >
-                              {repo.path}
-                              {repo.branch && (
-                                <span className="ml-1.5 text-[#58a6ff]/80 font-light tracking-wide">
-                                  ({repo.branch})
-                                </span>
-                              )}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    {/* Unpushed Commits */}
-                    {(result.withUnpushed?.length ?? 0) > 0 && (
-                      <div>
-                        <h4 className="text-accent-orange text-xs font-medium mb-2">
-                          Unpushed Commits ({result.withUnpushed?.length ?? 0})
-                        </h4>
-                        <ul className="space-y-0.5">
-                          {(result.withUnpushed || []).map((repo: RepoStatus, idx: number) => (
-                            <li
-                              key={idx}
-                              className="text-text-secondary text-xs py-0.5 pl-2 border-l border-accent-orange/50 hover:text-text-primary transition-colors font-mono"
-                            >
-                              {repo.path}
-                              {repo.branch && (
-                                <span className="ml-1.5 text-[#58a6ff]/80 font-light tracking-wide">
-                                  ({repo.branch})
-                                </span>
-                              )}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    {/* Clean Repositories */}
-                    {(result.clean?.length ?? 0) > 0 && (
-                      <div>
-                        <h4 className="text-accent-green text-xs font-medium mb-2">
-                          Clean ({result.clean?.length ?? 0})
-                        </h4>
-                        <ul className="space-y-0.5 max-h-32 overflow-y-auto">
-                          {(result.clean || []).map((repo: RepoStatus, idx: number) => (
-                            <li
-                              key={idx}
-                              className="text-text-muted text-xs py-0.5 pl-2 border-l border-accent-green/50 hover:text-text-secondary transition-colors font-mono"
-                            >
-                              {repo.path}
-                              {repo.branch && (
-                                <span className="ml-1.5 text-[#58a6ff]/80 font-light tracking-wide">
-                                  ({repo.branch})
-                                </span>
-                              )}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    {/* Errors */}
-                    {(result.errors?.length ?? 0) > 0 && (
-                      <div>
-                        <h4 className="text-accent-red text-xs font-medium mb-2">
-                          Errors ({result.errors?.length ?? 0})
-                        </h4>
-                        <ul className="space-y-1">
-                          {(result.errors || []).map((repo: RepoStatus, idx: number) => (
-                            <li key={idx} className="text-xs">
-                              <p className="text-text-secondary pl-2 border-l border-accent-red/50 font-mono">
-                                {repo.path}
-                                {repo.branch && (
-                                  <span className="ml-1.5 text-[#58a6ff]/80 font-light tracking-wide">
-                                    ({repo.branch})
-                                  </span>
-                                )}
-                              </p>
-                              {repo.errorMessage && (
-                                <p className="text-text-muted text-xs mt-0.5 pl-2">
-                                  {repo.errorMessage}
-                                </p>
-                              )}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
+                  <div className="bg-dark-bg/50 border-t border-dark-border px-2.5 py-2.5 space-y-3">
+                    <RepoSection title="Uncommitted Changes" repos={result.withChanges || []} color="yellow" />
+                    <RepoSection title="Unpushed Commits" repos={result.withUnpushed || []} color="orange" />
+                    <RepoSection title="Unpulled Commits" repos={result.withUnpulled || []} color="purple" />
+                    <RepoSection title="Clean" repos={result.clean || []} color="green" muted scrollable />
+                    <RepoSection title="Errors" repos={result.errors || []} color="red" showErrors />
 
                     {/* Execution Time */}
-                    <div className="text-text-muted text-xs border-t border-dark-border pt-2">
+                    <div className="text-text-muted text-xs border-t border-dark-borderSubtle pt-2 opacity-70">
                       Completed in {(result.executionTime ?? 0).toFixed(2)}s
                     </div>
                   </div>

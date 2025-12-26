@@ -1,47 +1,46 @@
-/* Import Inter font for UI - must come before tailwindcss */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
-
 @import "tailwindcss";
 
 /* Tailwind v4 CSS-first theme configuration */
 @theme {
-  /* Dark theme colors (GitHub-inspired) */
-  --color-dark-bg: #0d1117;
-  --color-dark-surface: #161b22;
-  --color-dark-elevated: #1c2128;
-  --color-dark-border: #30363d;
-  --color-dark-borderSubtle: #21262d;
+  /* Dark theme colors - warmer, more native feel */
+  --color-dark-bg: #1a1a1a;
+  --color-dark-surface: #242424;
+  --color-dark-elevated: #2d2d2d;
+  --color-dark-border: rgba(255, 255, 255, 0.08);
+  --color-dark-borderSubtle: rgba(255, 255, 255, 0.05);
+  --color-dark-borderStrong: rgba(255, 255, 255, 0.12);
 
-  /* Accent colors */
-  --color-accent-blue: #388bfd;
-  --color-accent-blueHover: #58a6ff;
-  --color-accent-green: #3fb950;
-  --color-accent-yellow: #d29922;
-  --color-accent-orange: #db6d28;
-  --color-accent-red: #f85149;
+  /* Accent colors - muted, system-like */
+  --color-accent-blue: #5c9fff;
+  --color-accent-blueHover: #74adff;
+  --color-accent-green: #4ade80;
+  --color-accent-yellow: #facc15;
+  --color-accent-orange: #fb923c;
+  --color-accent-red: #f87171;
 
   /* Text colors */
-  --color-text-primary: #e6edf3;
-  --color-text-secondary: #8b949e;
-  --color-text-muted: #6e7681;
+  --color-text-primary: rgba(255, 255, 255, 0.92);
+  --color-text-secondary: rgba(255, 255, 255, 0.60);
+  --color-text-muted: rgba(255, 255, 255, 0.40);
 
-  /* Font families */
-  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-mono: "JetBrains Mono", "Fira Code", "Cascadia Code", "SF Mono", Consolas, monospace;
+  /* Font families - system fonts for native feel */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "SF Mono", "Menlo", "Monaco", "Cascadia Code", "Consolas", monospace;
 
-  /* Border radius */
-  --radius-sm: 4px;
-  --radius: 6px;
+  /* Border radius - tighter for native feel */
+  --radius-sm: 3px;
+  --radius: 4px;
+  --radius-lg: 6px;
 
   /* Font sizes */
   --text-xs: 13px;
-  --text-xs--line-height: 19px;
+  --text-xs--line-height: 18px;
   --text-sm: 14px;
-  --text-sm--line-height: 21px;
+  --text-sm--line-height: 20px;
   --text-base: 15px;
-  --text-base--line-height: 23px;
+  --text-base--line-height: 22px;
   --text-lg: 17px;
-  --text-lg--line-height: 25px;
+  --text-lg--line-height: 24px;
 }
 
 * {
@@ -57,8 +56,10 @@ body {
   margin: 0;
   color: var(--color-text-primary);
   font-family: var(--font-sans);
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.5;
+  font-weight: 400;
+  letter-spacing: -0.01em;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -68,10 +69,10 @@ body {
   overflow: hidden;
 }
 
-/* Scrollbar styling for desktop feel */
+/* Native-feeling scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
 }
 
 ::-webkit-scrollbar-track {
@@ -79,24 +80,28 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--color-dark-border);
-  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #484f58;
+  background: rgba(255, 255, 255, 0.25);
 }
 
-/* Remove focus outlines and use subtle border instead */
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Native focus ring */
 button:focus-visible,
 input:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 1px var(--color-accent-blue);
+  box-shadow: 0 0 0 2px rgba(92, 159, 255, 0.4);
 }
 
 /* Selection styling */
 ::selection {
-  background: rgba(56, 139, 253, 0.3);
+  background: rgba(92, 159, 255, 0.35);
 }
 
 /* Tauri window dragging */
@@ -109,4 +114,21 @@ input:focus-visible {
 [data-tauri-drag-region] button,
 [data-tauri-drag-region] a {
   -webkit-app-region: no-drag;
+}
+
+/* Subtle inset shadow for depth */
+.inset-panel {
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+/* Native button press effect */
+button:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+/* Smooth transitions */
+* {
+  transition-property: background-color, border-color, color, opacity;
+  transition-duration: 100ms;
+  transition-timing-function: ease-out;
 }

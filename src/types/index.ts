@@ -9,6 +9,7 @@ export interface RepoStatus {
   branch?: string;
   hasChanges?: boolean;
   hasUnpushed?: boolean;
+  hasUnpulled?: boolean;
   hasError: boolean;
   errorMessage?: string;
 }
@@ -18,6 +19,7 @@ export interface ScanResult {
   totalRepositories: number;
   withChanges: RepoStatus[];
   withUnpushed: RepoStatus[];
+  withUnpulled: RepoStatus[];
   clean: RepoStatus[];
   errors: RepoStatus[];
   executionTime: number;

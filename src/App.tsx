@@ -28,40 +28,35 @@ function App() {
 
   return (
     <div className="h-screen flex flex-col bg-dark-bg text-text-primary overflow-hidden">
+
       {/* Tab Navigation */}
-      <nav className="flex-shrink-0 bg-dark-surface border-b border-dark-border px-3">
-        <div className="flex">
+      <nav className="flex-shrink-0 bg-dark-surface/50 border-b border-dark-border">
+        <div className="flex gap-1 px-2 py-1">
           <button
             onClick={() => setActiveTab('scan')}
-            className={`px-3 py-2 text-sm font-medium transition-colors relative ${
+            className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
               activeTab === 'scan'
-                ? 'text-text-primary'
-                : 'text-text-secondary hover:text-text-primary'
+                ? 'bg-dark-elevated text-text-primary'
+                : 'text-text-secondary hover:text-text-primary hover:bg-dark-borderSubtle'
             }`}
           >
             Scan Results
-            {activeTab === 'scan' && (
-              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent-blue" />
-            )}
           </button>
           <button
             onClick={() => setActiveTab('manage')}
-            className={`px-3 py-2 text-sm font-medium transition-colors relative ${
+            className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
               activeTab === 'manage'
-                ? 'text-text-primary'
-                : 'text-text-secondary hover:text-text-primary'
+                ? 'bg-dark-elevated text-text-primary'
+                : 'text-text-secondary hover:text-text-primary hover:bg-dark-borderSubtle'
             }`}
           >
             Manage Folders
-            {activeTab === 'manage' && (
-              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent-blue" />
-            )}
           </button>
         </div>
       </nav>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-auto p-4">
+      <main className="flex-1 overflow-auto p-3">
         {activeTab === 'manage' && (
           <FolderManager folders={folders} onRefresh={loadFolders} />
         )}

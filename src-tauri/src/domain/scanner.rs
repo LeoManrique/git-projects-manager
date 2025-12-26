@@ -36,6 +36,7 @@ impl Scanner {
             total_repositories: statuses.len(),
             with_changes: vec![],
             with_unpushed: vec![],
+            with_unpulled: vec![],
             clean: vec![],
             errors: vec![],
             execution_time: start_time.elapsed().as_secs_f64(),
@@ -48,6 +49,8 @@ impl Scanner {
                 result.with_changes.push(status);
             } else if status.has_unpushed == Some(true) {
                 result.with_unpushed.push(status);
+            } else if status.has_unpulled == Some(true) {
+                result.with_unpulled.push(status);
             } else {
                 result.clean.push(status);
             }
@@ -111,6 +114,7 @@ impl Scanner {
                     branch: None,
                     has_changes: None,
                     has_unpushed: None,
+                    has_unpulled: None,
                     has_error: true,
                     error_message: Some(format!("Failed to get branch: {}", e)),
                 };
@@ -126,20 +130,31 @@ impl Scanner {
                     branch,
                     has_changes: None,
                     has_unpushed: None,
+                    has_unpulled: None,
                     has_error: true,
                     error_message: Some(format!("Failed to check changes: {}", e)),
                 };
             }
         };
 
-        // Check for unpushed commits (only if has upstream)
-        let has_unpushed = if GitOperations::has_upstream_branch(path).unwrap_or(false) {
-            match GitOperations::has_unpushed_commits(path) {
+        // Check for unpushed/unpulled commits (only if has upstream)
+        let (has_unpushed, has_unpulled) = if GitOperations::has_upstream_branch(path).unwrap_or(false) {
+            // Fetch from remote to get latest state
+            let _ = GitOperations::fetch(path);
+
+            let unpushed = match GitOperations::has_unpushed_commits(path) {
                 Ok(u) => Some(u),
                 Err(_) => None,
-            }
+            };
+
+            let unpulled = match GitOperations::has_unpulled_commits(path) {
+                Ok(u) => Some(u),
+                Err(_) => None,
+            };
+
+            (unpushed, unpulled)
         } else {
-            None
+            (None, None)
         };
 
         RepoStatus {
@@ -147,6 +162,7 @@ impl Scanner {
             branch,
             has_changes,
             has_unpushed,
+            has_unpulled,
             has_error: false,
             error_message: None,
         }

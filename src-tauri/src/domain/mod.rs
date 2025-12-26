@@ -37,6 +37,7 @@ pub struct RepoStatus {
     pub branch: Option<String>,
     pub has_changes: Option<bool>,
     pub has_unpushed: Option<bool>,
+    pub has_unpulled: Option<bool>,
     pub has_error: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error_message: Option<String>,
@@ -49,6 +50,7 @@ pub struct ScanResult {
     pub total_repositories: usize,
     pub with_changes: Vec<RepoStatus>,
     pub with_unpushed: Vec<RepoStatus>,
+    pub with_unpulled: Vec<RepoStatus>,
     pub clean: Vec<RepoStatus>,
     pub errors: Vec<RepoStatus>,
     pub execution_time: f64,
