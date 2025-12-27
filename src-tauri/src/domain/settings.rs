@@ -1,7 +1,10 @@
-use super::{AppSettings, TerminalApp};
+use super::{AppSettings, EditorApp, TerminalApp};
 use anyhow::Result;
 use std::fs;
 use std::path::PathBuf;
+
+const TERMINALS_JSON: &str = include_str!("../../resources/terminals.json");
+const EDITORS_JSON: &str = include_str!("../../resources/editors.json");
 
 pub struct SettingsManager {
     settings_path: PathBuf,
@@ -43,41 +46,28 @@ impl SettingsManager {
         Ok(())
     }
 
+    pub fn set_default_editor(&self, editor_id: Option<String>) -> Result<()> {
+        let mut settings = self.load()?;
+        settings.default_editor = editor_id;
+        self.save(&settings)?;
+        Ok(())
+    }
+
     pub fn get_available_terminals(&self) -> Vec<TerminalApp> {
-        let mut terminals = Vec::new();
-
-        // Check for iTerm2
-        let iterm_path = "/Applications/iTerm.app";
-        if std::path::Path::new(iterm_path).exists() {
-            terminals.push(TerminalApp {
-                id: "iterm2".to_string(),
-                name: "iTerm".to_string(),
-                path: iterm_path.to_string(),
-            });
-        }
-
-        // Check for Terminal.app (macOS built-in)
-        let terminal_path = "/System/Applications/Utilities/Terminal.app";
-        if std::path::Path::new(terminal_path).exists() {
-            terminals.push(TerminalApp {
-                id: "terminal".to_string(),
-                name: "Terminal".to_string(),
-                path: terminal_path.to_string(),
-            });
-        }
-
-        // Fallback for older macOS versions
-        let terminal_path_legacy = "/Applications/Utilities/Terminal.app";
-        if terminals.iter().all(|t| t.id != "terminal")
-            && std::path::Path::new(terminal_path_legacy).exists()
-        {
-            terminals.push(TerminalApp {
-                id: "terminal".to_string(),
-                name: "Terminal".to_string(),
-                path: terminal_path_legacy.to_string(),
-            });
-        }
-
+        let terminals: Vec<TerminalApp> =
+            serde_json::from_str(TERMINALS_JSON).expect("Invalid terminals.json");
         terminals
+            .into_iter()
+            .filter(|t| std::path::Path::new(&t.path).exists())
+            .collect()
+    }
+
+    pub fn get_available_editors(&self) -> Vec<EditorApp> {
+        let editors: Vec<EditorApp> =
+            serde_json::from_str(EDITORS_JSON).expect("Invalid editors.json");
+        editors
+            .into_iter()
+            .filter(|e| std::path::Path::new(&e.path).exists())
+            .collect()
     }
 }

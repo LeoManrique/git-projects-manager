@@ -42,8 +42,11 @@ fn main() {
             commands::scan::pull_repo,
             commands::settings::get_app_settings,
             commands::settings::set_default_terminal,
+            commands::settings::set_default_editor,
             commands::settings::get_available_terminals,
+            commands::settings::get_available_editors,
             commands::settings::open_in_terminal,
+            commands::settings::open_in_editor,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

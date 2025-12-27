@@ -1,0 +1,29 @@
+[
+  {
+    "id": "iterm2",
+    "name": "iTerm",
+    "displayName": "iTerm2",
+    "path": "/Applications/iTerm.app",
+    "openMethod": { "type": "open" }
+  },
+  {
+    "id": "terminal",
+    "name": "Terminal",
+    "displayName": "Terminal",
+    "path": "/System/Applications/Utilities/Terminal.app",
+    "openMethod": {
+      "type": "applescript",
+      "script": "tell application \"Terminal\"\n    activate\n    do script \"cd '{path}'\"\nend tell"
+    }
+  },
+  {
+    "id": "terminal-legacy",
+    "name": "Terminal",
+    "displayName": "Terminal",
+    "path": "/Applications/Utilities/Terminal.app",
+    "openMethod": {
+      "type": "applescript",
+      "script": "tell application \"Terminal\"\n    activate\n    do script \"cd '{path}'\"\nend tell"
+    }
+  }
+]

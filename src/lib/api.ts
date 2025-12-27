@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { MonitoredFolder, ScanResult, AppSettings, TerminalApp } from '../types';
+import { MonitoredFolder, ScanResult, AppSettings, TerminalApp, EditorApp } from '../types';
 
 export const api = {
   // Folder management
@@ -60,5 +60,17 @@ export const api = {
 
   async openInTerminal(path: string, terminalId: string): Promise<void> {
     await invoke('open_in_terminal', { path, terminalId });
+  },
+
+  async setDefaultEditor(editorId: string | null): Promise<void> {
+    await invoke('set_default_editor', { editorId });
+  },
+
+  async getAvailableEditors(): Promise<EditorApp[]> {
+    return await invoke('get_available_editors');
+  },
+
+  async openInEditor(path: string, editorId: string): Promise<void> {
+    await invoke('open_in_editor', { path, editorId });
   }
 };

@@ -63,6 +63,30 @@ pub struct ScanResult {
 pub struct TerminalApp {
     pub id: String,
     pub name: String,
+    pub display_name: String,
+    pub path: String,
+    #[serde(default)]
+    pub open_method: OpenMethod,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", tag = "type")]
+pub enum OpenMethod {
+    #[default]
+    Default,
+    #[serde(rename = "open")]
+    Open,
+    #[serde(rename = "applescript")]
+    AppleScript { script: String },
+}
+
+// Editor app configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EditorApp {
+    pub id: String,
+    pub name: String,
+    pub display_name: String,
     pub path: String,
 }
 
@@ -72,4 +96,6 @@ pub struct TerminalApp {
 pub struct AppSettings {
     #[serde(default)]
     pub default_terminal: Option<String>,
+    #[serde(default)]
+    pub default_editor: Option<String>,
 }

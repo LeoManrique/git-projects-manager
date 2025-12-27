@@ -1,0 +1,14 @@
+[
+  {
+    "id": "vscode",
+    "name": "Visual Studio Code",
+    "displayName": "VS Code",
+    "path": "/Applications/Visual Studio Code.app"
+  },
+  {
+    "id": "zed",
+    "name": "Zed",
+    "displayName": "Zed",
+    "path": "/Applications/Zed.app"
+  }
+]

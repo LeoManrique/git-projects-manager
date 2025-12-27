@@ -3,7 +3,7 @@ import FolderManager from './components/FolderManager';
 import ScanResults, { ScanResultsState } from './components/ScanResults';
 import DefaultAppsSettings from './components/settings/DefaultAppsSettings';
 import { api } from './lib/api';
-import { MonitoredFolder, TerminalApp } from './types';
+import { MonitoredFolder, TerminalApp, EditorApp } from './types';
 import './App.css';
 
 // Three-dot menu icon
@@ -142,6 +142,7 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [headerMenuPosition, setHeaderMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const [defaultTerminal, setDefaultTerminal] = useState<TerminalApp | null>(null);
+  const [defaultEditor, setDefaultEditor] = useState<EditorApp | null>(null);
   const headerMenuRef = useRef<HTMLDivElement>(null);
   const headerMenuButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -154,11 +155,12 @@ function App() {
     }
   }, []);
 
-  const loadTerminalSettings = useCallback(async () => {
+  const loadAppSettings = useCallback(async () => {
     try {
-      const [settings, terminals] = await Promise.all([
+      const [settings, terminals, editors] = await Promise.all([
         api.getAppSettings(),
         api.getAvailableTerminals(),
+        api.getAvailableEditors(),
       ]);
       if (settings.defaultTerminal) {
         const terminal = terminals.find(t => t.id === settings.defaultTerminal);
@@ -166,15 +168,21 @@ function App() {
       } else {
         setDefaultTerminal(null);
       }
+      if (settings.defaultEditor) {
+        const editor = editors.find(e => e.id === settings.defaultEditor);
+        setDefaultEditor(editor ?? null);
+      } else {
+        setDefaultEditor(null);
+      }
     } catch (err) {
-      console.error('Failed to load terminal settings:', err);
+      console.error('Failed to load app settings:', err);
     }
   }, []);
 
   useEffect(() => {
     loadFolders();
-    loadTerminalSettings();
-  }, [loadFolders, loadTerminalSettings]);
+    loadAppSettings();
+  }, [loadFolders, loadAppSettings]);
 
   // Close header menu when clicking outside
   useEffect(() => {
@@ -256,6 +264,7 @@ function App() {
           scanState={scanState}
           onScanStateChange={setScanState}
           defaultTerminal={defaultTerminal}
+          defaultEditor={defaultEditor}
         />
       </main>
 
@@ -265,7 +274,7 @@ function App() {
         onClose={() => setShowSettings(false)}
         folders={folders}
         onRefreshFolders={loadFolders}
-        onSettingsChange={loadTerminalSettings}
+        onSettingsChange={loadAppSettings}
       />
     </div>
   );
