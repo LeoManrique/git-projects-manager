@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { MonitoredFolder, ScanResult } from '../types';
+import { MonitoredFolder, ScanResult, AppSettings, TerminalApp } from '../types';
 
 export const api = {
   // Folder management
@@ -43,5 +43,22 @@ export const api = {
     });
 
     return selected as string | null;
+  },
+
+  // Settings
+  async getAppSettings(): Promise<AppSettings> {
+    return await invoke('get_app_settings');
+  },
+
+  async setDefaultTerminal(terminalId: string | null): Promise<void> {
+    await invoke('set_default_terminal', { terminalId });
+  },
+
+  async getAvailableTerminals(): Promise<TerminalApp[]> {
+    return await invoke('get_available_terminals');
+  },
+
+  async openInTerminal(path: string, terminalId: string): Promise<void> {
+    await invoke('open_in_terminal', { path, terminalId });
   }
 };

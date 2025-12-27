@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import FolderManager from './components/FolderManager';
 import ScanResults, { ScanResultsState } from './components/ScanResults';
+import DefaultAppsSettings from './components/settings/DefaultAppsSettings';
 import { api } from './lib/api';
-import { MonitoredFolder } from './types';
+import { MonitoredFolder, TerminalApp } from './types';
 import './App.css';
 
 // Three-dot menu icon
@@ -23,23 +24,33 @@ function FolderIcon() {
   );
 }
 
-type SettingsCategory = 'folders';
+function AppsIcon() {
+  return (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6.429 9.75L2.25 12l4.179 2.25m0-4.5l5.571 3 5.571-3m-11.142 0L2.25 7.5 12 2.25l9.75 5.25-4.179 2.25m0 0L21.75 12l-4.179 2.25m0 0l4.179 2.25L12 21.75 2.25 16.5l4.179-2.25m11.142 0l-5.571 3-5.571-3" />
+    </svg>
+  );
+}
+
+type SettingsCategory = 'folders' | 'apps';
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   folders: MonitoredFolder[];
   onRefreshFolders: () => Promise<void>;
+  onSettingsChange: () => void;
 }
 
 // Settings Modal Component with dual-panel layout
-function SettingsModal({ isOpen, onClose, folders, onRefreshFolders }: SettingsModalProps) {
+function SettingsModal({ isOpen, onClose, folders, onRefreshFolders, onSettingsChange }: SettingsModalProps) {
   const [activeCategory, setActiveCategory] = useState<SettingsCategory>('folders');
 
   if (!isOpen) return null;
 
   const categories: { id: SettingsCategory; label: string; icon: React.ReactNode }[] = [
     { id: 'folders', label: 'Monitored Folders', icon: <FolderIcon /> },
+    { id: 'apps', label: 'Default Apps', icon: <AppsIcon /> },
   ];
 
   return (
@@ -111,6 +122,9 @@ function SettingsModal({ isOpen, onClose, folders, onRefreshFolders }: SettingsM
             {activeCategory === 'folders' && (
               <FolderManager folders={folders} onRefresh={onRefreshFolders} />
             )}
+            {activeCategory === 'apps' && (
+              <DefaultAppsSettings onSettingsChange={onSettingsChange} />
+            )}
           </div>
         </div>
       </div>
@@ -127,6 +141,7 @@ function App() {
   const [showHeaderMenu, setShowHeaderMenu] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [headerMenuPosition, setHeaderMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const [defaultTerminal, setDefaultTerminal] = useState<TerminalApp | null>(null);
   const headerMenuRef = useRef<HTMLDivElement>(null);
   const headerMenuButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -139,9 +154,27 @@ function App() {
     }
   }, []);
 
+  const loadTerminalSettings = useCallback(async () => {
+    try {
+      const [settings, terminals] = await Promise.all([
+        api.getAppSettings(),
+        api.getAvailableTerminals(),
+      ]);
+      if (settings.defaultTerminal) {
+        const terminal = terminals.find(t => t.id === settings.defaultTerminal);
+        setDefaultTerminal(terminal ?? null);
+      } else {
+        setDefaultTerminal(null);
+      }
+    } catch (err) {
+      console.error('Failed to load terminal settings:', err);
+    }
+  }, []);
+
   useEffect(() => {
     loadFolders();
-  }, [loadFolders]);
+    loadTerminalSettings();
+  }, [loadFolders, loadTerminalSettings]);
 
   // Close header menu when clicking outside
   useEffect(() => {
@@ -222,6 +255,7 @@ function App() {
           folders={folders}
           scanState={scanState}
           onScanStateChange={setScanState}
+          defaultTerminal={defaultTerminal}
         />
       </main>
 
@@ -231,6 +265,7 @@ function App() {
         onClose={() => setShowSettings(false)}
         folders={folders}
         onRefreshFolders={loadFolders}
+        onSettingsChange={loadTerminalSettings}
       />
     </div>
   );

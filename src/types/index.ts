@@ -24,3 +24,13 @@ export interface ScanResult {
   errors: RepoStatus[];
   executionTime: number;
 }
+
+export interface TerminalApp {
+  id: string;
+  name: string;
+  path: string;
+}
+
+export interface AppSettings {
+  defaultTerminal?: string;
+}

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { api } from '../lib/api';
-import { MonitoredFolder, ScanResult, RepoStatus } from '../types';
+import { MonitoredFolder, ScanResult, RepoStatus, TerminalApp } from '../types';
 
 // Three-dot menu icon
 function DotsIcon() {
@@ -20,6 +20,7 @@ interface ScanResultsProps {
   folders: MonitoredFolder[];
   scanState: ScanResultsState;
   onScanStateChange: React.Dispatch<React.SetStateAction<ScanResultsState>>;
+  defaultTerminal: TerminalApp | null;
 }
 
 // Color variant mappings for Tailwind (must be explicit for JIT compiler)
@@ -78,9 +79,11 @@ interface RepoSectionProps {
   showErrors?: boolean;
   onPull?: (repoPath: string) => void;
   onPullAll?: () => void;
+  onOpenInTerminal?: (repoPath: string) => void;
   pullingRepos?: Set<string>;
   disablePull?: boolean;
   isPullingAll?: boolean;
+  defaultTerminalName?: string;
 }
 
 function RepoSection({
@@ -92,9 +95,11 @@ function RepoSection({
   showErrors = false,
   onPull,
   onPullAll,
+  onOpenInTerminal,
   pullingRepos = new Set(),
   disablePull = false,
   isPullingAll = false,
+  defaultTerminalName,
 }: RepoSectionProps) {
   const [openMenuPath, setOpenMenuPath] = useState<string | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
@@ -235,6 +240,18 @@ function RepoSection({
                         className="fixed z-50 bg-dark-surface border border-dark-border rounded shadow-lg py-1 min-w-[140px]"
                         style={{ top: menuPosition.top, left: menuPosition.left }}
                       >
+                        {onOpenInTerminal && defaultTerminalName && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOpenMenuPath(null);
+                              onOpenInTerminal(repo.path);
+                            }}
+                            className="w-full text-left px-3 py-1.5 text-xs hover:bg-dark-borderSubtle transition-colors"
+                          >
+                            Open in {defaultTerminalName}
+                          </button>
+                        )}
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -264,7 +281,7 @@ function RepoSection({
   );
 }
 
-export default function ScanResults({ folders, scanState, onScanStateChange }: ScanResultsProps) {
+export default function ScanResults({ folders, scanState, onScanStateChange, defaultTerminal }: ScanResultsProps) {
   const { results, expandedFolders } = scanState;
   const [scanningFolders, setScanningFolders] = useState<Record<string, boolean>>({});
   const [isFullScanActive, setIsFullScanActive] = useState(false);
@@ -281,6 +298,15 @@ export default function ScanResults({ folders, scanState, onScanStateChange }: S
       scan(folders, true);
     }
   }, [folders]);
+
+  const handleOpenInTerminal = async (repoPath: string) => {
+    if (!defaultTerminal) return;
+    try {
+      await api.openInTerminal(repoPath, defaultTerminal.id);
+    } catch (err) {
+      setError(`Failed to open terminal: ${err}`);
+    }
+  };
 
   const handlePull = async (repoPath: string) => {
     setPullingRepos(prev => new Set(prev).add(repoPath));
@@ -521,11 +547,11 @@ export default function ScanResults({ folders, scanState, onScanStateChange }: S
                   >
                     {/* Repo sections - scrollable */}
                     <div className={`px-2.5 py-2.5 space-y-3 ${isLast ? 'flex-1 overflow-auto' : ''}`}>
-                      <RepoSection title="Uncommitted Changes" repos={result.withChanges || []} color="yellow" onPull={handlePull} pullingRepos={pullingRepos} disablePull />
-                      <RepoSection title="Unpushed Commits" repos={result.withUnpushed || []} color="orange" onPull={handlePull} pullingRepos={pullingRepos} />
-                      <RepoSection title="Unpulled Commits" repos={result.withUnpulled || []} color="purple" onPull={handlePull} pullingRepos={pullingRepos} onPullAll={() => handlePullAllUnpulled(result.withUnpulled || [])} isPullingAll={isPullingAllUnpulled} />
-                      <RepoSection title="Clean" repos={result.clean || []} color="green" muted onPull={handlePull} pullingRepos={pullingRepos} />
-                      <RepoSection title="Errors" repos={result.errors || []} color="red" showErrors onPull={handlePull} pullingRepos={pullingRepos} disablePull />
+                      <RepoSection title="Uncommitted Changes" repos={result.withChanges || []} color="yellow" onPull={handlePull} onOpenInTerminal={handleOpenInTerminal} defaultTerminalName={defaultTerminal?.name} pullingRepos={pullingRepos} disablePull />
+                      <RepoSection title="Unpushed Commits" repos={result.withUnpushed || []} color="orange" onPull={handlePull} onOpenInTerminal={handleOpenInTerminal} defaultTerminalName={defaultTerminal?.name} pullingRepos={pullingRepos} />
+                      <RepoSection title="Unpulled Commits" repos={result.withUnpulled || []} color="purple" onPull={handlePull} onOpenInTerminal={handleOpenInTerminal} defaultTerminalName={defaultTerminal?.name} pullingRepos={pullingRepos} onPullAll={() => handlePullAllUnpulled(result.withUnpulled || [])} isPullingAll={isPullingAllUnpulled} />
+                      <RepoSection title="Clean" repos={result.clean || []} color="green" muted onPull={handlePull} onOpenInTerminal={handleOpenInTerminal} defaultTerminalName={defaultTerminal?.name} pullingRepos={pullingRepos} />
+                      <RepoSection title="Errors" repos={result.errors || []} color="red" showErrors onPull={handlePull} onOpenInTerminal={handleOpenInTerminal} defaultTerminalName={defaultTerminal?.name} pullingRepos={pullingRepos} disablePull />
                     </div>
 
                     {/* Execution Time - pinned at bottom */}

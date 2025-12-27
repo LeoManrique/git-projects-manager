@@ -40,6 +40,10 @@ fn main() {
             commands::scan::scan_folder,
             commands::scan::cancel_scan,
             commands::scan::pull_repo,
+            commands::settings::get_app_settings,
+            commands::settings::set_default_terminal,
+            commands::settings::get_available_terminals,
+            commands::settings::open_in_terminal,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

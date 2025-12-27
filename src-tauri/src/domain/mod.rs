@@ -1,6 +1,7 @@
 pub mod config;
 pub mod repository;
 pub mod scanner;
+pub mod settings;
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -54,4 +55,21 @@ pub struct ScanResult {
     pub clean: Vec<RepoStatus>,
     pub errors: Vec<RepoStatus>,
     pub execution_time: f64,
+}
+
+// Terminal app configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalApp {
+    pub id: String,
+    pub name: String,
+    pub path: String,
+}
+
+// App settings
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct AppSettings {
+    #[serde(default)]
+    pub default_terminal: Option<String>,
 }
