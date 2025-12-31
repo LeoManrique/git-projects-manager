@@ -3,6 +3,20 @@ use git2::{Repository, Status, StatusOptions};
 use std::path::Path;
 use std::process::Command;
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+/// Creates a git command with platform-specific settings to hide console windows
+fn git_command() -> Command {
+    let mut cmd = Command::new("git");
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(CREATE_NO_WINDOW);
+    cmd
+}
+
 pub struct GitOperations;
 
 impl GitOperations {
@@ -40,7 +54,7 @@ impl GitOperations {
 
     pub fn has_unpushed_commits(repo_path: &Path) -> Result<bool> {
         // Using git command for simplicity as git2 branch tracking is complex
-        let output = Command::new("git")
+        let output = git_command()
             .arg("log")
             .arg("@{upstream}..HEAD")
             .arg("--oneline")
@@ -51,7 +65,7 @@ impl GitOperations {
     }
 
     pub fn has_upstream_branch(repo_path: &Path) -> Result<bool> {
-        let output = Command::new("git")
+        let output = git_command()
             .arg("rev-parse")
             .arg("--abbrev-ref")
             .arg("--symbolic-full-name")
@@ -63,7 +77,7 @@ impl GitOperations {
     }
 
     pub fn fetch(repo_path: &Path) -> Result<()> {
-        Command::new("git")
+        git_command()
             .arg("fetch")
             .arg("--quiet")
             .current_dir(repo_path)
@@ -73,7 +87,7 @@ impl GitOperations {
     }
 
     pub fn has_unpulled_commits(repo_path: &Path) -> Result<bool> {
-        let output = Command::new("git")
+        let output = git_command()
             .arg("log")
             .arg("HEAD..@{upstream}")
             .arg("--oneline")
@@ -88,7 +102,7 @@ impl GitOperations {
         Self::fetch(repo_path)?;
 
         // Then pull
-        let output = Command::new("git")
+        let output = git_command()
             .arg("pull")
             .current_dir(repo_path)
             .output()?;
