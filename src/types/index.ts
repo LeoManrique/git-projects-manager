@@ -22,6 +22,7 @@ export interface ScanResult {
   withUnpulled: RepoStatus[];
   clean: RepoStatus[];
   errors: RepoStatus[];
+  uninitialized: RepoStatus[];
   executionTime: number;
 }
 

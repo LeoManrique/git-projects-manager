@@ -25,6 +25,7 @@ impl Scanner {
     pub fn scan_folder(&self, path: &Path) -> ScanResult {
         let start_time = Instant::now();
         let repositories = self.find_git_repositories(path);
+        let uninitialized_folders = self.find_uninitialized_folders(path, &repositories);
 
         let statuses: Vec<RepoStatus> = repositories
             .par_iter()
@@ -39,6 +40,7 @@ impl Scanner {
             with_unpulled: vec![],
             clean: vec![],
             errors: vec![],
+            uninitialized: uninitialized_folders,
             execution_time: start_time.elapsed().as_secs_f64(),
         };
 
@@ -80,6 +82,128 @@ impl Scanner {
         }
 
         repositories
+    }
+
+    fn find_uninitialized_folders(&self, _root: &Path, git_repos: &[PathBuf]) -> Vec<RepoStatus> {
+        use std::collections::HashSet;
+
+        let mut uninitialized = Vec::new();
+        let mut checked_dirs: HashSet<PathBuf> = HashSet::new();
+
+        // Collect all parent directories that contain git repos
+        let parent_dirs: HashSet<PathBuf> = git_repos
+            .iter()
+            .filter_map(|repo| repo.parent().map(|p| p.to_path_buf()))
+            .collect();
+
+        // For each parent directory, check siblings of git repos
+        for parent_dir in &parent_dirs {
+            if let Ok(entries) = std::fs::read_dir(parent_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+
+                    // Only consider directories
+                    if !path.is_dir() {
+                        continue;
+                    }
+
+                    // Skip if already checked
+                    if checked_dirs.contains(&path) {
+                        continue;
+                    }
+
+                    let name = path.file_name().unwrap_or_default().to_string_lossy();
+
+                    // Skip excluded directories
+                    if EXCLUDED_DIRS.contains(&name.as_ref()) {
+                        continue;
+                    }
+
+                    // Skip hidden directories (starting with .)
+                    if name.starts_with('.') {
+                        continue;
+                    }
+
+                    // Skip if this is a git repo or contains git repos
+                    let is_or_contains_repo = git_repos.iter().any(|repo| repo.starts_with(&path));
+                    if is_or_contains_repo {
+                        continue;
+                    }
+
+                    checked_dirs.insert(path.clone());
+
+                    // Find uninitialized projects in this folder
+                    self.find_uninitialized_recursive(&path, &mut uninitialized, &mut checked_dirs);
+                }
+            }
+        }
+
+        uninitialized
+    }
+
+    fn find_uninitialized_recursive(
+        &self,
+        dir: &Path,
+        uninitialized: &mut Vec<RepoStatus>,
+        checked_dirs: &mut std::collections::HashSet<PathBuf>,
+    ) {
+        // Check if directory has any files (not just subdirectories)
+        let has_files = self.directory_has_files(dir);
+
+        if has_files {
+            // This is a project folder (has files), mark as uninitialized
+            uninitialized.push(RepoStatus {
+                path: dir.display().to_string(),
+                branch: None,
+                has_changes: None,
+                has_unpushed: None,
+                has_unpulled: None,
+                has_error: false,
+                error_message: None,
+            });
+        } else {
+            // Only has subdirectories, recurse into them
+            if let Ok(entries) = std::fs::read_dir(dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+
+                    if !path.is_dir() {
+                        continue;
+                    }
+
+                    if checked_dirs.contains(&path) {
+                        continue;
+                    }
+
+                    let name = path.file_name().unwrap_or_default().to_string_lossy();
+
+                    // Skip excluded directories
+                    if EXCLUDED_DIRS.contains(&name.as_ref()) {
+                        continue;
+                    }
+
+                    // Skip hidden directories
+                    if name.starts_with('.') {
+                        continue;
+                    }
+
+                    checked_dirs.insert(path.clone());
+                    self.find_uninitialized_recursive(&path, uninitialized, checked_dirs);
+                }
+            }
+        }
+    }
+
+    fn directory_has_files(&self, dir: &Path) -> bool {
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_file() {
+                    return true;
+                }
+            }
+        }
+        false
     }
 
     fn should_visit(&self, entry: &DirEntry) -> bool {

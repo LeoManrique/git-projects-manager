@@ -54,6 +54,7 @@ pub struct ScanResult {
     pub with_unpulled: Vec<RepoStatus>,
     pub clean: Vec<RepoStatus>,
     pub errors: Vec<RepoStatus>,
+    pub uninitialized: Vec<RepoStatus>,
     pub execution_time: f64,
 }
 

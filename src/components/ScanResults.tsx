@@ -25,7 +25,7 @@ interface ScanResultsProps {
 }
 
 // Color variant mappings for Tailwind (must be explicit for JIT compiler)
-type ColorVariant = 'green' | 'yellow' | 'orange' | 'purple' | 'red';
+type ColorVariant = 'green' | 'yellow' | 'orange' | 'purple' | 'red' | 'gray';
 
 const colorStyles: Record<ColorVariant, { badge: string; text: string; border: string; borderMuted: string }> = {
   green: {
@@ -58,6 +58,12 @@ const colorStyles: Record<ColorVariant, { badge: string; text: string; border: s
     border: 'border-accent-red/40',
     borderMuted: 'border-accent-red/30',
   },
+  gray: {
+    badge: 'bg-slate-500/10 text-slate-400',
+    text: 'text-slate-400',
+    border: 'border-slate-400/40',
+    borderMuted: 'border-slate-400/30',
+  },
 };
 
 // Status badge component for the summary row
@@ -87,6 +93,10 @@ interface RepoSectionProps {
   isPullingAll?: boolean;
   defaultTerminalName?: string;
   defaultEditorName?: string;
+  // Visibility controls for menu options
+  showEditorOption?: boolean;
+  showTerminalOption?: boolean;
+  showPullOption?: boolean;
 }
 
 function RepoSection({
@@ -105,6 +115,9 @@ function RepoSection({
   isPullingAll = false,
   defaultTerminalName,
   defaultEditorName,
+  showEditorOption = true,
+  showTerminalOption = true,
+  showPullOption = true,
 }: RepoSectionProps) {
   const [openMenuPath, setOpenMenuPath] = useState<string | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
@@ -216,7 +229,7 @@ function RepoSection({
                     </span>
                   )}
                 </span>
-                {onPull && (
+                {((showEditorOption && onOpenInEditor) || (showTerminalOption && onOpenInTerminal) || (showPullOption && onPull)) && (
                   <>
                     <button
                       ref={(el) => {
@@ -245,7 +258,7 @@ function RepoSection({
                         className="fixed z-50 bg-dark-surface border border-dark-border rounded shadow-lg py-1 min-w-[140px]"
                         style={{ top: menuPosition.top, left: menuPosition.left }}
                       >
-                        {onOpenInEditor && defaultEditorName && (
+                        {showEditorOption && onOpenInEditor && defaultEditorName && (
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -257,7 +270,7 @@ function RepoSection({
                             Open in {defaultEditorName}
                           </button>
                         )}
-                        {onOpenInTerminal && defaultTerminalName && (
+                        {showTerminalOption && onOpenInTerminal && defaultTerminalName && (
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -269,17 +282,19 @@ function RepoSection({
                             Open in {defaultTerminalName}
                           </button>
                         )}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setOpenMenuPath(null);
-                            onPull(repo.path);
-                          }}
-                          disabled={disablePull}
-                          className="w-full text-left px-3 py-1.5 text-xs hover:bg-dark-borderSubtle transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                          Fetch & Pull
-                        </button>
+                        {showPullOption && onPull && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOpenMenuPath(null);
+                              onPull(repo.path);
+                            }}
+                            disabled={disablePull}
+                            className="w-full text-left px-3 py-1.5 text-xs hover:bg-dark-borderSubtle transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            Fetch & Pull
+                          </button>
+                        )}
                       </div>
                     )}
                   </>
@@ -549,6 +564,7 @@ export default function ScanResults({ folders, scanState, onScanStateChange, def
                         <StatusBadge count={result.withChanges?.length ?? 0} label="changed" color="yellow" />
                         <StatusBadge count={result.withUnpushed?.length ?? 0} label="unpushed" color="orange" />
                         <StatusBadge count={result.withUnpulled?.length ?? 0} label="unpulled" color="purple" />
+                        <StatusBadge count={result.uninitialized?.length ?? 0} label="uninitialized" color="gray" />
                       </div>
                     ) : (
                       <span className="text-text-muted text-xs">Not scanned</span>
@@ -577,6 +593,7 @@ export default function ScanResults({ folders, scanState, onScanStateChange, def
                       <RepoSection title="Unpushed Commits" repos={result.withUnpushed || []} color="orange" onPull={handlePull} onOpenInTerminal={handleOpenInTerminal} onOpenInEditor={handleOpenInEditor} defaultTerminalName={defaultTerminal?.displayName} defaultEditorName={defaultEditor?.displayName} pullingRepos={pullingRepos} />
                       <RepoSection title="Unpulled Commits" repos={result.withUnpulled || []} color="purple" onPull={handlePull} onOpenInTerminal={handleOpenInTerminal} onOpenInEditor={handleOpenInEditor} defaultTerminalName={defaultTerminal?.displayName} defaultEditorName={defaultEditor?.displayName} pullingRepos={pullingRepos} onPullAll={() => handlePullAllUnpulled(result.withUnpulled || [])} isPullingAll={isPullingAllUnpulled} />
                       <RepoSection title="Clean" repos={result.clean || []} color="green" muted onPull={handlePull} onOpenInTerminal={handleOpenInTerminal} onOpenInEditor={handleOpenInEditor} defaultTerminalName={defaultTerminal?.displayName} defaultEditorName={defaultEditor?.displayName} pullingRepos={pullingRepos} />
+                      <RepoSection title="Uninitialized" repos={result.uninitialized || []} color="gray" muted onOpenInTerminal={handleOpenInTerminal} onOpenInEditor={handleOpenInEditor} defaultTerminalName={defaultTerminal?.displayName} defaultEditorName={defaultEditor?.displayName} />
                       <RepoSection title="Errors" repos={result.errors || []} color="red" showErrors onPull={handlePull} onOpenInTerminal={handleOpenInTerminal} onOpenInEditor={handleOpenInEditor} defaultTerminalName={defaultTerminal?.displayName} defaultEditorName={defaultEditor?.displayName} pullingRepos={pullingRepos} disablePull />
                     </div>
 
