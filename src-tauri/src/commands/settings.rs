@@ -1,17 +1,16 @@
-use crate::domain::settings::SettingsManager;
 use crate::domain::{AppSettings, EditorApp, OpenMethod, TerminalApp};
+use crate::state::AppState;
 use std::process::Command;
+use tauri::State;
 
 #[tauri::command]
-pub fn get_app_settings() -> Result<AppSettings, String> {
-    let manager = SettingsManager::new().map_err(|e| e.to_string())?;
-    manager.load().map_err(|e| e.to_string())
+pub fn get_app_settings(state: State<AppState>) -> Result<AppSettings, String> {
+    state.settings_manager.load().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn open_in_terminal(path: String, terminal_id: String) -> Result<(), String> {
-    let manager = SettingsManager::new().map_err(|e| e.to_string())?;
-    let terminals = manager.get_available_terminals();
+pub fn open_in_terminal(path: String, terminal_id: String, state: State<AppState>) -> Result<(), String> {
+    let terminals = state.settings_manager.get_available_terminals();
 
     let terminal = terminals
         .iter()
@@ -39,9 +38,8 @@ pub fn open_in_terminal(path: String, terminal_id: String) -> Result<(), String>
 }
 
 #[tauri::command]
-pub fn open_in_editor(path: String, editor_id: String) -> Result<(), String> {
-    let manager = SettingsManager::new().map_err(|e| e.to_string())?;
-    let editors = manager.get_available_editors();
+pub fn open_in_editor(path: String, editor_id: String, state: State<AppState>) -> Result<(), String> {
+    let editors = state.settings_manager.get_available_editors();
 
     let editor = editors
         .iter()
@@ -57,29 +55,27 @@ pub fn open_in_editor(path: String, editor_id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn set_default_terminal(terminal_id: Option<String>) -> Result<(), String> {
-    let manager = SettingsManager::new().map_err(|e| e.to_string())?;
-    manager
+pub fn set_default_terminal(terminal_id: Option<String>, state: State<AppState>) -> Result<(), String> {
+    state
+        .settings_manager
         .set_default_terminal(terminal_id)
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn set_default_editor(editor_id: Option<String>) -> Result<(), String> {
-    let manager = SettingsManager::new().map_err(|e| e.to_string())?;
-    manager
+pub fn set_default_editor(editor_id: Option<String>, state: State<AppState>) -> Result<(), String> {
+    state
+        .settings_manager
         .set_default_editor(editor_id)
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn get_available_terminals() -> Result<Vec<TerminalApp>, String> {
-    let manager = SettingsManager::new().map_err(|e| e.to_string())?;
-    Ok(manager.get_available_terminals())
+pub fn get_available_terminals(state: State<AppState>) -> Result<Vec<TerminalApp>, String> {
+    Ok(state.settings_manager.get_available_terminals())
 }
 
 #[tauri::command]
-pub fn get_available_editors() -> Result<Vec<EditorApp>, String> {
-    let manager = SettingsManager::new().map_err(|e| e.to_string())?;
-    Ok(manager.get_available_editors())
+pub fn get_available_editors(state: State<AppState>) -> Result<Vec<EditorApp>, String> {
+    Ok(state.settings_manager.get_available_editors())
 }

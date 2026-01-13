@@ -1,15 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { api } from '../lib/api';
 import { MonitoredFolder, ScanResult, RepoStatus, TerminalApp, EditorApp } from '../types';
-
-// Three-dot menu icon
-function DotsIcon() {
-  return (
-    <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-      <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
-    </svg>
-  );
-}
+import { RepoSection, StatusBadge } from './scan';
 
 export interface ScanResultsState {
   results: Record<string, ScanResult>;
@@ -22,295 +14,6 @@ interface ScanResultsProps {
   onScanStateChange: React.Dispatch<React.SetStateAction<ScanResultsState>>;
   defaultTerminal: TerminalApp | null;
   defaultEditor: EditorApp | null;
-}
-
-// Color variant mappings for Tailwind (must be explicit for JIT compiler)
-type ColorVariant = 'green' | 'yellow' | 'orange' | 'purple' | 'red' | 'gray';
-
-const colorStyles: Record<ColorVariant, { badge: string; text: string; border: string; borderMuted: string }> = {
-  green: {
-    badge: 'bg-accent-green/10 text-accent-green',
-    text: 'text-accent-green',
-    border: 'border-accent-green/40',
-    borderMuted: 'border-accent-green/30',
-  },
-  yellow: {
-    badge: 'bg-accent-yellow/10 text-accent-yellow',
-    text: 'text-accent-yellow',
-    border: 'border-accent-yellow/40',
-    borderMuted: 'border-accent-yellow/30',
-  },
-  orange: {
-    badge: 'bg-accent-orange/10 text-accent-orange',
-    text: 'text-accent-orange',
-    border: 'border-accent-orange/40',
-    borderMuted: 'border-accent-orange/30',
-  },
-  purple: {
-    badge: 'bg-purple-500/10 text-purple-400',
-    text: 'text-purple-400',
-    border: 'border-purple-400/40',
-    borderMuted: 'border-purple-400/30',
-  },
-  red: {
-    badge: 'bg-accent-red/10 text-accent-red',
-    text: 'text-accent-red',
-    border: 'border-accent-red/40',
-    borderMuted: 'border-accent-red/30',
-  },
-  gray: {
-    badge: 'bg-slate-500/10 text-slate-400',
-    text: 'text-slate-400',
-    border: 'border-slate-400/40',
-    borderMuted: 'border-slate-400/30',
-  },
-};
-
-// Status badge component for the summary row
-function StatusBadge({ count, label, color }: { count: number; label: string; color: ColorVariant }) {
-  return (
-    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm ${colorStyles[color].badge}`}>
-      <span className="w-1.5 h-1.5 rounded-full bg-current" />
-      {count} {label}
-    </span>
-  );
-}
-
-// Repository list section component
-interface RepoSectionProps {
-  title: string;
-  repos: RepoStatus[];
-  color: ColorVariant;
-  muted?: boolean;
-  scrollable?: boolean;
-  showErrors?: boolean;
-  onPull?: (repoPath: string) => void;
-  onPullAll?: () => void;
-  onOpenInTerminal?: (repoPath: string) => void;
-  onOpenInEditor?: (repoPath: string) => void;
-  pullingRepos?: Set<string>;
-  disablePull?: boolean;
-  isPullingAll?: boolean;
-  defaultTerminalName?: string;
-  defaultEditorName?: string;
-  // Visibility controls for menu options
-  showEditorOption?: boolean;
-  showTerminalOption?: boolean;
-  showPullOption?: boolean;
-}
-
-function RepoSection({
-  title,
-  repos,
-  color,
-  muted = false,
-  scrollable = false,
-  showErrors = false,
-  onPull,
-  onPullAll,
-  onOpenInTerminal,
-  onOpenInEditor,
-  pullingRepos = new Set(),
-  disablePull = false,
-  isPullingAll = false,
-  defaultTerminalName,
-  defaultEditorName,
-  showEditorOption = true,
-  showTerminalOption = true,
-  showPullOption = true,
-}: RepoSectionProps) {
-  const [openMenuPath, setOpenMenuPath] = useState<string | null>(null);
-  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
-  const [showSectionMenu, setShowSectionMenu] = useState(false);
-  const [sectionMenuPosition, setSectionMenuPosition] = useState<{ top: number; left: number } | null>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const sectionMenuRef = useRef<HTMLDivElement>(null);
-  const sectionMenuButtonRef = useRef<HTMLButtonElement>(null);
-  const buttonRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
-
-  // Close menu when clicking outside
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setOpenMenuPath(null);
-      }
-      if (sectionMenuRef.current && !sectionMenuRef.current.contains(event.target as Node) &&
-          sectionMenuButtonRef.current && !sectionMenuButtonRef.current.contains(event.target as Node)) {
-        setShowSectionMenu(false);
-      }
-    }
-    if (openMenuPath || showSectionMenu) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
-  }, [openMenuPath, showSectionMenu]);
-
-  const openMenu = (repoPath: string) => {
-    const button = buttonRefs.current.get(repoPath);
-    if (button) {
-      const rect = button.getBoundingClientRect();
-      setMenuPosition({
-        top: rect.bottom + 4,
-        left: rect.right - 140, // 140px is min-width of menu
-      });
-    }
-    setOpenMenuPath(repoPath);
-  };
-
-  const openSectionMenu = () => {
-    if (sectionMenuButtonRef.current) {
-      const rect = sectionMenuButtonRef.current.getBoundingClientRect();
-      setSectionMenuPosition({
-        top: rect.bottom + 4,
-        left: rect.right - 160,
-      });
-    }
-    setShowSectionMenu(true);
-  };
-
-  if (repos.length === 0) return null;
-
-  const styles = colorStyles[color];
-
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-1.5">
-        <h4 className={`${styles.text} text-xs font-medium uppercase tracking-wider opacity-90`}>
-          {title} ({repos.length})
-        </h4>
-        {onPullAll && (
-          <>
-            <button
-              ref={sectionMenuButtonRef}
-              onClick={() => showSectionMenu ? setShowSectionMenu(false) : openSectionMenu()}
-              className={`p-1 rounded hover:bg-dark-border transition-colors ${showSectionMenu ? 'bg-dark-border' : ''}`}
-              disabled={isPullingAll}
-            >
-              {isPullingAll ? (
-                <span className="w-3.5 h-3.5 block border-2 border-text-muted border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <DotsIcon />
-              )}
-            </button>
-            {showSectionMenu && sectionMenuPosition && (
-              <div
-                ref={sectionMenuRef}
-                className="fixed z-50 bg-dark-surface border border-dark-border rounded shadow-lg py-1 min-w-[160px]"
-                style={{ top: sectionMenuPosition.top, left: sectionMenuPosition.left }}
-              >
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowSectionMenu(false);
-                    onPullAll();
-                  }}
-                  className="w-full text-left px-3 py-1.5 text-xs hover:bg-dark-borderSubtle transition-colors"
-                >
-                  Fetch & Pull All ({repos.length})
-                </button>
-              </div>
-            )}
-          </>
-        )}
-      </div>
-      <ul className={`space-y-px ${scrollable ? 'max-h-64 overflow-y-auto' : ''}`}>
-        {repos.map((repo, idx) => {
-          const isPulling = pullingRepos.has(repo.path);
-          const isMenuOpen = openMenuPath === repo.path;
-
-          return (
-            <li key={idx} className={`relative group ${showErrors ? 'text-xs' : ''}`}>
-              <div className={`flex items-center ${muted ? 'text-text-muted' : 'text-text-secondary'} text-xs py-0.5 pl-2 pr-1 border-l-2 ${muted ? styles.borderMuted : styles.border} hover:text-text-primary hover:bg-dark-borderSubtle transition-colors font-mono rounded-r-sm`}>
-                <span className="flex-1 truncate">
-                  {repo.path}
-                  {repo.branch && (
-                    <span className={`ml-1.5 ${muted ? 'text-accent-blue/60' : 'text-accent-blue/70'}`}>
-                      ({repo.branch})
-                    </span>
-                  )}
-                </span>
-                {((showEditorOption && onOpenInEditor) || (showTerminalOption && onOpenInTerminal) || (showPullOption && onPull)) && (
-                  <>
-                    <button
-                      ref={(el) => {
-                        if (el) buttonRefs.current.set(repo.path, el);
-                      }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (isMenuOpen) {
-                          setOpenMenuPath(null);
-                        } else {
-                          openMenu(repo.path);
-                        }
-                      }}
-                      className={`p-1 rounded hover:bg-dark-border transition-colors ${isMenuOpen ? 'bg-dark-border' : 'opacity-0 group-hover:opacity-100'}`}
-                      disabled={isPulling}
-                    >
-                      {isPulling ? (
-                        <span className="w-3.5 h-3.5 block border-2 border-text-muted border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        <DotsIcon />
-                      )}
-                    </button>
-                    {isMenuOpen && menuPosition && (
-                      <div
-                        ref={menuRef}
-                        className="fixed z-50 bg-dark-surface border border-dark-border rounded shadow-lg py-1 min-w-[140px]"
-                        style={{ top: menuPosition.top, left: menuPosition.left }}
-                      >
-                        {showEditorOption && onOpenInEditor && defaultEditorName && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setOpenMenuPath(null);
-                              onOpenInEditor(repo.path);
-                            }}
-                            className="w-full text-left px-3 py-1.5 text-xs hover:bg-dark-borderSubtle transition-colors"
-                          >
-                            Open in {defaultEditorName}
-                          </button>
-                        )}
-                        {showTerminalOption && onOpenInTerminal && defaultTerminalName && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setOpenMenuPath(null);
-                              onOpenInTerminal(repo.path);
-                            }}
-                            className="w-full text-left px-3 py-1.5 text-xs hover:bg-dark-borderSubtle transition-colors"
-                          >
-                            Open in {defaultTerminalName}
-                          </button>
-                        )}
-                        {showPullOption && onPull && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setOpenMenuPath(null);
-                              onPull(repo.path);
-                            }}
-                            disabled={disablePull}
-                            className="w-full text-left px-3 py-1.5 text-xs hover:bg-dark-borderSubtle transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                          >
-                            Fetch & Pull
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-              {showErrors && repo.errorMessage && (
-                <p className="text-text-muted text-xs mt-0.5 pl-2 opacity-80">
-                  {repo.errorMessage}
-                </p>
-              )}
-            </li>
-          );
-        })}
-      </ul>
-    </div>
-  );
 }
 
 export default function ScanResults({ folders, scanState, onScanStateChange, defaultTerminal, defaultEditor }: ScanResultsProps) {
@@ -353,7 +56,6 @@ export default function ScanResults({ folders, scanState, onScanStateChange, def
     setPullingRepos(prev => new Set(prev).add(repoPath));
     try {
       await api.pullRepo(repoPath);
-      // Re-scan all folders to update status
       scan(folders, true);
     } catch (err) {
       setError(`Failed to pull ${repoPath}: ${err}`);
@@ -374,19 +76,16 @@ export default function ScanResults({ folders, scanState, onScanStateChange, def
     setPullingRepos(prev => new Set([...prev, ...repoPaths]));
 
     try {
-      // Pull all repos in parallel
       const pullPromises = repoPaths.map(path =>
         api.pullRepo(path).catch(err => ({ path, error: err }))
       );
       const results = await Promise.all(pullPromises);
 
-      // Check for errors
       const errors = results.filter(r => r && typeof r === 'object' && 'error' in r);
       if (errors.length > 0) {
         setError(`Failed to pull ${errors.length} repo(s)`);
       }
 
-      // Re-scan all folders to update status
       scan(folders, true);
     } catch (err) {
       setError(`Failed to pull repos: ${err}`);
@@ -413,7 +112,6 @@ export default function ScanResults({ folders, scanState, onScanStateChange, def
   };
 
   const scan = async (foldersToScan: MonitoredFolder[], isFullScan: boolean = false) => {
-    // Increment version for full scans to cancel previous scans
     let currentVersion = scanVersionRef.current;
     if (isFullScan) {
       currentVersion = ++scanVersionRef.current;
@@ -423,7 +121,6 @@ export default function ScanResults({ folders, scanState, onScanStateChange, def
     try {
       setError('');
 
-      // Mark folders as scanning
       setScanningFolders(prev => {
         const newState = { ...prev };
         for (const folder of foldersToScan) {
@@ -432,7 +129,6 @@ export default function ScanResults({ folders, scanState, onScanStateChange, def
         return newState;
       });
 
-      // Scan folders in parallel
       const scanPromises = foldersToScan.map(async (folder) => {
         try {
           const result = await api.scanFolder(folder.path);
@@ -444,7 +140,6 @@ export default function ScanResults({ folders, scanState, onScanStateChange, def
 
       const scanResults = await Promise.allSettled(scanPromises);
 
-      // Only update if this version is still current (for Scan All cancellation)
       if (currentVersion !== scanVersionRef.current) {
         setScanningFolders({});
         if (isFullScan) {
@@ -453,7 +148,6 @@ export default function ScanResults({ folders, scanState, onScanStateChange, def
         return;
       }
 
-      // Update results
       const newResults: Record<string, ScanResult> = {};
       const updatedFolderIds = new Set<string>();
 
@@ -467,7 +161,6 @@ export default function ScanResults({ folders, scanState, onScanStateChange, def
         }
       }
 
-      // Merge new results with existing (functional update handles stale closure)
       onScanStateChange(prev => ({
         ...prev,
         results: { ...prev.results, ...newResults }
@@ -477,7 +170,6 @@ export default function ScanResults({ folders, scanState, onScanStateChange, def
         toggleExpandedFolder(foldersToScan[0].id);
       }
 
-      // Clear scanning state only for the folders we just scanned
       setScanningFolders(prev => {
         const newState = { ...prev };
         for (const folderId of updatedFolderIds) {
