@@ -1,4 +1,5 @@
 pub mod config;
+pub mod kanban;
 pub mod repository;
 pub mod scanner;
 pub mod settings;

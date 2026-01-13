@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { FolderManager } from './components/folders';
 import ScanResults, { ScanResultsState } from './components/ScanResults';
 import DefaultAppsSettings from './components/settings/DefaultAppsSettings';
+import { KanbanBoard } from './components/kanban';
+import { ViewSwitcher, View } from './components/navigation';
 import { api } from './lib/api';
 import { MonitoredFolder, TerminalApp, EditorApp } from './types';
 import { useContextMenu } from './hooks';
@@ -114,6 +116,8 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [defaultTerminal, setDefaultTerminal] = useState<TerminalApp | null>(null);
   const [defaultEditor, setDefaultEditor] = useState<EditorApp | null>(null);
+  const [currentView, setCurrentView] = useState<View>('folders');
+  const [hasInitialScan, setHasInitialScan] = useState(false);
 
   const headerMenu = useContextMenu({ menuWidth: 120 });
 
@@ -170,13 +174,16 @@ function App() {
         >
           Git Projects Manager
         </span>
-        <button
-          ref={headerMenu.buttonRef}
-          onClick={headerMenu.toggle}
-          className={`p-1.5 rounded hover:bg-dark-border transition-colors text-text-secondary hover:text-text-primary ${headerMenu.isOpen ? 'bg-dark-border' : ''}`}
-        >
-          <DotsIcon />
-        </button>
+        <div className="flex items-center gap-2">
+          <ViewSwitcher currentView={currentView} onViewChange={setCurrentView} />
+          <button
+            ref={headerMenu.buttonRef}
+            onClick={headerMenu.toggle}
+            className={`p-1.5 rounded hover:bg-dark-border transition-colors text-text-secondary hover:text-text-primary ${headerMenu.isOpen ? 'bg-dark-border' : ''}`}
+          >
+            <DotsIcon />
+          </button>
+        </div>
       </header>
 
       {/* Header Menu Dropdown */}
@@ -200,13 +207,19 @@ function App() {
 
       {/* Main Content */}
       <main className="flex-1 overflow-hidden">
-        <ScanResults
-          folders={folders}
-          scanState={scanState}
-          onScanStateChange={setScanState}
-          defaultTerminal={defaultTerminal}
-          defaultEditor={defaultEditor}
-        />
+        {currentView === 'folders' ? (
+          <ScanResults
+            folders={folders}
+            scanState={scanState}
+            onScanStateChange={setScanState}
+            defaultTerminal={defaultTerminal}
+            defaultEditor={defaultEditor}
+            hasInitialScan={hasInitialScan}
+            onInitialScanComplete={() => setHasInitialScan(true)}
+          />
+        ) : (
+          <KanbanBoard scanResults={scanState.results} folders={folders} />
+        )}
       </main>
 
       {/* Settings Modal */}

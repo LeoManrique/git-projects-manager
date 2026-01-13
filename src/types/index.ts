@@ -2,3 +2,4 @@
 export type { MonitoredFolder } from './folder';
 export type { RepoStatus, ScanResult } from './scan';
 export type { TerminalApp, EditorApp, AppSettings } from './settings';
+export type { KanbanCard, KanbanState, KanbanCardView } from './kanban';

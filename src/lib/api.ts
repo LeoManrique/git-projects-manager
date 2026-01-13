@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { MonitoredFolder, ScanResult, AppSettings, TerminalApp, EditorApp } from '../types';
+import { MonitoredFolder, ScanResult, AppSettings, TerminalApp, EditorApp, KanbanState } from '../types';
 
 export const api = {
   // Folder management
@@ -72,5 +72,26 @@ export const api = {
 
   async openInEditor(path: string, editorId: string): Promise<void> {
     await invoke('open_in_editor', { path, editorId });
-  }
+  },
+
+  // Kanban
+  async getKanbanState(): Promise<KanbanState> {
+    return await invoke('get_kanban_state');
+  },
+
+  async moveKanbanCard(repoPath: string, toColumn: string): Promise<KanbanState> {
+    return await invoke('move_kanban_card', { repoPath, toColumn });
+  },
+
+  async updateKanbanNotes(repoPath: string, notes: string | null): Promise<KanbanState> {
+    return await invoke('update_kanban_notes', { repoPath, notes });
+  },
+
+  async removeKanbanCard(repoPath: string): Promise<KanbanState> {
+    return await invoke('remove_kanban_card', { repoPath });
+  },
+
+  async syncKanbanWithRepos(repoPaths: string[]): Promise<KanbanState> {
+    return await invoke('sync_kanban_with_repos', { repoPaths });
+  },
 };

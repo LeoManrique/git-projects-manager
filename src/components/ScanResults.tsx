@@ -17,9 +17,11 @@ interface ScanResultsProps {
   onScanStateChange: React.Dispatch<React.SetStateAction<ScanResultsState>>;
   defaultTerminal: TerminalApp | null;
   defaultEditor: EditorApp | null;
+  hasInitialScan: boolean;
+  onInitialScanComplete: () => void;
 }
 
-export default function ScanResults({ folders, scanState, onScanStateChange, defaultTerminal, defaultEditor }: ScanResultsProps) {
+export default function ScanResults({ folders, scanState, onScanStateChange, defaultTerminal, defaultEditor, hasInitialScan, onInitialScanComplete }: ScanResultsProps) {
   const { results, expandedFolders } = scanState;
   const [scanningFolders, setScanningFolders] = useState<Record<string, boolean>>({});
   const [isFullScanActive, setIsFullScanActive] = useState(false);
@@ -27,7 +29,6 @@ export default function ScanResults({ folders, scanState, onScanStateChange, def
   const [pullingRepos, setPullingRepos] = useState<Set<string>>(new Set());
   const [isPullingAllUnpulled, setIsPullingAllUnpulled] = useState(false);
   const scanVersionRef = useRef(0);
-  const hasInitialScanRef = useRef(false);
   const lastScanTimeRef = useRef<number>(0);
 
   const handleOpenInTerminal = async (repoPath: string) => {
@@ -232,24 +233,24 @@ export default function ScanResults({ folders, scanState, onScanStateChange, def
 
   // Auto-scan all folders on app startup
   useEffect(() => {
-    if (folders.length > 0 && !hasInitialScanRef.current) {
-      hasInitialScanRef.current = true;
+    if (folders.length > 0 && !hasInitialScan) {
+      onInitialScanComplete();
       scan(folders, true);
     }
-  }, [folders]);
+  }, [folders, hasInitialScan, onInitialScanComplete]);
 
   // Silent scan when window regains focus
   useEffect(() => {
     const handleFocus = () => {
       // Only trigger if initial scan has completed and folders exist
-      if (hasInitialScanRef.current && folders.length > 0) {
+      if (hasInitialScan && folders.length > 0) {
         silentScan(folders);
       }
     };
 
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
-  }, [folders, silentScan]);
+  }, [folders, silentScan, hasInitialScan]);
 
   return (
     <div className="h-full flex flex-col">

@@ -1,4 +1,4 @@
-export type ColorVariant = 'green' | 'yellow' | 'orange' | 'purple' | 'red' | 'gray';
+export type ColorVariant = 'green' | 'yellow' | 'orange' | 'purple' | 'red' | 'gray' | 'blue';
 
 export const colorStyles: Record<ColorVariant, { badge: string; text: string; border: string; borderMuted: string }> = {
   green: {
@@ -36,5 +36,11 @@ export const colorStyles: Record<ColorVariant, { badge: string; text: string; bo
     text: 'text-slate-400',
     border: 'border-slate-400/40',
     borderMuted: 'border-slate-400/30',
+  },
+  blue: {
+    badge: 'bg-accent-blue/10 text-accent-blue',
+    text: 'text-accent-blue',
+    border: 'border-accent-blue/40',
+    borderMuted: 'border-accent-blue/30',
   },
 };
