@@ -1,7 +1,10 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { api } from '../lib/api';
 import { MonitoredFolder, ScanResult, RepoStatus, TerminalApp, EditorApp } from '../types';
 import { RepoSection, StatusBadge } from './scan';
+
+// Minimum interval between silent scans (in milliseconds)
+const SILENT_SCAN_MIN_INTERVAL_MS = 20_000; // 20 seconds
 
 export interface ScanResultsState {
   results: Record<string, ScanResult>;
@@ -25,14 +28,7 @@ export default function ScanResults({ folders, scanState, onScanStateChange, def
   const [isPullingAllUnpulled, setIsPullingAllUnpulled] = useState(false);
   const scanVersionRef = useRef(0);
   const hasInitialScanRef = useRef(false);
-
-  // Auto-scan all folders on app startup
-  useEffect(() => {
-    if (folders.length > 0 && !hasInitialScanRef.current) {
-      hasInitialScanRef.current = true;
-      scan(folders, true);
-    }
-  }, [folders]);
+  const lastScanTimeRef = useRef<number>(0);
 
   const handleOpenInTerminal = async (repoPath: string) => {
     if (!defaultTerminal) return;
@@ -111,6 +107,61 @@ export default function ScanResults({ folders, scanState, onScanStateChange, def
     });
   };
 
+  /**
+   * Core scan logic - executes the actual folder scanning
+   * Returns the scan results mapped by folder ID
+   */
+  const performScan = useCallback(async (foldersToScan: MonitoredFolder[]): Promise<Record<string, ScanResult>> => {
+    const scanPromises = foldersToScan.map(async (folder) => {
+      try {
+        const result = await api.scanFolder(folder.path);
+        return { id: folder.id, result, error: null };
+      } catch (err) {
+        return { id: folder.id, result: null, error: err };
+      }
+    });
+
+    const scanResults = await Promise.allSettled(scanPromises);
+    const newResults: Record<string, ScanResult> = {};
+
+    for (const result of scanResults) {
+      if (result.status === 'fulfilled' && result.value.result) {
+        newResults[result.value.id] = result.value.result;
+      }
+    }
+
+    return newResults;
+  }, []);
+
+  /**
+   * Silent scan - runs in the background without UI indicators
+   * Respects minimum interval between scans (considers both silent and on-demand scans)
+   */
+  const silentScan = useCallback(async (foldersToScan: MonitoredFolder[]) => {
+    if (foldersToScan.length === 0) return;
+
+    // Check minimum interval since last scan
+    const now = Date.now();
+    if (now - lastScanTimeRef.current < SILENT_SCAN_MIN_INTERVAL_MS) {
+      return;
+    }
+
+    try {
+      const newResults = await performScan(foldersToScan);
+      lastScanTimeRef.current = Date.now();
+
+      onScanStateChange(prev => ({
+        ...prev,
+        results: { ...prev.results, ...newResults }
+      }));
+    } catch (err) {
+      console.error('Silent scan failed:', err);
+    }
+  }, [performScan, onScanStateChange]);
+
+  /**
+   * On-demand scan - shows UI indicators and always runs (no interval restriction)
+   */
   const scan = async (foldersToScan: MonitoredFolder[], isFullScan: boolean = false) => {
     let currentVersion = scanVersionRef.current;
     if (isFullScan) {
@@ -129,17 +180,10 @@ export default function ScanResults({ folders, scanState, onScanStateChange, def
         return newState;
       });
 
-      const scanPromises = foldersToScan.map(async (folder) => {
-        try {
-          const result = await api.scanFolder(folder.path);
-          return { id: folder.id, result, error: null };
-        } catch (err) {
-          return { id: folder.id, result: null, error: err };
-        }
-      });
+      const newResults = await performScan(foldersToScan);
+      lastScanTimeRef.current = Date.now();
 
-      const scanResults = await Promise.allSettled(scanPromises);
-
+      // Check if scan was superseded by a newer one
       if (currentVersion !== scanVersionRef.current) {
         setScanningFolders({});
         if (isFullScan) {
@@ -148,18 +192,7 @@ export default function ScanResults({ folders, scanState, onScanStateChange, def
         return;
       }
 
-      const newResults: Record<string, ScanResult> = {};
-      const updatedFolderIds = new Set<string>();
-
-      for (const result of scanResults) {
-        if (result.status === 'fulfilled') {
-          const { id, result: scanResult } = result.value;
-          updatedFolderIds.add(id);
-          if (scanResult) {
-            newResults[id] = scanResult;
-          }
-        }
-      }
+      const updatedFolderIds = new Set(Object.keys(newResults));
 
       onScanStateChange(prev => ({
         ...prev,
@@ -196,6 +229,27 @@ export default function ScanResults({ folders, scanState, onScanStateChange, def
       }
     }
   };
+
+  // Auto-scan all folders on app startup
+  useEffect(() => {
+    if (folders.length > 0 && !hasInitialScanRef.current) {
+      hasInitialScanRef.current = true;
+      scan(folders, true);
+    }
+  }, [folders]);
+
+  // Silent scan when window regains focus
+  useEffect(() => {
+    const handleFocus = () => {
+      // Only trigger if initial scan has completed and folders exist
+      if (hasInitialScanRef.current && folders.length > 0) {
+        silentScan(folders);
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [folders, silentScan]);
 
   return (
     <div className="h-full flex flex-col">
