@@ -229,23 +229,30 @@ impl Scanner {
     fn check_repository_status(&self, path: &Path) -> RepoStatus {
         let path_str = path.display().to_string();
 
-        // Get branch
-        let branch = match GitOperations::get_current_branch(path) {
-            Ok(b) => Some(b),
+        // Get branch - handle UnbornBranch (no commits yet) specially
+        let (branch, is_unborn) = match GitOperations::get_current_branch(path) {
+            Ok(b) => (Some(b), false),
             Err(e) => {
-                return RepoStatus {
-                    path: path_str,
-                    branch: None,
-                    has_changes: None,
-                    has_unpushed: None,
-                    has_unpulled: None,
-                    has_error: true,
-                    error_message: Some(format!("Failed to get branch: {}", e)),
-                };
+                let error_str = e.to_string();
+                // UnbornBranch means repo is initialized but has no commits yet
+                // This is not an error - treat as repo with uncommitted changes
+                if error_str.contains("UnbornBranch") {
+                    (None, true)
+                } else {
+                    return RepoStatus {
+                        path: path_str,
+                        branch: None,
+                        has_changes: None,
+                        has_unpushed: None,
+                        has_unpulled: None,
+                        has_error: true,
+                        error_message: Some(format!("Failed to get branch: {}", e)),
+                    };
+                }
             }
         };
 
-        // Check for changes
+        // Check for pending changes (works for both normal and unborn repos)
         let has_changes = match GitOperations::has_pending_changes(path) {
             Ok(c) => Some(c),
             Err(e) => {
@@ -261,7 +268,15 @@ impl Scanner {
             }
         };
 
+        // For unborn repos with no changes, mark as unpushed (initialized but no commits yet)
+        let has_unpushed_for_unborn = if is_unborn && has_changes != Some(true) {
+            Some(true)
+        } else {
+            None
+        };
+
         // Check for unpushed/unpulled commits (only if has upstream)
+        // Unborn repos never have upstream, so this will be skipped for them
         let (has_unpushed, has_unpulled) = if GitOperations::has_upstream_branch(path).unwrap_or(false) {
             // Fetch from remote to get latest state
             let _ = GitOperations::fetch(path);
@@ -285,7 +300,8 @@ impl Scanner {
             path: path_str,
             branch,
             has_changes,
-            has_unpushed,
+            // Use unborn unpushed status if applicable, otherwise use regular unpushed
+            has_unpushed: has_unpushed_for_unborn.or(has_unpushed),
             has_unpulled,
             has_error: false,
             error_message: None,
