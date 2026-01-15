@@ -15,10 +15,12 @@ export interface RepoSectionProps {
   onOpenInTerminal?: (repoPath: string) => void;
   onOpenInEditor?: (repoPath: string) => void;
   onClean?: (repoPath: string) => void;
+  onCleanAll?: () => void;
   pullingRepos?: Set<string>;
   cleaningRepos?: Set<string>;
   disablePull?: boolean;
   isPullingAll?: boolean;
+  isCleaningAll?: boolean;
   defaultTerminalName?: string;
   defaultEditorName?: string;
   showEditorOption?: boolean;
@@ -39,10 +41,12 @@ export function RepoSection({
   onOpenInTerminal,
   onOpenInEditor,
   onClean,
+  onCleanAll,
   pullingRepos = new Set(),
   cleaningRepos = new Set(),
   disablePull = false,
   isPullingAll = false,
+  isCleaningAll = false,
   defaultTerminalName,
   defaultEditorName,
   showEditorOption = true,
@@ -109,15 +113,15 @@ export function RepoSection({
         <h4 className={`${styles.text} text-xs font-medium uppercase tracking-wider opacity-90`}>
           {title} ({repos.length})
         </h4>
-        {onPullAll && (
+        {(onPullAll || onCleanAll) && (
           <>
             <button
               ref={sectionMenuButtonRef}
               onClick={() => showSectionMenu ? setShowSectionMenu(false) : openSectionMenu()}
               className={`p-1 rounded hover:bg-dark-border transition-colors ${showSectionMenu ? 'bg-dark-border' : ''}`}
-              disabled={isPullingAll}
+              disabled={isPullingAll || isCleaningAll}
             >
-              {isPullingAll ? (
+              {(isPullingAll || isCleaningAll) ? (
                 <span className="w-3.5 h-3.5 block border-2 border-text-muted border-t-transparent rounded-full animate-spin" />
               ) : (
                 <DotsIcon />
@@ -129,16 +133,30 @@ export function RepoSection({
                 className="fixed z-50 bg-dark-surface border border-dark-border rounded shadow-lg py-1 min-w-[160px]"
                 style={{ top: sectionMenuPosition.top, left: sectionMenuPosition.left }}
               >
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowSectionMenu(false);
-                    onPullAll();
-                  }}
-                  className="w-full text-left px-3 py-1.5 text-xs hover:bg-dark-borderSubtle transition-colors"
-                >
-                  Fetch & Pull All ({repos.length})
-                </button>
+                {onPullAll && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowSectionMenu(false);
+                      onPullAll();
+                    }}
+                    className="w-full text-left px-3 py-1.5 text-xs hover:bg-dark-borderSubtle transition-colors"
+                  >
+                    Fetch & Pull All ({repos.length})
+                  </button>
+                )}
+                {onCleanAll && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowSectionMenu(false);
+                      onCleanAll();
+                    }}
+                    className="w-full text-left px-3 py-1.5 text-xs hover:bg-dark-borderSubtle transition-colors"
+                  >
+                    Clean All ({repos.length})
+                  </button>
+                )}
               </div>
             )}
           </>
