@@ -12,7 +12,17 @@ export interface EditorApp {
   path: string;
 }
 
+export interface GitCleanSettings {
+  excludePatterns: string[];
+}
+
+export interface GitCleanResult {
+  filesRemoved: string[];
+  directoriesRemoved: string[];
+}
+
 export interface AppSettings {
   defaultTerminal?: string;
   defaultEditor?: string;
+  gitCleanSettings?: GitCleanSettings;
 }

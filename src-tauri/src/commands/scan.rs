@@ -1,4 +1,4 @@
-use crate::domain::ScanResult;
+use crate::domain::{GitCleanResult, ScanResult};
 use crate::infrastructure::git::GitOperations;
 use crate::state::AppState;
 use std::path::Path;
@@ -7,6 +7,19 @@ use tauri::State;
 #[tauri::command]
 pub async fn pull_repo(path: String) -> Result<String, String> {
     GitOperations::pull(Path::new(&path)).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn clean_repo(path: String, state: State<'_, AppState>) -> Result<GitCleanResult, String> {
+    let settings = state.settings_manager.get_git_clean_settings();
+    let (files_removed, directories_removed) =
+        GitOperations::clean(Path::new(&path), &settings.exclude_patterns)
+            .map_err(|e| e.to_string())?;
+
+    Ok(GitCleanResult {
+        files_removed,
+        directories_removed,
+    })
 }
 
 #[tauri::command]

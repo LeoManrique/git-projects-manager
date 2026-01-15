@@ -1,4 +1,4 @@
-use crate::domain::{AppSettings, EditorApp, OpenMethod, TerminalApp};
+use crate::domain::{AppSettings, EditorApp, GitCleanSettings, OpenMethod, TerminalApp};
 use crate::state::AppState;
 use std::process::Command;
 use tauri::State;
@@ -78,4 +78,20 @@ pub fn get_available_terminals(state: State<AppState>) -> Result<Vec<TerminalApp
 #[tauri::command]
 pub fn get_available_editors(state: State<AppState>) -> Result<Vec<EditorApp>, String> {
     Ok(state.settings_manager.get_available_editors())
+}
+
+#[tauri::command]
+pub fn get_git_clean_settings(state: State<AppState>) -> Result<GitCleanSettings, String> {
+    Ok(state.settings_manager.get_git_clean_settings())
+}
+
+#[tauri::command]
+pub fn set_git_clean_settings(
+    settings: GitCleanSettings,
+    state: State<AppState>,
+) -> Result<(), String> {
+    state
+        .settings_manager
+        .set_git_clean_settings(settings)
+        .map_err(|e| e.to_string())
 }

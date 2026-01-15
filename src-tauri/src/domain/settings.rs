@@ -1,4 +1,4 @@
-use super::{AppSettings, EditorApp, TerminalApp};
+use super::{AppSettings, EditorApp, GitCleanSettings, TerminalApp};
 use anyhow::Result;
 use std::fs;
 use std::path::PathBuf;
@@ -69,5 +69,19 @@ impl SettingsManager {
             .into_iter()
             .filter(|e| std::path::Path::new(&e.path).exists())
             .collect()
+    }
+
+    pub fn get_git_clean_settings(&self) -> GitCleanSettings {
+        self.load()
+            .ok()
+            .and_then(|s| s.git_clean_settings)
+            .unwrap_or_default()
+    }
+
+    pub fn set_git_clean_settings(&self, settings: GitCleanSettings) -> Result<()> {
+        let mut app_settings = self.load()?;
+        app_settings.git_clean_settings = Some(settings);
+        self.save(&app_settings)?;
+        Ok(())
     }
 }

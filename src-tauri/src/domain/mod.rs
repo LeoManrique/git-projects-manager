@@ -92,6 +92,36 @@ pub struct EditorApp {
     pub path: String,
 }
 
+// Git clean settings
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitCleanSettings {
+    #[serde(default)]
+    pub exclude_patterns: Vec<String>,
+}
+
+impl Default for GitCleanSettings {
+    fn default() -> Self {
+        Self {
+            exclude_patterns: vec![
+                ".env*".to_string(),
+                "*.key".to_string(),
+                "*.pem".to_string(),
+                ".vscode/".to_string(),
+                ".idea/".to_string(),
+            ],
+        }
+    }
+}
+
+// Git clean result
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitCleanResult {
+    pub files_removed: Vec<String>,
+    pub directories_removed: Vec<String>,
+}
+
 // App settings
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -100,4 +130,6 @@ pub struct AppSettings {
     pub default_terminal: Option<String>,
     #[serde(default)]
     pub default_editor: Option<String>,
+    #[serde(default)]
+    pub git_clean_settings: Option<GitCleanSettings>,
 }

@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { MonitoredFolder, ScanResult, AppSettings, TerminalApp, EditorApp, KanbanState } from '../types';
+import { MonitoredFolder, ScanResult, AppSettings, TerminalApp, EditorApp, KanbanState, GitCleanSettings, GitCleanResult } from '../types';
 
 export const api = {
   // Folder management
@@ -32,6 +32,10 @@ export const api = {
   // Git operations
   async pullRepo(path: string): Promise<string> {
     return await invoke('pull_repo', { path });
+  },
+
+  async cleanRepo(path: string): Promise<GitCleanResult> {
+    return await invoke('clean_repo', { path });
   },
 
   // Dialog
@@ -72,6 +76,15 @@ export const api = {
 
   async openInEditor(path: string, editorId: string): Promise<void> {
     await invoke('open_in_editor', { path, editorId });
+  },
+
+  // Git Clean Settings
+  async getGitCleanSettings(): Promise<GitCleanSettings> {
+    return await invoke('get_git_clean_settings');
+  },
+
+  async setGitCleanSettings(settings: GitCleanSettings): Promise<void> {
+    await invoke('set_git_clean_settings', { settings });
   },
 
   // Kanban

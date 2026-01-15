@@ -114,4 +114,42 @@ impl GitOperations {
             anyhow::bail!("Pull failed: {}", error)
         }
     }
+
+    /// Clean ignored files from the repository (git clean -fdX)
+    /// Removes files matching .gitignore patterns while preserving excluded patterns
+    pub fn clean(repo_path: &Path, exclude_patterns: &[String]) -> Result<(Vec<String>, Vec<String>)> {
+        let mut cmd = git_command();
+        cmd.arg("clean")
+            .arg("-fdX") // force, directories, only ignored files
+            .current_dir(repo_path);
+
+        // Add exclude patterns
+        for pattern in exclude_patterns {
+            cmd.arg("-e").arg(pattern);
+        }
+
+        let output = cmd.output()?;
+
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let mut files_removed = Vec::new();
+            let mut directories_removed = Vec::new();
+
+            for line in stdout.lines() {
+                // git clean output format: "Removing <path>"
+                if let Some(path) = line.strip_prefix("Removing ") {
+                    if path.ends_with('/') {
+                        directories_removed.push(path.trim_end_matches('/').to_string());
+                    } else {
+                        files_removed.push(path.to_string());
+                    }
+                }
+            }
+
+            Ok((files_removed, directories_removed))
+        } else {
+            let error = String::from_utf8_lossy(&output.stderr).to_string();
+            anyhow::bail!("Clean failed: {}", error)
+        }
+    }
 }

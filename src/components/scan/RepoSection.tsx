@@ -14,7 +14,9 @@ export interface RepoSectionProps {
   onPullAll?: () => void;
   onOpenInTerminal?: (repoPath: string) => void;
   onOpenInEditor?: (repoPath: string) => void;
+  onClean?: (repoPath: string) => void;
   pullingRepos?: Set<string>;
+  cleaningRepos?: Set<string>;
   disablePull?: boolean;
   isPullingAll?: boolean;
   defaultTerminalName?: string;
@@ -22,6 +24,7 @@ export interface RepoSectionProps {
   showEditorOption?: boolean;
   showTerminalOption?: boolean;
   showPullOption?: boolean;
+  showCleanOption?: boolean;
 }
 
 export function RepoSection({
@@ -35,7 +38,9 @@ export function RepoSection({
   onPullAll,
   onOpenInTerminal,
   onOpenInEditor,
+  onClean,
   pullingRepos = new Set(),
+  cleaningRepos = new Set(),
   disablePull = false,
   isPullingAll = false,
   defaultTerminalName,
@@ -43,6 +48,7 @@ export function RepoSection({
   showEditorOption = true,
   showTerminalOption = true,
   showPullOption = true,
+  showCleanOption = false,
 }: RepoSectionProps) {
   const [openMenuPath, setOpenMenuPath] = useState<string | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
@@ -141,6 +147,8 @@ export function RepoSection({
       <ul className={`space-y-px ${scrollable ? 'max-h-64 overflow-y-auto' : ''}`}>
         {repos.map((repo, idx) => {
           const isPulling = pullingRepos.has(repo.path);
+          const isCleaning = cleaningRepos.has(repo.path);
+          const isOperating = isPulling || isCleaning;
           const isMenuOpen = openMenuPath === repo.path;
 
           return (
@@ -154,7 +162,7 @@ export function RepoSection({
                     </span>
                   )}
                 </span>
-                {((showEditorOption && onOpenInEditor) || (showTerminalOption && onOpenInTerminal) || (showPullOption && onPull)) && (
+                {((showEditorOption && onOpenInEditor) || (showTerminalOption && onOpenInTerminal) || (showPullOption && onPull) || (showCleanOption && onClean)) && (
                   <>
                     <button
                       ref={(el) => {
@@ -169,9 +177,9 @@ export function RepoSection({
                         }
                       }}
                       className={`p-1 rounded hover:bg-dark-border transition-colors ${isMenuOpen ? 'bg-dark-border' : 'opacity-0 group-hover:opacity-100'}`}
-                      disabled={isPulling}
+                      disabled={isOperating}
                     >
-                      {isPulling ? (
+                      {isOperating ? (
                         <span className="w-3.5 h-3.5 block border-2 border-text-muted border-t-transparent rounded-full animate-spin" />
                       ) : (
                         <DotsIcon />
@@ -218,6 +226,18 @@ export function RepoSection({
                             className="w-full text-left px-3 py-1.5 text-xs hover:bg-dark-borderSubtle transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                           >
                             Fetch & Pull
+                          </button>
+                        )}
+                        {showCleanOption && onClean && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOpenMenuPath(null);
+                              onClean(repo.path);
+                            }}
+                            className="w-full text-left px-3 py-1.5 text-xs hover:bg-dark-borderSubtle transition-colors"
+                          >
+                            Clean Ignored Files
                           </button>
                         )}
                       </div>

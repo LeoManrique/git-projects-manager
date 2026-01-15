@@ -27,6 +27,7 @@ export default function ScanResults({ folders, scanState, onScanStateChange, def
   const [isFullScanActive, setIsFullScanActive] = useState(false);
   const [error, setError] = useState('');
   const [pullingRepos, setPullingRepos] = useState<Set<string>>(new Set());
+  const [cleaningRepos, setCleaningRepos] = useState<Set<string>>(new Set());
   const [isPullingAllUnpulled, setIsPullingAllUnpulled] = useState(false);
   const scanVersionRef = useRef(0);
   const lastScanTimeRef = useRef<number>(0);
@@ -58,6 +59,27 @@ export default function ScanResults({ folders, scanState, onScanStateChange, def
       setError(`Failed to pull ${repoPath}: ${err}`);
     } finally {
       setPullingRepos(prev => {
+        const next = new Set(prev);
+        next.delete(repoPath);
+        return next;
+      });
+    }
+  };
+
+  const handleClean = async (repoPath: string) => {
+    setCleaningRepos(prev => new Set(prev).add(repoPath));
+    try {
+      const result = await api.cleanRepo(repoPath);
+      const totalRemoved = result.filesRemoved.length + result.directoriesRemoved.length;
+      if (totalRemoved === 0) {
+        setError(`No ignored files to clean in ${repoPath.split('/').pop()}`);
+      }
+      // Refresh scan to update the status
+      scan(folders, true);
+    } catch (err) {
+      setError(`Failed to clean ${repoPath}: ${err}`);
+    } finally {
+      setCleaningRepos(prev => {
         const next = new Set(prev);
         next.delete(repoPath);
         return next;
@@ -339,7 +361,7 @@ export default function ScanResults({ folders, scanState, onScanStateChange, def
                       <RepoSection title="Uncommitted Changes" repos={result.withChanges || []} color="yellow" onPull={handlePull} onOpenInTerminal={handleOpenInTerminal} onOpenInEditor={handleOpenInEditor} defaultTerminalName={defaultTerminal?.displayName} defaultEditorName={defaultEditor?.displayName} pullingRepos={pullingRepos} disablePull />
                       <RepoSection title="Unpushed Commits" repos={result.withUnpushed || []} color="orange" onPull={handlePull} onOpenInTerminal={handleOpenInTerminal} onOpenInEditor={handleOpenInEditor} defaultTerminalName={defaultTerminal?.displayName} defaultEditorName={defaultEditor?.displayName} pullingRepos={pullingRepos} />
                       <RepoSection title="Unpulled Commits" repos={result.withUnpulled || []} color="purple" onPull={handlePull} onOpenInTerminal={handleOpenInTerminal} onOpenInEditor={handleOpenInEditor} defaultTerminalName={defaultTerminal?.displayName} defaultEditorName={defaultEditor?.displayName} pullingRepos={pullingRepos} onPullAll={() => handlePullAllUnpulled(result.withUnpulled || [])} isPullingAll={isPullingAllUnpulled} />
-                      <RepoSection title="Clean" repos={result.clean || []} color="green" muted onPull={handlePull} onOpenInTerminal={handleOpenInTerminal} onOpenInEditor={handleOpenInEditor} defaultTerminalName={defaultTerminal?.displayName} defaultEditorName={defaultEditor?.displayName} pullingRepos={pullingRepos} />
+                      <RepoSection title="Clean" repos={result.clean || []} color="green" muted onPull={handlePull} onOpenInTerminal={handleOpenInTerminal} onOpenInEditor={handleOpenInEditor} onClean={handleClean} defaultTerminalName={defaultTerminal?.displayName} defaultEditorName={defaultEditor?.displayName} pullingRepos={pullingRepos} cleaningRepos={cleaningRepos} showCleanOption />
                       <RepoSection title="Uninitialized" repos={result.uninitialized || []} color="gray" muted onOpenInTerminal={handleOpenInTerminal} onOpenInEditor={handleOpenInEditor} defaultTerminalName={defaultTerminal?.displayName} defaultEditorName={defaultEditor?.displayName} />
                       <RepoSection title="Errors" repos={result.errors || []} color="red" showErrors onPull={handlePull} onOpenInTerminal={handleOpenInTerminal} onOpenInEditor={handleOpenInEditor} defaultTerminalName={defaultTerminal?.displayName} defaultEditorName={defaultEditor?.displayName} pullingRepos={pullingRepos} disablePull />
                     </div>

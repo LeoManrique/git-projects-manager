@@ -2,15 +2,16 @@ import { useState, useEffect, useCallback } from 'react';
 import { FolderManager } from './components/folders';
 import ScanResults, { ScanResultsState } from './components/ScanResults';
 import DefaultAppsSettings from './components/settings/DefaultAppsSettings';
+import GitCleanSettings from './components/settings/GitCleanSettings';
 import { KanbanBoard } from './components/kanban';
 import { ViewSwitcher, View } from './components/navigation';
 import { api } from './lib/api';
 import { MonitoredFolder, TerminalApp, EditorApp } from './types';
 import { useContextMenu } from './hooks';
-import { DotsIcon, FolderIcon, AppsIcon, CloseIcon } from './components/icons';
+import { DotsIcon, FolderIcon, AppsIcon, CloseIcon, CleanIcon } from './components/icons';
 import './App.css';
 
-type SettingsCategory = 'folders' | 'apps';
+type SettingsCategory = 'folders' | 'apps' | 'gitclean';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -28,6 +29,7 @@ function SettingsModal({ isOpen, onClose, folders, onRefreshFolders, onSettingsC
   const categories: { id: SettingsCategory; label: string; icon: React.ReactNode }[] = [
     { id: 'folders', label: 'Monitored Folders', icon: <FolderIcon /> },
     { id: 'apps', label: 'Default Apps', icon: <AppsIcon /> },
+    { id: 'gitclean', label: 'Git Clean', icon: <CleanIcon /> },
   ];
 
   return (
@@ -99,6 +101,9 @@ function SettingsModal({ isOpen, onClose, folders, onRefreshFolders, onSettingsC
             )}
             {activeCategory === 'apps' && (
               <DefaultAppsSettings onSettingsChange={onSettingsChange} />
+            )}
+            {activeCategory === 'gitclean' && (
+              <GitCleanSettings onSettingsChange={onSettingsChange} />
             )}
           </div>
         </div>
