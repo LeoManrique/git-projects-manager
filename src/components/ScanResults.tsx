@@ -169,7 +169,7 @@ export default function ScanResults({ folders, scanState, onScanStateChange, def
   const performScan = useCallback(async (foldersToScan: MonitoredFolder[]): Promise<Record<string, ScanResult>> => {
     const scanPromises = foldersToScan.map(async (folder) => {
       try {
-        const result = await api.scanFolder(folder.path);
+        const result = await api.scanFolder(folder.path, folder.onlyLocalChecks);
         return { id: folder.id, result, error: null };
       } catch (err) {
         return { id: folder.id, result: null, error: err };

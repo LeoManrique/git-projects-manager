@@ -36,20 +36,21 @@ impl ConfigManager {
         Ok(())
     }
 
-    pub fn add_folder(&self, path: String, name: String) -> Result<MonitoredFolder> {
+    pub fn add_folder(&self, path: String, name: String, only_local_checks: bool) -> Result<MonitoredFolder> {
         let mut config = self.load()?;
-        let folder = MonitoredFolder::new(path, name);
+        let folder = MonitoredFolder::new(path, name, only_local_checks);
         config.folders.push(folder.clone());
         self.save(&config)?;
         Ok(folder)
     }
 
-    pub fn update_folder(&self, id: String, path: String, name: String) -> Result<()> {
+    pub fn update_folder(&self, id: String, path: String, name: String, only_local_checks: bool) -> Result<()> {
         let mut config = self.load()?;
 
         if let Some(folder) = config.folders.iter_mut().find(|f| f.id == id) {
             folder.path = path;
             folder.name = name;
+            folder.only_local_checks = only_local_checks;
             self.save(&config)?;
         } else {
             return Err(anyhow::anyhow!("Folder not found"));

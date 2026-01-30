@@ -8,12 +8,12 @@ export const api = {
     return await invoke('get_monitored_folders');
   },
 
-  async addMonitoredFolder(path: string, name: string): Promise<MonitoredFolder> {
-    return await invoke('add_monitored_folder', { path, name });
+  async addMonitoredFolder(path: string, name: string, onlyLocalChecks: boolean): Promise<MonitoredFolder> {
+    return await invoke('add_monitored_folder', { path, name, onlyLocalChecks });
   },
 
-  async updateMonitoredFolder(id: string, path: string, name: string): Promise<void> {
-    await invoke('update_monitored_folder', { id, path, name });
+  async updateMonitoredFolder(id: string, path: string, name: string, onlyLocalChecks: boolean): Promise<void> {
+    await invoke('update_monitored_folder', { id, path, name, onlyLocalChecks });
   },
 
   async deleteMonitoredFolder(id: string): Promise<void> {
@@ -21,8 +21,8 @@ export const api = {
   },
 
   // Scanning
-  async scanFolder(path: string): Promise<ScanResult> {
-    return await invoke('scan_folder', { path });
+  async scanFolder(path: string, onlyLocalChecks: boolean): Promise<ScanResult> {
+    return await invoke('scan_folder', { path, onlyLocalChecks });
   },
 
   async cancelScan(): Promise<void> {

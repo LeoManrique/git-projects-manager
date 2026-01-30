@@ -5,7 +5,8 @@ import { BrowseFolderIcon } from '../icons';
 interface FolderFormProps {
   initialPath?: string;
   initialName?: string;
-  onSubmit: (path: string, name: string) => Promise<void>;
+  initialOnlyLocalChecks?: boolean;
+  onSubmit: (path: string, name: string, onlyLocalChecks: boolean) => Promise<void>;
   onCancel: () => void;
   submitLabel: string;
   isLoading: boolean;
@@ -15,6 +16,7 @@ interface FolderFormProps {
 export function FolderForm({
   initialPath = '',
   initialName = '',
+  initialOnlyLocalChecks = false,
   onSubmit,
   onCancel,
   submitLabel,
@@ -23,13 +25,15 @@ export function FolderForm({
 }: FolderFormProps) {
   const [formPath, setFormPath] = useState(initialPath);
   const [formName, setFormName] = useState(initialName);
+  const [formOnlyLocalChecks, setFormOnlyLocalChecks] = useState(initialOnlyLocalChecks);
   const [error, setError] = useState('');
 
   // Reset form when initial values change
   useEffect(() => {
     setFormPath(initialPath);
     setFormName(initialName);
-  }, [initialPath, initialName]);
+    setFormOnlyLocalChecks(initialOnlyLocalChecks);
+  }, [initialPath, initialName, initialOnlyLocalChecks]);
 
   const handleBrowse = async () => {
     try {
@@ -48,7 +52,7 @@ export function FolderForm({
       return;
     }
     setError('');
-    await onSubmit(formPath, formName);
+    await onSubmit(formPath, formName, formOnlyLocalChecks);
   };
 
   const containerClass = variant === 'standalone'
@@ -99,6 +103,19 @@ export function FolderForm({
             placeholder="e.g., My Projects"
             className={`w-full px-2 py-1.5 ${inputBgClass} border border-dark-border rounded text-text-primary text-xs placeholder-text-muted focus:outline-none focus:border-accent-blue/50`}
           />
+        </div>
+
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="onlyLocalChecks"
+            checked={formOnlyLocalChecks}
+            onChange={(e) => setFormOnlyLocalChecks(e.target.checked)}
+            className="w-3.5 h-3.5 bg-dark-bg border border-dark-border rounded accent-accent-blue focus:outline-none focus:ring-1 focus:ring-accent-blue/50"
+          />
+          <label htmlFor="onlyLocalChecks" className="text-text-primary text-xs cursor-pointer">
+            Only local checks (skip remote fetch/push/pull checks)
+          </label>
         </div>
 
         <div className="flex gap-1.5 justify-end pt-0.5">

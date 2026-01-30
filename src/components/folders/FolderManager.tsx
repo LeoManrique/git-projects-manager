@@ -34,18 +34,17 @@ export default function FolderManager({ folders, onRefresh }: FolderManagerProps
     }
   };
 
-  const handleAdd = async (path: string, name: string) => {
-    await executeOperation(() => api.addMonitoredFolder(path, name), 'Failed to add folder');
+  const handleAdd = async (path: string, name: string, onlyLocalChecks: boolean) => {
+    await executeOperation(() => api.addMonitoredFolder(path, name, onlyLocalChecks), 'Failed to add folder');
   };
 
-  const handleUpdate = async (path: string, name: string) => {
+  const handleUpdate = async (path: string, name: string, onlyLocalChecks: boolean) => {
     if (!editingId) return;
-    await executeOperation(() => api.updateMonitoredFolder(editingId, path, name), 'Failed to update folder');
+    await executeOperation(() => api.updateMonitoredFolder(editingId, path, name, onlyLocalChecks), 'Failed to update folder');
   };
 
-  const handleDelete = (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this folder?')) return;
-    executeOperation(() => api.deleteMonitoredFolder(id), 'Failed to delete folder');
+  const handleDelete = async (id: string) => {
+    await executeOperation(() => api.deleteMonitoredFolder(id), 'Failed to delete folder');
   };
 
   const toggleForm = () => {
@@ -136,6 +135,7 @@ export default function FolderManager({ folders, onRefresh }: FolderManagerProps
                   <FolderForm
                     initialPath={folder.path}
                     initialName={folder.name}
+                    initialOnlyLocalChecks={folder.onlyLocalChecks}
                     onSubmit={handleUpdate}
                     onCancel={resetForm}
                     submitLabel="Save"

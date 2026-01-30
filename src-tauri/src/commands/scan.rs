@@ -25,10 +25,11 @@ pub async fn clean_repo(path: String, state: State<'_, AppState>) -> Result<GitC
 #[tauri::command]
 pub async fn scan_folder(
     path: String,
+    only_local_checks: bool,
     state: State<'_, AppState>,
 ) -> Result<ScanResult, String> {
     let scanner = state.scanner.read();
-    let result = scanner.scan_folder(Path::new(&path));
+    let result = scanner.scan_folder(Path::new(&path), only_local_checks);
     Ok(result)
 }
 

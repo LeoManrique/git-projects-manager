@@ -7,7 +7,7 @@ pub struct StatusChecker;
 
 impl StatusChecker {
     /// Check the status of a repository at the given path
-    pub fn check(path: &Path) -> RepoStatus {
+    pub fn check(path: &Path, only_local_checks: bool) -> RepoStatus {
         let path_str = path.display().to_string();
 
         // Get branch - handle UnbornBranch (no commits yet) specially
@@ -55,8 +55,12 @@ impl StatusChecker {
             None
         };
 
-        // Check for unpushed/unpulled commits (only if has upstream)
-        let (has_unpushed, has_unpulled) = Self::check_remote_status(path);
+        // Check for unpushed/unpulled commits (skip if only_local_checks is enabled)
+        let (has_unpushed, has_unpulled) = if only_local_checks {
+            (None, None)
+        } else {
+            Self::check_remote_status(path)
+        };
 
         RepoStatus {
             path: path_str,

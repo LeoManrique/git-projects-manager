@@ -13,14 +13,17 @@ pub struct MonitoredFolder {
     pub id: String,
     pub path: String,
     pub name: String,
+    #[serde(default)]
+    pub only_local_checks: bool,
 }
 
 impl MonitoredFolder {
-    pub fn new(path: String, name: String) -> Self {
+    pub fn new(path: String, name: String, only_local_checks: bool) -> Self {
         Self {
             id: Uuid::new_v4().to_string(),
             path,
             name,
+            only_local_checks,
         }
     }
 }

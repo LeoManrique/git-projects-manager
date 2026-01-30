@@ -31,7 +31,7 @@ impl Scanner {
     }
 
     /// Scan a folder for git repositories and check their status
-    pub fn scan_folder(&self, path: &Path) -> ScanResult {
+    pub fn scan_folder(&self, path: &Path, only_local_checks: bool) -> ScanResult {
         let start_time = Instant::now();
 
         // Find all git repositories
@@ -44,7 +44,7 @@ impl Scanner {
         // Check status of all repositories in parallel
         let statuses: Vec<RepoStatus> = repositories
             .par_iter()
-            .map(|repo_path| StatusChecker::check(repo_path))
+            .map(|repo_path| StatusChecker::check(repo_path, only_local_checks))
             .collect();
 
         // Categorize results
