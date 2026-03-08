@@ -11,6 +11,7 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 /// Creates a git command with platform-specific settings to hide console windows
 fn git_command() -> Command {
+    #[allow(unused_mut)]
     let mut cmd = Command::new("git");
     #[cfg(target_os = "windows")]
     cmd.creation_flags(CREATE_NO_WINDOW);

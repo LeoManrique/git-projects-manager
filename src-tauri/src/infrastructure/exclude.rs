@@ -24,6 +24,7 @@ pub static EXCLUDED_DIRS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
     // Build outputs
     set.insert("dist");
     set.insert("build");
+    set.insert(".build");
     set.insert("out");
     set.insert("output");
     set.insert("bin");
@@ -37,6 +38,9 @@ pub static EXCLUDED_DIRS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
     set.insert(".output");
     set.insert(".vercel");
     set.insert(".netlify");
+    set.insert("checkouts");
+    set.insert("gen");
+    set.insert(".tauri");
 
     // IDE/Editor
     set.insert(".idea");
