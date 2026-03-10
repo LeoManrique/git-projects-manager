@@ -81,3 +81,25 @@ pub static EXCLUDED_DIRS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
 
     set
 });
+
+/// Directories to skip when scanning inside a discovered git repository.
+/// These commonly contain vendored/cloned dependencies that are not
+/// independent projects the user wants to manage.
+pub static NESTED_EXCLUDED_DIRS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
+    let mut set = HashSet::new();
+
+    // Common dependency/vendored source directories
+    set.insert("lib");
+    set.insert("libs");
+    set.insert("third_party");
+    set.insert("thirdparty");
+    set.insert("3rdparty");
+    set.insert("external");
+    set.insert("extern");
+    set.insert("deps");
+    set.insert("subprojects");
+    set.insert("contrib");
+    set.insert("vendored");
+
+    set
+});
