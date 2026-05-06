@@ -1,5 +1,6 @@
-use crate::domain::{
-    config::ConfigManager, kanban::KanbanManager, scanner::Scanner, settings::SettingsManager,
+use crate::domain::scanner::Scanner;
+use crate::infrastructure::{
+    config_store::ConfigManager, kanban_store::KanbanManager, settings_store::SettingsManager,
 };
 use parking_lot::RwLock;
 use std::sync::Arc;

@@ -1,5 +1,5 @@
 use crate::infrastructure::{
-    exclude::{EXCLUDED_DIRS, NESTED_EXCLUDED_DIRS},
+    ignore_patterns::{EXCLUDED_DIRS, NESTED_EXCLUDED_DIRS},
     git::GitOperations,
 };
 use std::path::PathBuf;

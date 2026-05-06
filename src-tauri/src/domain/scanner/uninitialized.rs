@@ -1,5 +1,5 @@
 use crate::domain::RepoStatus;
-use crate::infrastructure::exclude::EXCLUDED_DIRS;
+use crate::infrastructure::ignore_patterns::EXCLUDED_DIRS;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 

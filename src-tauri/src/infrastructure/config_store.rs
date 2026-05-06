@@ -1,4 +1,4 @@
-use super::{Config, MonitoredFolder};
+use crate::domain::{Config, MonitoredFolder};
 use anyhow::Result;
 use std::fs;
 use std::path::PathBuf;
