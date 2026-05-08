@@ -62,11 +62,20 @@ else
     done
 
     # sed -i.bak + rm is the portable form (BSD and GNU sed both accept it).
-    # Use 0,/pattern/ to replace only the first occurrence — guards against
-    # hitting a same-versioned dependency further down the file.
-    sed -i.bak "0,/\"version\": \"$CURRENT_VERSION\"/s//\"version\": \"$VERSION\"/" "$PACKAGE_JSON"
-    sed -i.bak "0,/^version = \"$CURRENT_VERSION\"/s//version = \"$VERSION\"/" "$CARGO_TOML"
+    # Patterns are already specific: package.json deps use "^x.y.z" / "~x.y.z"
+    # so they don't collide with "version": "x.y.z"; Cargo.toml deps use
+    # `name = { version = "..." }` so anchoring to ^version= only hits [package].
+    # Avoid the 0,/RE/s//.../ form — it's a GNU-sed extension that silently
+    # no-ops on BSD/macOS sed.
+    sed -i.bak "s/\"version\": \"$CURRENT_VERSION\"/\"version\": \"$VERSION\"/" "$PACKAGE_JSON"
+    sed -i.bak "s/^version = \"$CURRENT_VERSION\"\$/version = \"$VERSION\"/" "$CARGO_TOML"
     rm -f "$PACKAGE_JSON.bak" "$CARGO_TOML.bak"
+
+    # Verify both files actually changed — sed exits 0 on pattern miss.
+    NEW_PJ=$(sed -n 's/.*"version": "\([0-9][0-9.]*\)".*/\1/p' "$PACKAGE_JSON" | head -1)
+    NEW_CT=$(sed -n 's/^version = "\([0-9][0-9.]*\)".*/\1/p' "$CARGO_TOML" | head -1)
+    [ "$NEW_PJ" = "$VERSION" ] || error "Failed to bump package.json (still $NEW_PJ)"
+    [ "$NEW_CT" = "$VERSION" ] || error "Failed to bump Cargo.toml (still $NEW_CT)"
 
     # Cargo.lock also pins the package version — refresh it so the bump commit
     # passes `cargo check` cleanly and CI doesn't see a dirty lockfile.
@@ -113,11 +122,19 @@ fi
 # ── Step 4: Build app ──
 step 4 "Building app for $PLATFORM"
 
+# Only build the bundle format we actually ship per platform — skips the
+# slow .dmg step on macOS (we ship a zipped .app instead).
+case "$OS" in
+  darwin)  BUNDLE_TARGET="app" ;;
+  linux)   BUNDLE_TARGET="deb" ;;
+  windows) BUNDLE_TARGET="nsis" ;;
+esac
+
 cd "$PROJECT_ROOT"
 # Wipe prior bundle output so artifact globs in the next step can't pick up
 # leftovers from an older version.
 rm -rf "$PROJECT_ROOT/src-tauri/target/release/bundle"
-pnpm tauri build
+pnpm tauri build --bundles "$BUNDLE_TARGET"
 success "Build complete"
 
 # ── Step 5: Package artifact ──
