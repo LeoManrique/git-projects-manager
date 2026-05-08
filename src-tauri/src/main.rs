@@ -48,6 +48,7 @@ fn main() {
             commands::settings::get_available_editors,
             commands::settings::open_in_terminal,
             commands::settings::open_in_editor,
+            commands::settings::open_in_lms_github,
             commands::settings::get_git_clean_settings,
             commands::settings::set_git_clean_settings,
             commands::kanban::get_kanban_state,

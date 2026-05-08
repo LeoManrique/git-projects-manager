@@ -78,6 +78,10 @@ export const api = {
     await invoke('open_in_editor', { path, editorId });
   },
 
+  async openInLmsGithub(path: string): Promise<void> {
+    await invoke('open_in_lms_github', { path });
+  },
+
   // Git Clean Settings
   async getGitCleanSettings(): Promise<GitCleanSettings> {
     return await invoke('get_git_clean_settings');

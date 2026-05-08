@@ -38,6 +38,16 @@ pub fn open_in_terminal(path: String, terminal_id: String, state: State<AppState
 }
 
 #[tauri::command]
+pub fn open_in_lms_github(path: String) -> Result<(), String> {
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+    Command::new(shell)
+        .args(["-lc", "exec lms-github \"$0\"", &path])
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
 pub fn open_in_editor(path: String, editor_id: String, state: State<AppState>) -> Result<(), String> {
     let editors = state.settings_manager.get_available_editors();
 

@@ -14,6 +14,7 @@ export interface RepoSectionProps {
   onPullAll?: () => void;
   onOpenInTerminal?: (repoPath: string) => void;
   onOpenInEditor?: (repoPath: string) => void;
+  onOpenInLmsGithub?: (repoPath: string) => void;
   onClean?: (repoPath: string) => void;
   onCleanAll?: () => void;
   pullingRepos?: Set<string>;
@@ -25,6 +26,7 @@ export interface RepoSectionProps {
   defaultEditorName?: string;
   showEditorOption?: boolean;
   showTerminalOption?: boolean;
+  showLmsGithubOption?: boolean;
   showPullOption?: boolean;
   showCleanOption?: boolean;
 }
@@ -40,6 +42,7 @@ export function RepoSection({
   onPullAll,
   onOpenInTerminal,
   onOpenInEditor,
+  onOpenInLmsGithub,
   onClean,
   onCleanAll,
   pullingRepos = new Set(),
@@ -51,6 +54,7 @@ export function RepoSection({
   defaultEditorName,
   showEditorOption = true,
   showTerminalOption = true,
+  showLmsGithubOption = true,
   showPullOption = true,
   showCleanOption = false,
 }: RepoSectionProps) {
@@ -86,7 +90,7 @@ export function RepoSection({
       const rect = button.getBoundingClientRect();
       setMenuPosition({
         top: rect.bottom + 4,
-        left: rect.right - 140,
+        left: rect.right - 120,
       });
     }
     setOpenMenuPath(repoPath);
@@ -97,7 +101,7 @@ export function RepoSection({
       const rect = sectionMenuButtonRef.current.getBoundingClientRect();
       setSectionMenuPosition({
         top: rect.bottom + 4,
-        left: rect.right - 160,
+        left: rect.right - 140,
       });
     }
     setShowSectionMenu(true);
@@ -130,7 +134,7 @@ export function RepoSection({
             {showSectionMenu && sectionMenuPosition && (
               <div
                 ref={sectionMenuRef}
-                className="fixed z-50 bg-dark-surface border border-dark-border rounded shadow-lg py-1 min-w-[160px]"
+                className="fixed z-50 bg-dark-surface border border-dark-border rounded shadow-lg py-0.5 min-w-[140px]"
                 style={{ top: sectionMenuPosition.top, left: sectionMenuPosition.left }}
               >
                 {onPullAll && (
@@ -140,7 +144,7 @@ export function RepoSection({
                       setShowSectionMenu(false);
                       onPullAll();
                     }}
-                    className="w-full text-left px-3 py-1.5 text-xs hover:bg-dark-borderSubtle transition-colors"
+                    className="w-full text-left px-2.5 py-1 text-xs hover:bg-dark-borderSubtle transition-colors"
                   >
                     Fetch & Pull All ({repos.length})
                   </button>
@@ -152,7 +156,7 @@ export function RepoSection({
                       setShowSectionMenu(false);
                       onCleanAll();
                     }}
-                    className="w-full text-left px-3 py-1.5 text-xs hover:bg-dark-borderSubtle transition-colors"
+                    className="w-full text-left px-2.5 py-1 text-xs hover:bg-dark-borderSubtle transition-colors"
                   >
                     Clean All ({repos.length})
                   </button>
@@ -180,7 +184,7 @@ export function RepoSection({
                     </span>
                   )}
                 </span>
-                {((showEditorOption && onOpenInEditor) || (showTerminalOption && onOpenInTerminal) || (showPullOption && onPull) || (showCleanOption && onClean)) && (
+                {((showEditorOption && onOpenInEditor) || (showTerminalOption && onOpenInTerminal) || (showLmsGithubOption && onOpenInLmsGithub) || (showPullOption && onPull) || (showCleanOption && onClean)) && (
                   <>
                     <button
                       ref={(el) => {
@@ -206,7 +210,7 @@ export function RepoSection({
                     {isMenuOpen && menuPosition && (
                       <div
                         ref={menuRef}
-                        className="fixed z-50 bg-dark-surface border border-dark-border rounded shadow-lg py-1 min-w-[140px]"
+                        className="fixed z-50 bg-dark-surface border border-dark-border rounded shadow-lg py-0.5 min-w-[120px]"
                         style={{ top: menuPosition.top, left: menuPosition.left }}
                       >
                         {showEditorOption && onOpenInEditor && defaultEditorName && (
@@ -216,7 +220,7 @@ export function RepoSection({
                               setOpenMenuPath(null);
                               onOpenInEditor(repo.path);
                             }}
-                            className="w-full text-left px-3 py-1.5 text-xs hover:bg-dark-borderSubtle transition-colors"
+                            className="w-full text-left px-2.5 py-1 text-xs hover:bg-dark-borderSubtle transition-colors"
                           >
                             Open in {defaultEditorName}
                           </button>
@@ -228,9 +232,21 @@ export function RepoSection({
                               setOpenMenuPath(null);
                               onOpenInTerminal(repo.path);
                             }}
-                            className="w-full text-left px-3 py-1.5 text-xs hover:bg-dark-borderSubtle transition-colors"
+                            className="w-full text-left px-2.5 py-1 text-xs hover:bg-dark-borderSubtle transition-colors"
                           >
                             Open in {defaultTerminalName}
+                          </button>
+                        )}
+                        {showLmsGithubOption && onOpenInLmsGithub && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOpenMenuPath(null);
+                              onOpenInLmsGithub(repo.path);
+                            }}
+                            className="w-full text-left px-2.5 py-1 text-xs hover:bg-dark-borderSubtle transition-colors"
+                          >
+                            Open in LMS Github
                           </button>
                         )}
                         {showPullOption && onPull && (
@@ -241,7 +257,7 @@ export function RepoSection({
                               onPull(repo.path);
                             }}
                             disabled={disablePull}
-                            className="w-full text-left px-3 py-1.5 text-xs hover:bg-dark-borderSubtle transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                            className="w-full text-left px-2.5 py-1 text-xs hover:bg-dark-borderSubtle transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                           >
                             Fetch & Pull
                           </button>
@@ -253,7 +269,7 @@ export function RepoSection({
                               setOpenMenuPath(null);
                               onClean(repo.path);
                             }}
-                            className="w-full text-left px-3 py-1.5 text-xs hover:bg-dark-borderSubtle transition-colors"
+                            className="w-full text-left px-2.5 py-1 text-xs hover:bg-dark-borderSubtle transition-colors"
                           >
                             Clean Ignored Files
                           </button>

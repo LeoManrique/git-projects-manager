@@ -51,6 +51,14 @@ export default function ScanResults({ folders, scanState, onScanStateChange, def
     }
   };
 
+  const handleOpenInLmsGithub = async (repoPath: string) => {
+    try {
+      await api.openInLmsGithub(repoPath);
+    } catch (err) {
+      setError(`Failed to open LMS Github: ${err}`);
+    }
+  };
+
   const handlePull = async (repoPath: string) => {
     setPullingRepos(prev => new Set(prev).add(repoPath));
     try {
@@ -390,12 +398,12 @@ export default function ScanResults({ folders, scanState, onScanStateChange, def
                   >
                     {/* Repo sections - scrollable */}
                     <div className={`px-2.5 py-2.5 space-y-3 ${isLast ? 'flex-1 overflow-auto' : ''}`}>
-                      <RepoSection title="Uncommitted Changes" repos={result.withChanges || []} color="yellow" onPull={handlePull} onOpenInTerminal={handleOpenInTerminal} onOpenInEditor={handleOpenInEditor} defaultTerminalName={defaultTerminal?.displayName} defaultEditorName={defaultEditor?.displayName} pullingRepos={pullingRepos} disablePull />
-                      <RepoSection title="Unpushed Commits" repos={result.withUnpushed || []} color="orange" onPull={handlePull} onOpenInTerminal={handleOpenInTerminal} onOpenInEditor={handleOpenInEditor} defaultTerminalName={defaultTerminal?.displayName} defaultEditorName={defaultEditor?.displayName} pullingRepos={pullingRepos} />
-                      <RepoSection title="Unpulled Commits" repos={result.withUnpulled || []} color="purple" onPull={handlePull} onOpenInTerminal={handleOpenInTerminal} onOpenInEditor={handleOpenInEditor} defaultTerminalName={defaultTerminal?.displayName} defaultEditorName={defaultEditor?.displayName} pullingRepos={pullingRepos} onPullAll={() => handlePullAllUnpulled(result.withUnpulled || [])} isPullingAll={isPullingAllUnpulled} />
-                      <RepoSection title="Clean" repos={result.clean || []} color="green" muted onPull={handlePull} onOpenInTerminal={handleOpenInTerminal} onOpenInEditor={handleOpenInEditor} onClean={handleClean} onCleanAll={() => handleCleanAllClean(result.clean || [])} defaultTerminalName={defaultTerminal?.displayName} defaultEditorName={defaultEditor?.displayName} pullingRepos={pullingRepos} cleaningRepos={cleaningRepos} isCleaningAll={isCleaningAllClean} showCleanOption />
-                      <RepoSection title="Uninitialized" repos={result.uninitialized || []} color="gray" muted onOpenInTerminal={handleOpenInTerminal} onOpenInEditor={handleOpenInEditor} defaultTerminalName={defaultTerminal?.displayName} defaultEditorName={defaultEditor?.displayName} />
-                      <RepoSection title="Errors" repos={result.errors || []} color="red" showErrors onPull={handlePull} onOpenInTerminal={handleOpenInTerminal} onOpenInEditor={handleOpenInEditor} defaultTerminalName={defaultTerminal?.displayName} defaultEditorName={defaultEditor?.displayName} pullingRepos={pullingRepos} disablePull />
+                      <RepoSection title="Uncommitted Changes" repos={result.withChanges || []} color="yellow" onPull={handlePull} onOpenInTerminal={handleOpenInTerminal} onOpenInEditor={handleOpenInEditor} onOpenInLmsGithub={handleOpenInLmsGithub} defaultTerminalName={defaultTerminal?.displayName} defaultEditorName={defaultEditor?.displayName} pullingRepos={pullingRepos} disablePull />
+                      <RepoSection title="Unpushed Commits" repos={result.withUnpushed || []} color="orange" onPull={handlePull} onOpenInTerminal={handleOpenInTerminal} onOpenInEditor={handleOpenInEditor} onOpenInLmsGithub={handleOpenInLmsGithub} defaultTerminalName={defaultTerminal?.displayName} defaultEditorName={defaultEditor?.displayName} pullingRepos={pullingRepos} />
+                      <RepoSection title="Unpulled Commits" repos={result.withUnpulled || []} color="purple" onPull={handlePull} onOpenInTerminal={handleOpenInTerminal} onOpenInEditor={handleOpenInEditor} onOpenInLmsGithub={handleOpenInLmsGithub} defaultTerminalName={defaultTerminal?.displayName} defaultEditorName={defaultEditor?.displayName} pullingRepos={pullingRepos} onPullAll={() => handlePullAllUnpulled(result.withUnpulled || [])} isPullingAll={isPullingAllUnpulled} />
+                      <RepoSection title="Clean" repos={result.clean || []} color="green" muted onPull={handlePull} onOpenInTerminal={handleOpenInTerminal} onOpenInEditor={handleOpenInEditor} onOpenInLmsGithub={handleOpenInLmsGithub} onClean={handleClean} onCleanAll={() => handleCleanAllClean(result.clean || [])} defaultTerminalName={defaultTerminal?.displayName} defaultEditorName={defaultEditor?.displayName} pullingRepos={pullingRepos} cleaningRepos={cleaningRepos} isCleaningAll={isCleaningAllClean} showCleanOption />
+                      <RepoSection title="Uninitialized" repos={result.uninitialized || []} color="gray" muted onOpenInTerminal={handleOpenInTerminal} onOpenInEditor={handleOpenInEditor} onOpenInLmsGithub={handleOpenInLmsGithub} defaultTerminalName={defaultTerminal?.displayName} defaultEditorName={defaultEditor?.displayName} />
+                      <RepoSection title="Errors" repos={result.errors || []} color="red" showErrors onPull={handlePull} onOpenInTerminal={handleOpenInTerminal} onOpenInEditor={handleOpenInEditor} onOpenInLmsGithub={handleOpenInLmsGithub} defaultTerminalName={defaultTerminal?.displayName} defaultEditorName={defaultEditor?.displayName} pullingRepos={pullingRepos} disablePull />
                     </div>
 
                     {/* Execution Time - pinned at bottom */}
