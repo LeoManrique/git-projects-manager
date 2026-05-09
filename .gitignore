@@ -30,3 +30,5 @@ desktop/src-tauri/target
 server/target
 server/.env
 server/*.db
+/node_modules
+/dist
