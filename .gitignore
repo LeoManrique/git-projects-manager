@@ -7,12 +7,7 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
-
-# Editor directories and files
+# Editor / OS
 .vscode/*
 !.vscode/extensions.json
 .idea
@@ -23,9 +18,13 @@ dist-ssr
 *.sln
 *.sw?
 
-# Tauri
-src-tauri/target
-/dist-release
+# Desktop
+desktop/node_modules
+desktop/dist
+desktop/dist-ssr
+desktop/dist-release
+desktop/src-tauri/target
+*.local
 
 # Sync server
 server/target

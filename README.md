@@ -1,33 +1,8 @@
-# Git Projects Manager
+# git-projects-manager
 
-A desktop app for monitoring Git repositories across multiple folders.
+Monorepo with two projects:
 
-## Features
+- [`desktop/`](./desktop) — the Tauri desktop app (React + Rust). Build/install scripts under `desktop/scripts/`.
+- [`server/`](./server) — the optional sync server (axum + SQLite). Stores per-user kanban state, authenticated via Google OAuth.
 
-- **Repository scanning** - Detect uncommitted changes and unpushed commits
-- **Parallel scanning** - Fast multi-threaded scanning with Rust
-- **Kanban board** - Track project priority with drag-and-drop
-- **Cross-platform** - Windows, macOS, Linux
-
-## Quick Start
-
-```bash
-pnpm install
-pnpm run tauri:dev
-```
-
-## Tech Stack
-
-- **Frontend**: React + TypeScript + Tailwind
-- **Backend**: Tauri v2 (Rust)
-- **Git**: git2 + git CLI
-
-## Documentation
-
-- [Quick Start](docs/QUICK_START.md)
-- [Setup Guide](docs/SETUP.md)
-- [Design & Architecture](docs/DESIGN.md)
-
-## License
-
-MIT
+The desktop app works standalone; the sync server is optional and only used when the user signs in.
