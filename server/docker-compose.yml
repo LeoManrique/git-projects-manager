@@ -1,0 +1,35 @@
+services:
+  gpm-sync:
+    build: .
+    container_name: gpm-sync
+    restart: unless-stopped
+    environment:
+      # Required: your Google OAuth Desktop-app client ID.
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      # Optional overrides
+      BIND_ADDR: 0.0.0.0:8787
+      DATABASE_URL: /data/sync.db
+      SESSION_TTL_DAYS: "60"
+      RUST_LOG: info
+    volumes:
+      - gpm-sync-data:/data
+    # Traefik labels — fill these in for your stack. Below is a template that
+    # assumes a Traefik instance is already attached to a `traefik` external
+    # network and a router named `websecure` with Let's Encrypt resolver `le`.
+    networks:
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik"
+      - "traefik.http.routers.gpm-sync.rule=Host(`${SYNC_HOST:-gpm-sync.example.com}`)"
+      - "traefik.http.routers.gpm-sync.entrypoints=websecure"
+      - "traefik.http.routers.gpm-sync.tls=true"
+      - "traefik.http.routers.gpm-sync.tls.certresolver=le"
+      - "traefik.http.services.gpm-sync.loadbalancer.server.port=8787"
+
+volumes:
+  gpm-sync-data:
+
+networks:
+  traefik:
+    external: true

@@ -26,3 +26,8 @@ dist-ssr
 # Tauri
 src-tauri/target
 /dist-release
+
+# Sync server
+server/target
+server/.env
+server/*.db

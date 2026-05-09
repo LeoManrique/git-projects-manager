@@ -80,10 +80,10 @@ export function useKanban(): UseKanbanReturn {
     const result: Record<ColumnId, KanbanCardView[]> = {
       backlog: [],
       'active-low': [],
-      'active-mid': [],
       'active-high': [],
       review: [],
       done: [],
+      closed: [],
     };
     if (!state) return result;
 

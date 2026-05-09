@@ -1,6 +1,6 @@
 import { ColorVariant } from '../components/scan/colorStyles';
 
-export type ColumnId = 'backlog' | 'active-low' | 'active-mid' | 'active-high' | 'review' | 'done';
+export type ColumnId = 'backlog' | 'active-low' | 'active-high' | 'review' | 'done' | 'closed';
 
 export interface ColumnConfig {
   id: ColumnId;
@@ -12,6 +12,6 @@ export const KANBAN_COLUMNS: ColumnConfig[] = [
   { id: 'backlog', label: 'Backlog', color: 'gray' },
   { id: 'active-low', label: 'Active - Low Prio.', color: 'blue' },
   { id: 'active-high', label: 'Active - High Prio.', color: 'red' },
-  { id: 'review', label: 'Review', color: 'yellow' },
   { id: 'done', label: 'Done', color: 'green' },
+  { id: 'closed', label: 'Closed', color: 'yellow' },
 ];
