@@ -9,4 +9,6 @@ export type {
   KanbanState,
   KanbanRefresh,
   KanbanCardView,
+  SyncStatus,
 } from './kanban';
+export type { SyncUser } from './auth';

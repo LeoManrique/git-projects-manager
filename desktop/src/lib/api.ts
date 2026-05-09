@@ -11,6 +11,7 @@ import {
   GhAuthStatus,
   GitCleanSettings,
   GitCleanResult,
+  SyncUser,
 } from '../types';
 
 export const api = {
@@ -121,5 +122,18 @@ export const api = {
 
   async openUrl(url: string): Promise<void> {
     await invoke('open_url', { url });
+  },
+
+  // Sync auth
+  async signInWithGoogle(): Promise<SyncUser> {
+    return await invoke('sign_in_with_google');
+  },
+
+  async signOut(): Promise<void> {
+    await invoke('sign_out');
+  },
+
+  async getSyncUser(): Promise<SyncUser | null> {
+    return await invoke('get_sync_user');
   },
 };

@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod commands;
+mod config;
 mod domain;
 mod infrastructure;
 mod state;
@@ -56,6 +57,9 @@ fn main() {
             commands::kanban::move_kanban_card,
             commands::kanban::delete_github_repo,
             commands::kanban::open_url,
+            commands::auth::sign_in_with_google,
+            commands::auth::sign_out,
+            commands::auth::get_sync_user,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

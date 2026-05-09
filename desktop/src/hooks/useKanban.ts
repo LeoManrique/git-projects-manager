@@ -1,13 +1,15 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { api } from '../lib/api';
-import { GhAuthStatus, GhRepo, KanbanCardView, KanbanState } from '../types';
+import { GhAuthStatus, GhRepo, KanbanCardView, KanbanState, SyncStatus } from '../types';
 import { KANBAN_COLUMNS, ColumnId } from '../config/kanbanColumns';
 
 const REFRESH_DEBOUNCE_MS = 1500;
+const SYNC_USER_EVENT = 'sync-user-changed';
 
 interface UseKanbanReturn {
   columns: Record<ColumnId, KanbanCardView[]>;
   auth: GhAuthStatus | null;
+  syncStatus: SyncStatus;
   isLoading: boolean;
   isRefreshing: boolean;
   error: string | null;
@@ -21,6 +23,7 @@ export function useKanban(): UseKanbanReturn {
   const [auth, setAuth] = useState<GhAuthStatus | null>(null);
   const [state, setState] = useState<KanbanState | null>(null);
   const [repos, setRepos] = useState<GhRepo[]>([]);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>('disabled');
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,6 +46,7 @@ export function useKanban(): UseKanbanReturn {
       const result = await api.refreshKanban();
       setRepos(result.repos);
       setState(result.state);
+      setSyncStatus(result.syncStatus);
       lastRefreshRef.current = Date.now();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -74,6 +78,13 @@ export function useKanban(): UseKanbanReturn {
     };
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
+  }, [doRefresh]);
+
+  // Refresh whenever sync user changes (signed in / signed out).
+  useEffect(() => {
+    const onAuthChange = () => { doRefresh(); };
+    window.addEventListener(SYNC_USER_EVENT, onAuthChange);
+    return () => window.removeEventListener(SYNC_USER_EVENT, onAuthChange);
   }, [doRefresh]);
 
   const columns = useMemo(() => {
@@ -144,6 +155,7 @@ export function useKanban(): UseKanbanReturn {
   return {
     columns,
     auth,
+    syncStatus,
     isLoading,
     isRefreshing,
     error,

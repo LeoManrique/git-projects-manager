@@ -3,4 +3,7 @@ pub mod git;
 pub mod github_cli;
 pub mod ignore_patterns;
 pub mod kanban_store;
+pub mod oauth;
 pub mod settings_store;
+pub mod sync_client;
+pub mod token_store;

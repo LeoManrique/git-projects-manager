@@ -23,9 +23,12 @@ export interface KanbanState {
   cards: Record<string, KanbanCard>;
 }
 
+export type SyncStatus = 'disabled' | 'synced' | 'offline' | 'expired';
+
 export interface KanbanRefresh {
   repos: GhRepo[];
   state: KanbanState;
+  syncStatus: SyncStatus;
 }
 
 export type GhAuthStatus =
