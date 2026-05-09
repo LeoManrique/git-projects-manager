@@ -1,54 +1,40 @@
 use crate::domain::kanban::KanbanState;
+use crate::infrastructure::github_cli::{self, GhAuthStatus, GhRepo};
 use crate::state::AppState;
+use serde::Serialize;
 use tauri::State;
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KanbanRefresh {
+    pub repos: Vec<GhRepo>,
+    pub state: KanbanState,
+}
+
 #[tauri::command]
-pub fn get_kanban_state(state: State<AppState>) -> Result<KanbanState, String> {
-    state.kanban_manager.load().map_err(|e| e.to_string())
+pub fn check_gh_auth() -> GhAuthStatus {
+    github_cli::check_auth()
+}
+
+#[tauri::command]
+pub fn refresh_kanban(state: State<AppState>) -> Result<KanbanRefresh, String> {
+    let repos = github_cli::list_repos().map_err(|e| e.to_string())?;
+    let names: Vec<String> = repos.iter().map(|r| r.name_with_owner.clone()).collect();
+    let kanban_state = state
+        .kanban_manager
+        .sync_with_repos(names)
+        .map_err(|e| e.to_string())?;
+    Ok(KanbanRefresh { repos, state: kanban_state })
 }
 
 #[tauri::command]
 pub fn move_kanban_card(
     state: State<AppState>,
-    repo_path: String,
+    name_with_owner: String,
     to_column: String,
 ) -> Result<KanbanState, String> {
     state
         .kanban_manager
-        .move_card(&repo_path, &to_column)
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn update_kanban_notes(
-    state: State<AppState>,
-    repo_path: String,
-    notes: Option<String>,
-) -> Result<KanbanState, String> {
-    state
-        .kanban_manager
-        .update_notes(&repo_path, notes)
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn remove_kanban_card(
-    state: State<AppState>,
-    repo_path: String,
-) -> Result<KanbanState, String> {
-    state
-        .kanban_manager
-        .remove_card(&repo_path)
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn sync_kanban_with_repos(
-    state: State<AppState>,
-    repo_paths: Vec<String>,
-) -> Result<KanbanState, String> {
-    state
-        .kanban_manager
-        .sync_with_repos(repo_paths)
+        .move_card(&name_with_owner, &to_column)
         .map_err(|e| e.to_string())
 }

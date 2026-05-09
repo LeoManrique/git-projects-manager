@@ -7,9 +7,7 @@ import { colorStyles } from '../scan/colorStyles';
 interface KanbanColumnProps {
   column: ColumnConfig;
   cards: KanbanCardView[];
-  onUpdateNotes: (repoPath: string, notes: string | null) => void;
-  onRemoveCard: (repoPath: string) => void;
-  onDragStart: (repoPath: string) => void;
+  onDragStart: (nameWithOwner: string) => void;
   onDragEnd: () => void;
   onDrop: () => void;
 }
@@ -17,8 +15,6 @@ interface KanbanColumnProps {
 export function KanbanColumn({
   column,
   cards,
-  onUpdateNotes,
-  onRemoveCard,
   onDragStart,
   onDragEnd,
   onDrop,
@@ -59,7 +55,6 @@ export function KanbanColumn({
         ${isOver ? 'ring-2 ring-accent-blue bg-dark-elevated/50' : ''}
       `}
     >
-      {/* Header */}
       <div className={`px-3 py-2 border-b ${styles.border}`}>
         <div className="flex items-center justify-between">
           <span className={`font-medium text-sm ${styles.text}`}>{column.label}</span>
@@ -67,17 +62,14 @@ export function KanbanColumn({
         </div>
       </div>
 
-      {/* Cards */}
       <div className="flex-1 p-2 space-y-2 overflow-y-auto">
         {cards.length === 0 ? (
           <div className="text-center text-text-muted text-xs py-4">No projects</div>
         ) : (
           cards.map((cardView) => (
             <KanbanCard
-              key={cardView.card.repoPath}
+              key={cardView.card.nameWithOwner}
               cardView={cardView}
-              onUpdateNotes={onUpdateNotes}
-              onRemoveCard={onRemoveCard}
               onDragStart={onDragStart}
               onDragEnd={onDragEnd}
             />

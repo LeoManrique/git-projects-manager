@@ -1,83 +1,80 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { api } from '../lib/api';
-import { KanbanState, KanbanCardView, ScanResult, MonitoredFolder } from '../types';
+import { GhAuthStatus, GhRepo, KanbanCardView, KanbanState } from '../types';
 import { KANBAN_COLUMNS, ColumnId } from '../config/kanbanColumns';
 
-interface UseKanbanProps {
-  scanResults: Record<string, ScanResult>;
-  folders: MonitoredFolder[];
-}
+const REFRESH_DEBOUNCE_MS = 1500;
 
 interface UseKanbanReturn {
   columns: Record<ColumnId, KanbanCardView[]>;
+  auth: GhAuthStatus | null;
   isLoading: boolean;
+  isRefreshing: boolean;
   error: string | null;
-  moveCard: (repoPath: string, toColumn: ColumnId) => Promise<void>;
-  updateNotes: (repoPath: string, notes: string | null) => Promise<void>;
-  removeCard: (repoPath: string) => Promise<void>;
-  syncWithScans: () => Promise<void>;
+  refresh: () => Promise<void>;
+  recheckAuth: () => Promise<void>;
+  moveCard: (nameWithOwner: string, toColumn: ColumnId) => Promise<void>;
 }
 
-export function useKanban({ scanResults, folders }: UseKanbanProps): UseKanbanReturn {
-  const [kanbanState, setKanbanState] = useState<KanbanState | null>(null);
+export function useKanban(): UseKanbanReturn {
+  const [auth, setAuth] = useState<GhAuthStatus | null>(null);
+  const [state, setState] = useState<KanbanState | null>(null);
+  const [repos, setRepos] = useState<GhRepo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const hasSyncedRef = useRef(false);
 
-  // Get all repo paths from scan results
-  const allRepoPaths = useMemo(() => {
-    const paths: string[] = [];
-    Object.values(scanResults).forEach((result) => {
-      const allRepos = [
-        ...result.clean,
-        ...result.withChanges,
-        ...result.withUnpushed,
-        ...result.withUnpulled,
-        ...result.errors,
-      ];
-      allRepos.forEach((repo) => paths.push(repo.path));
-    });
-    return paths;
-  }, [scanResults]);
+  const lastRefreshRef = useRef(0);
+  const inFlightRef = useRef(false);
 
-  // Load initial state
-  useEffect(() => {
-    api
-      .getKanbanState()
-      .then(setKanbanState)
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
-      .finally(() => setIsLoading(false));
+  const doRefresh = useCallback(async () => {
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
+    setIsRefreshing(true);
+    setError(null);
+    try {
+      const authStatus = await api.checkGhAuth();
+      setAuth(authStatus);
+      if (authStatus.status !== 'ok') {
+        setRepos([]);
+        return;
+      }
+      const result = await api.refreshKanban();
+      setRepos(result.repos);
+      setState(result.state);
+      lastRefreshRef.current = Date.now();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      inFlightRef.current = false;
+      setIsRefreshing(false);
+    }
   }, []);
 
-  // Sync when repos are available (handles initial load and subsequent changes)
+  const recheckAuth = useCallback(async () => {
+    setIsLoading(true);
+    await doRefresh();
+    setIsLoading(false);
+  }, [doRefresh]);
+
+  // Initial load
   useEffect(() => {
-    // Skip if still loading initial state or no repos
-    if (isLoading || allRepoPaths.length === 0) return;
+    (async () => {
+      await doRefresh();
+      setIsLoading(false);
+    })();
+  }, [doRefresh]);
 
-    const doSync = async () => {
-      try {
-        const newState = await api.syncKanbanWithRepos(allRepoPaths);
-        setKanbanState(newState);
-        hasSyncedRef.current = true;
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
-      }
+  // Refresh on window focus, debounced
+  useEffect(() => {
+    const onFocus = () => {
+      if (Date.now() - lastRefreshRef.current < REFRESH_DEBOUNCE_MS) return;
+      doRefresh();
     };
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [doRefresh]);
 
-    doSync();
-  }, [isLoading, allRepoPaths]);
-
-  // Detect name conflicts
-  const nameConflicts = useMemo(() => {
-    const nameCounts: Record<string, number> = {};
-    allRepoPaths.forEach((path) => {
-      const name = path.split('/').pop() || '';
-      nameCounts[name] = (nameCounts[name] || 0) + 1;
-    });
-    return new Set(Object.keys(nameCounts).filter((name) => nameCounts[name] > 1));
-  }, [allRepoPaths]);
-
-  // Build card views organized by column
   const columns = useMemo(() => {
     const result: Record<ColumnId, KanbanCardView[]> = {
       backlog: [],
@@ -87,87 +84,58 @@ export function useKanban({ scanResults, folders }: UseKanbanProps): UseKanbanRe
       review: [],
       done: [],
     };
+    if (!state) return result;
 
-    if (!kanbanState) return result;
+    const repoByKey = new Map(repos.map((r) => [r.nameWithOwner, r]));
 
-    Object.values(kanbanState.cards).forEach((card) => {
-      const repoName = card.repoPath.split('/').pop() || '';
-      const folder = folders.find((f) => card.repoPath.startsWith(f.path));
-      const isStale = !allRepoPaths.includes(card.repoPath);
-
-      // Determine display name (with folder prefix if conflict)
-      const hasConflict = nameConflicts.has(repoName);
-      const displayName = hasConflict && folder ? `${folder.name}/${repoName}` : repoName;
-
-      const cardView: KanbanCardView = {
-        card,
-        repoName,
-        displayName,
-        folderName: folder?.name || '',
-        folderId: folder?.id || '',
-        isStale,
-      };
-
-      const columnId = card.column as ColumnId;
-      // Display in the card's column if it exists, otherwise fall back to backlog
-      const displayColumn = result[columnId] ? columnId : 'backlog';
-      result[displayColumn].push(cardView);
+    Object.values(state.cards).forEach((card) => {
+      const repo = repoByKey.get(card.nameWithOwner);
+      if (!repo) return; // store sync drops these, but guard anyway
+      const columnId = result[card.column] ? card.column : 'backlog';
+      result[columnId].push({ card, repo });
     });
 
-    // Sort each column alphabetically by displayName
     KANBAN_COLUMNS.forEach((col) => {
-      result[col.id].sort((a, b) => a.displayName.localeCompare(b.displayName));
+      result[col.id].sort((a, b) =>
+        a.repo.nameWithOwner.localeCompare(b.repo.nameWithOwner)
+      );
     });
 
     return result;
-  }, [kanbanState, folders, allRepoPaths, nameConflicts]);
+  }, [state, repos]);
 
-  // Actions
-  const moveCard = useCallback(async (repoPath: string, toColumn: ColumnId) => {
+  const moveCard = useCallback(async (nameWithOwner: string, toColumn: ColumnId) => {
+    // Optimistic local update so dragging feels instant.
+    setState((prev) => {
+      if (!prev) return prev;
+      const existing = prev.cards[nameWithOwner];
+      if (!existing) return prev;
+      return {
+        ...prev,
+        cards: {
+          ...prev.cards,
+          [nameWithOwner]: { ...existing, column: toColumn, updatedAt: Date.now() },
+        },
+      };
+    });
     try {
-      const newState = await api.moveKanbanCard(repoPath, toColumn);
-      setKanbanState(newState);
+      const newState = await api.moveKanbanCard(nameWithOwner, toColumn);
+      setState(newState);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      // Refetch authoritative state on failure.
+      doRefresh();
     }
-  }, []);
-
-  const updateNotes = useCallback(async (repoPath: string, notes: string | null) => {
-    try {
-      const newState = await api.updateKanbanNotes(repoPath, notes);
-      setKanbanState(newState);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  }, []);
-
-  const removeCard = useCallback(async (repoPath: string) => {
-    try {
-      const newState = await api.removeKanbanCard(repoPath);
-      setKanbanState(newState);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  }, []);
-
-  const syncWithScans = useCallback(async () => {
-    if (allRepoPaths.length > 0) {
-      try {
-        const newState = await api.syncKanbanWithRepos(allRepoPaths);
-        setKanbanState(newState);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
-      }
-    }
-  }, [allRepoPaths]);
+  }, [doRefresh]);
 
   return {
     columns,
+    auth,
     isLoading,
+    isRefreshing,
     error,
+    refresh: doRefresh,
+    recheckAuth,
     moveCard,
-    updateNotes,
-    removeCard,
-    syncWithScans,
   };
 }

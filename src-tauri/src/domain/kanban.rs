@@ -4,10 +4,8 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct KanbanCard {
-    pub repo_path: String,
+    pub name_with_owner: String,
     pub column: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub notes: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -21,7 +19,7 @@ pub struct KanbanState {
 impl Default for KanbanState {
     fn default() -> Self {
         Self {
-            version: 1,
+            version: 2,
             cards: HashMap::new(),
         }
     }

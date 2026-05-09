@@ -223,7 +223,7 @@ function App() {
             onInitialScanComplete={() => setHasInitialScan(true)}
           />
         ) : (
-          <KanbanBoard scanResults={scanState.results} folders={folders} />
+          <KanbanBoard />
         )}
       </main>
 

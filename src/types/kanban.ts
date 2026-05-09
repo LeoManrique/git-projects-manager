@@ -1,9 +1,19 @@
 import { ColumnId } from '../config/kanbanColumns';
 
+export interface GhRepo {
+  nameWithOwner: string;
+  name: string;
+  owner: { login: string };
+  description: string | null;
+  url: string;
+  isPrivate: boolean;
+  isArchived: boolean;
+  pushedAt: string | null;
+}
+
 export interface KanbanCard {
-  repoPath: string;
+  nameWithOwner: string;
   column: ColumnId;
-  notes?: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -13,11 +23,18 @@ export interface KanbanState {
   cards: Record<string, KanbanCard>;
 }
 
+export interface KanbanRefresh {
+  repos: GhRepo[];
+  state: KanbanState;
+}
+
+export type GhAuthStatus =
+  | { status: 'ok'; user: string }
+  | { status: 'notInstalled' }
+  | { status: 'notAuthenticated' }
+  | { status: 'error'; message: string };
+
 export interface KanbanCardView {
   card: KanbanCard;
-  repoName: string;
-  displayName: string;
-  folderName: string;
-  folderId: string;
-  isStale: boolean;
+  repo: GhRepo;
 }

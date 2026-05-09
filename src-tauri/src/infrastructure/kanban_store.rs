@@ -9,8 +9,14 @@ pub struct KanbanManager {
 
 impl KanbanManager {
     pub fn new(config_dir: &PathBuf) -> Self {
+        // v1 lived in kanban.json; v2 starts fresh under a new filename.
+        // Best-effort cleanup of the legacy file so it doesn't linger.
+        let legacy = config_dir.join("kanban.json");
+        if legacy.exists() {
+            let _ = fs::remove_file(&legacy);
+        }
         Self {
-            path: config_dir.join("kanban.json"),
+            path: config_dir.join("kanban_v2.json"),
         }
     }
 
@@ -29,9 +35,9 @@ impl KanbanManager {
         Ok(())
     }
 
-    pub fn move_card(&self, repo_path: &str, to_column: &str) -> Result<KanbanState> {
+    pub fn move_card(&self, name_with_owner: &str, to_column: &str) -> Result<KanbanState> {
         let mut state = self.load()?;
-        if let Some(card) = state.cards.get_mut(repo_path) {
+        if let Some(card) = state.cards.get_mut(name_with_owner) {
             card.column = to_column.to_string();
             card.updated_at = chrono::Utc::now().timestamp_millis();
         }
@@ -39,40 +45,23 @@ impl KanbanManager {
         Ok(state)
     }
 
-    pub fn update_notes(&self, repo_path: &str, notes: Option<String>) -> Result<KanbanState> {
-        let mut state = self.load()?;
-        if let Some(card) = state.cards.get_mut(repo_path) {
-            card.notes = notes;
-            card.updated_at = chrono::Utc::now().timestamp_millis();
-        }
-        self.save(&state)?;
-        Ok(state)
-    }
-
-    pub fn remove_card(&self, repo_path: &str) -> Result<KanbanState> {
-        let mut state = self.load()?;
-        state.cards.remove(repo_path);
-        self.save(&state)?;
-        Ok(state)
-    }
-
-    pub fn sync_with_repos(&self, repo_paths: Vec<String>) -> Result<KanbanState> {
+    pub fn sync_with_repos(&self, names_with_owner: Vec<String>) -> Result<KanbanState> {
         let mut state = self.load()?;
         let now = chrono::Utc::now().timestamp_millis();
 
-        for path in repo_paths {
-            if !state.cards.contains_key(&path) {
-                state.cards.insert(
-                    path.clone(),
-                    KanbanCard {
-                        repo_path: path,
-                        column: "backlog".to_string(),
-                        notes: None,
-                        created_at: now,
-                        updated_at: now,
-                    },
-                );
-            }
+        let incoming: std::collections::HashSet<String> = names_with_owner.iter().cloned().collect();
+
+        // Drop cards for repos that no longer exist on GitHub.
+        state.cards.retain(|key, _| incoming.contains(key));
+
+        // Insert cards for new repos in the backlog.
+        for nwo in names_with_owner {
+            state.cards.entry(nwo.clone()).or_insert(KanbanCard {
+                name_with_owner: nwo,
+                column: "backlog".to_string(),
+                created_at: now,
+                updated_at: now,
+            });
         }
 
         self.save(&state)?;

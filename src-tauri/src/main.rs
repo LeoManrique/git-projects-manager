@@ -51,11 +51,9 @@ fn main() {
             commands::settings::open_in_lms_github,
             commands::settings::get_git_clean_settings,
             commands::settings::set_git_clean_settings,
-            commands::kanban::get_kanban_state,
+            commands::kanban::check_gh_auth,
+            commands::kanban::refresh_kanban,
             commands::kanban::move_kanban_card,
-            commands::kanban::update_kanban_notes,
-            commands::kanban::remove_kanban_card,
-            commands::kanban::sync_kanban_with_repos,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

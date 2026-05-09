@@ -2,4 +2,11 @@
 export type { MonitoredFolder } from './folder';
 export type { RepoStatus, ScanResult } from './scan';
 export type { TerminalApp, EditorApp, AppSettings, GitCleanSettings, GitCleanResult } from './settings';
-export type { KanbanCard, KanbanState, KanbanCardView } from './kanban';
+export type {
+  GhRepo,
+  GhAuthStatus,
+  KanbanCard,
+  KanbanState,
+  KanbanRefresh,
+  KanbanCardView,
+} from './kanban';
