@@ -114,4 +114,12 @@ export const api = {
   async moveKanbanCard(nameWithOwner: string, toColumn: string): Promise<KanbanState> {
     return await invoke('move_kanban_card', { nameWithOwner, toColumn });
   },
+
+  async deleteGithubRepo(nameWithOwner: string): Promise<KanbanRefresh> {
+    return await invoke('delete_github_repo', { nameWithOwner });
+  },
+
+  async openUrl(url: string): Promise<void> {
+    await invoke('open_url', { url });
+  },
 };

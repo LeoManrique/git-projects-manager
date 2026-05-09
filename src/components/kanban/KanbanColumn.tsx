@@ -7,17 +7,21 @@ import { colorStyles } from '../scan/colorStyles';
 interface KanbanColumnProps {
   column: ColumnConfig;
   cards: KanbanCardView[];
+  authedUser: string | null;
   onDragStart: (nameWithOwner: string) => void;
   onDragEnd: () => void;
   onDrop: () => void;
+  onDeleteRepo: (nameWithOwner: string) => void;
 }
 
 export function KanbanColumn({
   column,
   cards,
+  authedUser,
   onDragStart,
   onDragEnd,
   onDrop,
+  onDeleteRepo,
 }: KanbanColumnProps) {
   const [isOver, setIsOver] = useState(false);
   const dragCounter = useRef(0);
@@ -70,8 +74,10 @@ export function KanbanColumn({
             <KanbanCard
               key={cardView.card.nameWithOwner}
               cardView={cardView}
+              authedUser={authedUser}
               onDragStart={onDragStart}
               onDragEnd={onDragEnd}
+              onDeleteRepo={onDeleteRepo}
             />
           ))
         )}

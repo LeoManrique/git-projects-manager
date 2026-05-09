@@ -69,6 +69,34 @@ pub fn check_auth() -> GhAuthStatus {
     GhAuthStatus::Ok { user }
 }
 
+fn validate_name_with_owner(nwo: &str) -> Result<()> {
+    let mut slashes = 0;
+    for c in nwo.chars() {
+        if c == '/' {
+            slashes += 1;
+        } else if !(c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_')) {
+            return Err(anyhow!("invalid repo name: {nwo}"));
+        }
+    }
+    if slashes != 1 || nwo.starts_with('/') || nwo.ends_with('/') {
+        return Err(anyhow!("invalid repo name: {nwo}"));
+    }
+    Ok(())
+}
+
+pub fn delete_repo(name_with_owner: &str) -> Result<()> {
+    validate_name_with_owner(name_with_owner)?;
+    let cmd = format!("gh repo delete {} --yes", name_with_owner);
+    let output = gh().arg(cmd).output().context("failed to spawn gh")?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let msg = format!("{}{}", stderr.trim(), stdout.trim());
+        return Err(anyhow!("gh repo delete failed: {}", msg));
+    }
+    Ok(())
+}
+
 pub fn list_repos() -> Result<Vec<GhRepo>> {
     let output = gh()
         .arg("gh repo list --limit 1000 --json nameWithOwner,name,owner,description,url,isPrivate,isArchived,pushedAt")

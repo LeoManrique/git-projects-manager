@@ -54,6 +54,8 @@ fn main() {
             commands::kanban::check_gh_auth,
             commands::kanban::refresh_kanban,
             commands::kanban::move_kanban_card,
+            commands::kanban::delete_github_repo,
+            commands::kanban::open_url,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -14,6 +14,7 @@ interface UseKanbanReturn {
   refresh: () => Promise<void>;
   recheckAuth: () => Promise<void>;
   moveCard: (nameWithOwner: string, toColumn: ColumnId) => Promise<void>;
+  deleteRepo: (nameWithOwner: string) => Promise<void>;
 }
 
 export function useKanban(): UseKanbanReturn {
@@ -104,6 +105,18 @@ export function useKanban(): UseKanbanReturn {
     return result;
   }, [state, repos]);
 
+  const deleteRepo = useCallback(async (nameWithOwner: string) => {
+    setError(null);
+    try {
+      const result = await api.deleteGithubRepo(nameWithOwner);
+      setRepos(result.repos);
+      setState(result.state);
+      lastRefreshRef.current = Date.now();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }, []);
+
   const moveCard = useCallback(async (nameWithOwner: string, toColumn: ColumnId) => {
     // Optimistic local update so dragging feels instant.
     setState((prev) => {
@@ -137,5 +150,6 @@ export function useKanban(): UseKanbanReturn {
     refresh: doRefresh,
     recheckAuth,
     moveCard,
+    deleteRepo,
   };
 }

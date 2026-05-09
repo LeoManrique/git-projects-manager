@@ -5,8 +5,18 @@ import { KANBAN_COLUMNS, ColumnId } from '../../config/kanbanColumns';
 import { GhAuthStatus } from '../../types';
 
 export function KanbanBoard() {
-  const { columns, auth, isLoading, isRefreshing, error, refresh, recheckAuth, moveCard } =
-    useKanban();
+  const {
+    columns,
+    auth,
+    isLoading,
+    isRefreshing,
+    error,
+    refresh,
+    recheckAuth,
+    moveCard,
+    deleteRepo,
+  } = useKanban();
+  const authedUser = auth?.status === 'ok' ? auth.user : null;
 
   // dataTransfer.getData() returns empty in Tauri builds — keep the dragged
   // item in a ref so onDrop can read it.
@@ -59,9 +69,11 @@ export function KanbanBoard() {
             key={column.id}
             column={column}
             cards={columns[column.id]}
+            authedUser={authedUser}
             onDragStart={(nwo) => (draggingItemRef.current = nwo)}
             onDragEnd={() => (draggingItemRef.current = null)}
             onDrop={() => handleDrop(column.id)}
+            onDeleteRepo={deleteRepo}
           />
         ))}
       </div>

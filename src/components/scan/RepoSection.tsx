@@ -59,6 +59,7 @@ export function RepoSection({
   showCleanOption = false,
 }: RepoSectionProps) {
   const [openMenuPath, setOpenMenuPath] = useState<string | null>(null);
+  const [hoveredPath, setHoveredPath] = useState<string | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const [showSectionMenu, setShowSectionMenu] = useState(false);
   const [sectionMenuPosition, setSectionMenuPosition] = useState<{ top: number; left: number } | null>(null);
@@ -172,9 +173,16 @@ export function RepoSection({
           const isCleaning = cleaningRepos.has(repo.path);
           const isOperating = isPulling || isCleaning;
           const isMenuOpen = openMenuPath === repo.path;
+          const isHovered = hoveredPath === repo.path;
+          const showActions = isHovered || isMenuOpen;
 
           return (
-            <li key={idx} className={`relative group ${showErrors ? 'text-xs' : ''}`}>
+            <li
+              key={idx}
+              onMouseEnter={() => setHoveredPath(repo.path)}
+              onMouseLeave={() => setHoveredPath((p) => (p === repo.path ? null : p))}
+              className={`relative ${showErrors ? 'text-xs' : ''}`}
+            >
               <div className={`flex items-center ${muted ? 'text-text-muted' : 'text-text-secondary'} text-xs py-0.5 pl-2 pr-1 border-l-2 ${muted ? styles.borderMuted : styles.border} hover:text-text-primary hover:bg-dark-borderSubtle transition-colors font-mono rounded-r-sm`}>
                 <span className="flex-1 truncate">
                   {repo.path}
@@ -197,8 +205,16 @@ export function RepoSection({
                         } else {
                           openMenu(repo.path);
                         }
+                        (e.currentTarget as HTMLButtonElement).blur();
                       }}
-                      className={`p-1 rounded hover:bg-dark-border transition-colors ${isMenuOpen ? 'bg-dark-border' : 'opacity-0 group-hover:opacity-100'}`}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      className={`p-1 rounded hover:bg-dark-border transition-colors ${
+                        isMenuOpen
+                          ? 'bg-dark-border'
+                          : showActions
+                            ? 'opacity-100'
+                            : 'opacity-0 pointer-events-none'
+                      }`}
                       disabled={isOperating}
                     >
                       {isOperating ? (
