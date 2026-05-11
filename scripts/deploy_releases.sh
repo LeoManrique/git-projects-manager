@@ -15,9 +15,10 @@ warn()    { echo -e "  ${YELLOW}⚠ $1${NC}"; }
 error()   { echo -e "  ${RED}✗ $1${NC}"; exit 1; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-PACKAGE_JSON="$PROJECT_ROOT/package.json"
-CARGO_TOML="$PROJECT_ROOT/src-tauri/Cargo.toml"
+REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+DESKTOP_DIR="$REPO_ROOT/desktop"
+PACKAGE_JSON="$DESKTOP_DIR/package.json"
+CARGO_TOML="$DESKTOP_DIR/src-tauri/Cargo.toml"
 # tauri.conf.json reads its version from "../package.json" so it doesn't need
 # bumping here.
 
@@ -54,7 +55,7 @@ else
     HIGHER=$(printf '%s\n%s\n' "$CURRENT_VERSION" "$VERSION" | sort -V | tail -1)
     [ "$HIGHER" = "$VERSION" ] || error "New version $VERSION is not greater than current $CURRENT_VERSION"
 
-    cd "$PROJECT_ROOT"
+    cd "$REPO_ROOT"
     for f in "$PACKAGE_JSON" "$CARGO_TOML"; do
       if ! git diff --quiet -- "$f" || ! git diff --cached --quiet -- "$f"; then
         error "$(basename "$f") has uncommitted changes; commit or stash before bumping"
@@ -79,9 +80,9 @@ else
 
     # Cargo.lock also pins the package version — refresh it so the bump commit
     # passes `cargo check` cleanly and CI doesn't see a dirty lockfile.
-    (cd "$PROJECT_ROOT/src-tauri" && cargo update -p git-projects-manager --offline >/dev/null 2>&1) || true
+    (cd "$DESKTOP_DIR/src-tauri" && cargo update -p git-projects-manager --offline >/dev/null 2>&1) || true
 
-    git add "$PACKAGE_JSON" "$CARGO_TOML" "$PROJECT_ROOT/src-tauri/Cargo.lock"
+    git add "$PACKAGE_JSON" "$CARGO_TOML" "$DESKTOP_DIR/src-tauri/Cargo.lock"
     git commit -m "Bump version to $VERSION"
     git push
     success "Bumped $CURRENT_VERSION → $VERSION and pushed commit"
@@ -110,7 +111,7 @@ success "Platform: $PLATFORM"
 # ── Step 3: Tag release ──
 step 3 "Tagging release"
 
-cd "$PROJECT_ROOT"
+cd "$REPO_ROOT"
 if git rev-parse "$TAG" &>/dev/null; then
   warn "Tag $TAG already exists, skipping"
 else
@@ -130,19 +131,19 @@ case "$OS" in
   windows) BUNDLE_TARGET="nsis" ;;
 esac
 
-cd "$PROJECT_ROOT"
+cd "$DESKTOP_DIR"
 # Wipe prior bundle output so artifact globs in the next step can't pick up
 # leftovers from an older version.
-rm -rf "$PROJECT_ROOT/src-tauri/target/release/bundle"
+rm -rf "$DESKTOP_DIR/src-tauri/target/release/bundle"
 pnpm tauri build --bundles "$BUNDLE_TARGET"
 success "Build complete"
 
 # ── Step 5: Package artifact ──
 step 5 "Packaging artifact"
 
-DIST_DIR="$PROJECT_ROOT/dist-release"
+DIST_DIR="$DESKTOP_DIR/dist-release"
 mkdir -p "$DIST_DIR"
-BUNDLE_DIR="$PROJECT_ROOT/src-tauri/target/release/bundle"
+BUNDLE_DIR="$DESKTOP_DIR/src-tauri/target/release/bundle"
 
 case "$OS" in
   darwin)

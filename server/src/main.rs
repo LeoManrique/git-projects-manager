@@ -21,8 +21,8 @@ async fn main() -> anyhow::Result<()> {
 
     let bind_addr = env::var("BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:8787".to_string());
     let database_url = env::var("DATABASE_URL").unwrap_or_else(|_| "/data/sync.db".to_string());
-    let google_client_id =
-        env::var("GOOGLE_CLIENT_ID").map_err(|_| anyhow::anyhow!("GOOGLE_CLIENT_ID required"))?;
+    let google_client_id = env::var("GOOGLE_DESKTOP_CLIENT_ID")
+        .map_err(|_| anyhow::anyhow!("GOOGLE_DESKTOP_CLIENT_ID required"))?;
     let session_ttl_days: i64 = env::var("SESSION_TTL_DAYS")
         .ok()
         .and_then(|v| v.parse().ok())

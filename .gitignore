@@ -29,6 +29,7 @@ desktop/src-tauri/target
 # Sync server
 server/target
 server/.env
+server/.env.prod
 server/*.db
 /node_modules
 /dist

@@ -7,9 +7,9 @@ BINARY_NAME="git-projects-manager"
 VERSION="2.0.0"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-RELEASE_DIR="$PROJECT_DIR/src-tauri/target/release"
-ICONS_DIR="$PROJECT_DIR/src-tauri/icons"
+DESKTOP_DIR="$(dirname "$SCRIPT_DIR")/desktop"
+RELEASE_DIR="$DESKTOP_DIR/src-tauri/target/release"
+ICONS_DIR="$DESKTOP_DIR/src-tauri/icons"
 BINARY="$RELEASE_DIR/$BINARY_NAME"
 
 if [ ! -f "$BINARY" ]; then
