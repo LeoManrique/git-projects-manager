@@ -19,6 +19,7 @@ struct TokenResponse {
 /// (typically `tauri_plugin_shell` opener).
 pub async fn run_loopback_pkce(
     client_id: &str,
+    client_secret: &str,
     open_url: impl FnOnce(&str) -> Result<()>,
 ) -> Result<String> {
     let listener = tiny_http::Server::http("127.0.0.1:0")
@@ -129,6 +130,7 @@ pub async fn run_loopback_pkce(
         .post(TOKEN_URL)
         .form(&[
             ("client_id", client_id),
+            ("client_secret", client_secret),
             ("redirect_uri", redirect_uri.as_str()),
             ("grant_type", "authorization_code"),
             ("code", code.as_str()),

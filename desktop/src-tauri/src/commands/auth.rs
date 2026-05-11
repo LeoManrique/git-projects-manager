@@ -12,9 +12,10 @@ pub async fn sign_in_with_google(
     state: State<'_, AppState>,
 ) -> Result<SyncUser, String> {
     let client_id = config::oauth_client_id();
+    let client_secret = config::oauth_client_secret();
 
     let opener = app.clone();
-    let id_token = oauth::run_loopback_pkce(client_id, move |url| -> Result<()> {
+    let id_token = oauth::run_loopback_pkce(client_id, client_secret, move |url| -> Result<()> {
         #[allow(deprecated)]
         opener
             .shell()
