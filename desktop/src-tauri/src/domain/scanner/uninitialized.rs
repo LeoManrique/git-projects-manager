@@ -84,9 +84,14 @@ impl UninitializedDetector {
             return false;
         }
 
-        // Skip if this is a git repo or contains git repos
-        let is_or_contains_repo = git_repos.iter().any(|repo| repo.starts_with(path));
-        !is_or_contains_repo
+        // Skip if this path is a repo, contains a repo, or sits inside one.
+        // The third case matters when a nested repo makes its outer repo a
+        // "parent dir": without this check we'd scan the outer repo's source
+        // tree and flag every subfolder (init/, crypto/, …) as uninitialized.
+        let related_to_repo = git_repos
+            .iter()
+            .any(|repo| repo.starts_with(path) || path.starts_with(repo));
+        !related_to_repo
     }
 
     /// Recursively find uninitialized projects in a directory
