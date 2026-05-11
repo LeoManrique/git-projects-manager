@@ -1,8 +1,9 @@
 use crate::domain::auth::SyncSession;
 use crate::domain::scanner::Scanner;
 use crate::infrastructure::{
-    config_store::ConfigManager, kanban_store::KanbanManager, settings_store::SettingsManager,
-    sync_client::SyncClient, token_store::{self, TokenStore},
+    config_store::ConfigManager, kanban_store::KanbanManager, repos_cache::ReposCacheManager,
+    settings_store::SettingsManager, sync_client::SyncClient,
+    token_store::{self, TokenStore},
 };
 use parking_lot::RwLock;
 use std::sync::Arc;
@@ -11,6 +12,7 @@ pub struct AppState {
     pub config_manager: Arc<ConfigManager>,
     pub settings_manager: Arc<SettingsManager>,
     pub kanban_manager: Arc<KanbanManager>,
+    pub repos_cache: Arc<ReposCacheManager>,
     pub scanner: Arc<RwLock<Scanner>>,
     pub auth: Arc<RwLock<Option<SyncSession>>>,
     pub token_store: Arc<dyn TokenStore>,
@@ -38,6 +40,7 @@ impl AppState {
             config_manager: Arc::new(ConfigManager::new()?),
             settings_manager: Arc::new(SettingsManager::new()?),
             kanban_manager: Arc::new(KanbanManager::new(&config_dir)),
+            repos_cache: Arc::new(ReposCacheManager::new(&config_dir)),
             scanner: Arc::new(RwLock::new(Scanner::new())),
             auth: Arc::new(RwLock::new(auth)),
             token_store,

@@ -215,9 +215,9 @@ function App() {
         </div>
       )}
 
-      {/* Main Content */}
+      {/* Main Content — both views stay mounted so tab switches don't refetch. */}
       <main className="flex-1 overflow-hidden">
-        {currentView === 'folders' ? (
+        <div className={currentView === 'folders' ? 'h-full' : 'hidden'}>
           <ScanResults
             folders={folders}
             scanState={scanState}
@@ -227,9 +227,10 @@ function App() {
             hasInitialScan={hasInitialScan}
             onInitialScanComplete={() => setHasInitialScan(true)}
           />
-        ) : (
+        </div>
+        <div className={currentView === 'kanban' ? 'h-full' : 'hidden'}>
           <KanbanBoard />
-        )}
+        </div>
       </main>
 
       {/* Settings Modal */}

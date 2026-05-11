@@ -112,6 +112,10 @@ export const api = {
     return await invoke('refresh_kanban');
   },
 
+  async loadKanbanLocal(): Promise<KanbanRefresh | null> {
+    return await invoke('load_kanban_local');
+  },
+
   async moveKanbanCard(nameWithOwner: string, toColumn: string): Promise<KanbanState> {
     return await invoke('move_kanban_card', { nameWithOwner, toColumn });
   },

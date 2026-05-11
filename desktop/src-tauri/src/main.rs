@@ -54,6 +54,7 @@ fn main() {
             commands::settings::set_git_clean_settings,
             commands::kanban::check_gh_auth,
             commands::kanban::refresh_kanban,
+            commands::kanban::load_kanban_local,
             commands::kanban::move_kanban_card,
             commands::kanban::delete_github_repo,
             commands::kanban::open_url,

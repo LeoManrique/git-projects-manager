@@ -1,6 +1,7 @@
 use crate::domain::auth::SyncStatus;
 use crate::domain::kanban::{KanbanCard, KanbanState};
 use crate::infrastructure::github_cli::{self, GhAuthStatus, GhRepo};
+use crate::infrastructure::repos_cache::ReposCache;
 use crate::infrastructure::sync_client::SyncOutcome;
 use crate::state::AppState;
 use serde::Serialize;
@@ -61,11 +62,32 @@ pub async fn refresh_kanban(
         }
     };
 
+    if let Err(e) = state.repos_cache.save(&ReposCache {
+        repos: repos.clone(),
+        sync_status,
+        fetched_at: chrono::Utc::now().timestamp_millis(),
+    }) {
+        tracing::warn!(?e, "failed to persist repos cache");
+    }
+
     Ok(KanbanRefresh {
         repos,
         state: final_state,
         sync_status,
     })
+}
+
+#[tauri::command]
+pub fn load_kanban_local(state: State<AppState>) -> Result<Option<KanbanRefresh>, String> {
+    let Some(cache) = state.repos_cache.load().map_err(|e| e.to_string())? else {
+        return Ok(None);
+    };
+    let kanban_state = state.kanban_manager.load().map_err(|e| e.to_string())?;
+    Ok(Some(KanbanRefresh {
+        repos: cache.repos,
+        state: kanban_state,
+        sync_status: cache.sync_status,
+    }))
 }
 
 #[tauri::command]
@@ -116,6 +138,15 @@ pub fn delete_github_repo(
     } else {
         SyncStatus::Disabled
     };
+
+    if let Err(e) = state.repos_cache.save(&ReposCache {
+        repos: repos.clone(),
+        sync_status,
+        fetched_at: chrono::Utc::now().timestamp_millis(),
+    }) {
+        tracing::warn!(?e, "failed to persist repos cache");
+    }
+
     Ok(KanbanRefresh {
         repos,
         state: kanban_state,

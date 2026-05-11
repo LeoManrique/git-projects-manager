@@ -57,16 +57,30 @@ export function useKanban(): UseKanbanReturn {
   }, []);
 
   const recheckAuth = useCallback(async () => {
-    setIsLoading(true);
     await doRefresh();
-    setIsLoading(false);
   }, [doRefresh]);
 
-  // Initial load
+  // Initial load: try the on-disk cache first so the board paints instantly,
+  // then revalidate in the background. Full-screen spinner only fires on a
+  // genuine first launch with no cache.
   useEffect(() => {
     (async () => {
-      await doRefresh();
-      setIsLoading(false);
+      try {
+        const local = await api.loadKanbanLocal();
+        if (local) {
+          setRepos(local.repos);
+          setState(local.state);
+          setSyncStatus(local.syncStatus);
+          setIsLoading(false);
+          doRefresh();
+        } else {
+          await doRefresh();
+          setIsLoading(false);
+        }
+      } catch {
+        await doRefresh();
+        setIsLoading(false);
+      }
     })();
   }, [doRefresh]);
 
