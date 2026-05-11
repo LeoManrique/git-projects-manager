@@ -1151,7 +1151,7 @@ dependencies = [
 
 [[package]]
 name = "git-projects-manager"
-version = "2.0.1"
+version = "2.1.0"
 dependencies = [
  "anyhow",
  "chrono",
