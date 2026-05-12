@@ -3,7 +3,6 @@ set -euo pipefail
 
 APP_NAME="git-projects-manager"
 DISPLAY_NAME="Git Projects Manager"
-VERSION="2.0.0"
 
 BUILD=0
 for arg in "$@"; do
@@ -30,7 +29,7 @@ if [ ! -d "$APP_BUNDLE" ]; then
     exit 1
 fi
 
-echo "Installing $DISPLAY_NAME v$VERSION to /Applications..."
+echo "Installing $DISPLAY_NAME to /Applications..."
 
 if [ -d "$INSTALL_PATH" ]; then
     sudo rm -rf "$INSTALL_PATH"
