@@ -116,41 +116,140 @@ impl GitOperations {
         }
     }
 
-    /// Clean ignored files from the repository (git clean -fdX)
-    /// Removes files matching .gitignore patterns while preserving excluded patterns
+    /// Clean ignored files from the repository, preserving paths that match
+    /// any of the user-provided exclude patterns.
+    ///
+    /// `git clean -X` itself has no way to *preserve* matches — its `-e` flag
+    /// adds patterns to the ignore set, which is the opposite of what we want.
+    /// So we dry-run, filter in Rust, then delete the survivors ourselves.
     pub fn clean(repo_path: &Path, exclude_patterns: &[String]) -> Result<(Vec<String>, Vec<String>)> {
         let mut cmd = git_command();
         cmd.arg("clean")
-            .arg("-fdX") // force, directories, only ignored files
+            .arg("-fdXn") // dry run: list what would be removed
             .current_dir(repo_path);
-
-        // Add exclude patterns
-        for pattern in exclude_patterns {
-            cmd.arg("-e").arg(pattern);
-        }
 
         let output = cmd.output()?;
 
-        if output.status.success() {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            let mut files_removed = Vec::new();
-            let mut directories_removed = Vec::new();
-
-            for line in stdout.lines() {
-                // git clean output format: "Removing <path>"
-                if let Some(path) = line.strip_prefix("Removing ") {
-                    if path.ends_with('/') {
-                        directories_removed.push(path.trim_end_matches('/').to_string());
-                    } else {
-                        files_removed.push(path.to_string());
-                    }
-                }
-            }
-
-            Ok((files_removed, directories_removed))
-        } else {
+        if !output.status.success() {
             let error = String::from_utf8_lossy(&output.stderr).to_string();
             anyhow::bail!("Clean failed: {}", error)
         }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let mut files_removed = Vec::new();
+        let mut directories_removed = Vec::new();
+
+        for line in stdout.lines() {
+            let Some(path) = line.strip_prefix("Would remove ") else {
+                continue;
+            };
+
+            if path_matches_any(path, exclude_patterns) {
+                continue;
+            }
+
+            let is_dir = path.ends_with('/');
+            let clean_path = path.trim_end_matches('/');
+            let abs = repo_path.join(clean_path);
+
+            if is_dir {
+                std::fs::remove_dir_all(&abs)?;
+                directories_removed.push(clean_path.to_string());
+            } else {
+                std::fs::remove_file(&abs)?;
+                files_removed.push(path.to_string());
+            }
+        }
+
+        Ok((files_removed, directories_removed))
+    }
+}
+
+/// Returns true if `path` matches any of the given glob patterns.
+fn path_matches_any(path: &str, patterns: &[String]) -> bool {
+    patterns.iter().any(|p| path_matches(path, p))
+}
+
+/// Matches a relative path against a single gitignore-style pattern.
+///
+/// A trailing `/` on the pattern restricts the match to directory components.
+/// The pattern is tested against each segment of the path and, for non-dir
+/// patterns, against the full path string. Supports `*` and `?` wildcards.
+fn path_matches(path: &str, pattern: &str) -> bool {
+    let dir_only = pattern.ends_with('/');
+    let pat = pattern.trim_end_matches('/');
+    let path_is_dir = path.ends_with('/');
+    let clean = path.trim_end_matches('/');
+
+    if dir_only {
+        let segments: Vec<&str> = clean.split('/').collect();
+        let dir_count = if path_is_dir { segments.len() } else { segments.len().saturating_sub(1) };
+        segments[..dir_count].iter().any(|s| glob_match(pat, s))
+    } else {
+        clean.split('/').any(|s| glob_match(pat, s)) || glob_match(pat, clean)
+    }
+}
+
+/// Iterative glob matcher supporting `*` (any chars) and `?` (one char).
+fn glob_match(pattern: &str, name: &str) -> bool {
+    let p: Vec<char> = pattern.chars().collect();
+    let n: Vec<char> = name.chars().collect();
+    let (mut pi, mut ni) = (0, 0);
+    let mut star_pi: Option<usize> = None;
+    let mut star_ni = 0;
+
+    while ni < n.len() {
+        if pi < p.len() && (p[pi] == '?' || p[pi] == n[ni]) {
+            pi += 1;
+            ni += 1;
+        } else if pi < p.len() && p[pi] == '*' {
+            star_pi = Some(pi);
+            star_ni = ni;
+            pi += 1;
+        } else if let Some(sp) = star_pi {
+            pi = sp + 1;
+            star_ni += 1;
+            ni = star_ni;
+        } else {
+            return false;
+        }
+    }
+
+    while pi < p.len() && p[pi] == '*' {
+        pi += 1;
+    }
+
+    pi == p.len()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn glob_matches_basic() {
+        assert!(glob_match(".env*", ".env.prod"));
+        assert!(glob_match(".env*", ".env"));
+        assert!(glob_match("*.key", "private.key"));
+        assert!(glob_match("*.pem", "cert.pem"));
+        assert!(!glob_match(".env*", "env.prod"));
+        assert!(!glob_match("*.key", "key.txt"));
+    }
+
+    #[test]
+    fn path_matches_env_pattern() {
+        let patterns = vec![".env*".to_string()];
+        assert!(path_matches_any(".env.prod", &patterns));
+        assert!(path_matches_any("relay/.env.prod", &patterns));
+        assert!(!path_matches_any("env.prod", &patterns));
+        assert!(!path_matches_any("relay/env.prod", &patterns));
+    }
+
+    #[test]
+    fn path_matches_dir_pattern() {
+        let patterns = vec![".vscode/".to_string()];
+        assert!(path_matches_any(".vscode/settings.json", &patterns));
+        assert!(path_matches_any(".vscode/", &patterns));
+        assert!(path_matches_any("sub/.vscode/foo", &patterns));
     }
 }
