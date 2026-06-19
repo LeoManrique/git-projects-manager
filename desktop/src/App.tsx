@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { FolderManager } from './components/folders';
-import ScanResults, { ScanResultsState } from './components/ScanResults';
+import ScanResults, { ScanResultsState, ScanResultsHandle } from './components/ScanResults';
 import DefaultAppsSettings from './components/settings/DefaultAppsSettings';
 import GitCleanSettings from './components/settings/GitCleanSettings';
 import AccountSettings from './components/settings/AccountSettings';
@@ -128,6 +128,9 @@ function App() {
   const [defaultEditor, setDefaultEditor] = useState<EditorApp | null>(null);
   const [currentView, setCurrentView] = useState<View>('folders');
   const [hasInitialScan, setHasInitialScan] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isScanning, setIsScanning] = useState(false);
+  const scanResultsRef = useRef<ScanResultsHandle>(null);
 
   const headerMenu = useContextMenu({ menuWidth: 120 });
 
@@ -172,19 +175,27 @@ function App() {
   return (
     <div className="h-screen flex flex-col bg-dark-bg text-text-primary overflow-hidden">
 
-      {/* Custom Title Bar */}
-      <header
-        data-tauri-drag-region
-        className="flex-shrink-0 h-11 flex items-center justify-between px-3 bg-dark-surface/50 border-b border-dark-border"
-        style={{ paddingLeft: '80px' }}
-      >
-        <span
-          data-tauri-drag-region
-          className="text-xs font-medium text-text-secondary select-none pointer-events-none"
-        >
-          Git Projects Manager
-        </span>
-        <div className="flex items-center gap-2">
+      {/* Toolbar */}
+      <header className="flex-shrink-0 h-11 flex items-center gap-2 px-3 bg-dark-surface/50 border-b border-dark-border">
+        {currentView === 'folders' && (
+          <div className="flex-1 flex items-center gap-2 min-w-0">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search repositories..."
+              className="flex-1 min-w-0 px-2 py-1 bg-dark-bg border border-dark-border rounded text-text-primary text-xs placeholder-text-muted focus:outline-none focus:border-accent-blue/50"
+            />
+            <button
+              onClick={() => scanResultsRef.current?.scanAll()}
+              disabled={folders.length === 0}
+              className="flex-shrink-0 bg-accent-green/90 hover:bg-accent-green text-dark-bg text-xs font-medium py-1 px-2.5 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {isScanning ? 'Scanning...' : 'Scan All'}
+            </button>
+          </div>
+        )}
+        <div className="flex items-center gap-2 ml-auto">
           <ViewSwitcher currentView={currentView} onViewChange={setCurrentView} />
           <button
             ref={headerMenu.buttonRef}
@@ -219,6 +230,7 @@ function App() {
       <main className="flex-1 overflow-hidden">
         <div className={currentView === 'folders' ? 'h-full' : 'hidden'}>
           <ScanResults
+            ref={scanResultsRef}
             folders={folders}
             scanState={scanState}
             onScanStateChange={setScanState}
@@ -226,6 +238,8 @@ function App() {
             defaultEditor={defaultEditor}
             hasInitialScan={hasInitialScan}
             onInitialScanComplete={() => setHasInitialScan(true)}
+            searchQuery={searchQuery}
+            onScanningChange={setIsScanning}
           />
         </div>
         <div className={currentView === 'kanban' ? 'h-full' : 'hidden'}>

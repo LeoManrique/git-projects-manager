@@ -1,10 +1,44 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { api } from '../lib/api';
 import { MonitoredFolder, ScanResult, RepoStatus, TerminalApp, EditorApp } from '../types';
 import { RepoSection, StatusBadge } from './scan';
 
 // Minimum interval between silent scans (in milliseconds)
 const SILENT_SCAN_MIN_INTERVAL_MS = 20_000; // 20 seconds
+
+// Filter a scan result's repos by a search query matching the repo name (last path segment)
+function filterResult(result: ScanResult | undefined, query: string): ScanResult {
+  const empty: ScanResult = {
+    scannedPath: '',
+    totalRepositories: 0,
+    withChanges: [],
+    withUnpushed: [],
+    withUnpulled: [],
+    clean: [],
+    errors: [],
+    uninitialized: [],
+    executionTime: 0,
+  };
+  if (!result) return empty;
+
+  const trimmed = query.trim().toLowerCase();
+  if (!trimmed) return result;
+
+  const matches = (repo: RepoStatus) => {
+    const name = repo.path.split('/').filter(Boolean).pop() ?? repo.path;
+    return name.toLowerCase().includes(trimmed) || repo.path.toLowerCase().includes(trimmed);
+  };
+
+  return {
+    ...result,
+    withChanges: result.withChanges.filter(matches),
+    withUnpushed: result.withUnpushed.filter(matches),
+    withUnpulled: result.withUnpulled.filter(matches),
+    clean: result.clean.filter(matches),
+    errors: result.errors.filter(matches),
+    uninitialized: result.uninitialized.filter(matches),
+  };
+}
 
 export interface ScanResultsState {
   results: Record<string, ScanResult>;
@@ -19,12 +53,17 @@ interface ScanResultsProps {
   defaultEditor: EditorApp | null;
   hasInitialScan: boolean;
   onInitialScanComplete: () => void;
+  searchQuery: string;
+  onScanningChange: (active: boolean) => void;
 }
 
-export default function ScanResults({ folders, scanState, onScanStateChange, defaultTerminal, defaultEditor, hasInitialScan, onInitialScanComplete }: ScanResultsProps) {
+export interface ScanResultsHandle {
+  scanAll: () => void;
+}
+
+const ScanResults = forwardRef<ScanResultsHandle, ScanResultsProps>(function ScanResults({ folders, scanState, onScanStateChange, defaultTerminal, defaultEditor, hasInitialScan, onInitialScanComplete, searchQuery, onScanningChange }, ref) {
   const { results, expandedFolders } = scanState;
   const [scanningFolders, setScanningFolders] = useState<Record<string, boolean>>({});
-  const [isFullScanActive, setIsFullScanActive] = useState(false);
   const [error, setError] = useState('');
   const [pullingRepos, setPullingRepos] = useState<Set<string>>(new Set());
   const [cleaningRepos, setCleaningRepos] = useState<Set<string>>(new Set());
@@ -229,7 +268,7 @@ export default function ScanResults({ folders, scanState, onScanStateChange, def
     let currentVersion = scanVersionRef.current;
     if (isFullScan) {
       currentVersion = ++scanVersionRef.current;
-      setIsFullScanActive(true);
+      onScanningChange(true);
     }
 
     try {
@@ -250,7 +289,7 @@ export default function ScanResults({ folders, scanState, onScanStateChange, def
       if (currentVersion !== scanVersionRef.current) {
         setScanningFolders({});
         if (isFullScan) {
-          setIsFullScanActive(false);
+          onScanningChange(false);
         }
         return;
       }
@@ -275,7 +314,7 @@ export default function ScanResults({ folders, scanState, onScanStateChange, def
       });
 
       if (isFullScan) {
-        setIsFullScanActive(false);
+        onScanningChange(false);
       }
     } catch (err) {
       setError('Failed to scan folder(s)');
@@ -288,10 +327,15 @@ export default function ScanResults({ folders, scanState, onScanStateChange, def
         return newState;
       });
       if (isFullScan) {
-        setIsFullScanActive(false);
+        onScanningChange(false);
       }
     }
   };
+
+  // Expose the full scan trigger to the parent toolbar
+  useImperativeHandle(ref, () => ({
+    scanAll: () => scan(folders, true),
+  }));
 
   // Auto-scan all folders on app startup
   useEffect(() => {
@@ -316,18 +360,6 @@ export default function ScanResults({ folders, scanState, onScanStateChange, def
 
   return (
     <div className="h-full flex flex-col">
-      {/* Header */}
-      <div className="flex-shrink-0 flex justify-between items-center px-3 py-2 border-b border-dark-border/50">
-        <h2 className="text-sm font-medium text-text-primary">Repository Status</h2>
-        <button
-          onClick={() => scan(folders, true)}
-          disabled={folders.length === 0}
-          className="bg-accent-green/90 hover:bg-accent-green text-dark-bg text-xs font-medium py-1 px-2.5 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          {isFullScanActive ? 'Scanning...' : 'Scan All'}
-        </button>
-      </div>
-
       {error && (
         <div className="flex-shrink-0 mx-3 mt-2 bg-accent-red/10 border border-accent-red/20 text-accent-red px-2.5 py-1.5 rounded text-xs">
           {error}
@@ -344,6 +376,7 @@ export default function ScanResults({ folders, scanState, onScanStateChange, def
         <div className="flex-1 overflow-auto bg-dark-surface flex flex-col">
           {folders.map((folder, index) => {
             const result = results[folder.id];
+            const displayResult = filterResult(result, searchQuery);
             const isExpanded = expandedFolders.has(folder.id);
             const isFolderScanning = scanningFolders[folder.id] ?? false;
             const isLast = index === folders.length - 1;
@@ -398,12 +431,12 @@ export default function ScanResults({ folders, scanState, onScanStateChange, def
                   >
                     {/* Repo sections - scrollable */}
                     <div className={`px-2.5 py-2.5 space-y-3 ${isLast ? 'flex-1 overflow-auto' : ''}`}>
-                      <RepoSection title="Uncommitted Changes" repos={result.withChanges || []} color="yellow" onPull={handlePull} onOpenInTerminal={handleOpenInTerminal} onOpenInEditor={handleOpenInEditor} onOpenInLmsGithub={handleOpenInLmsGithub} defaultTerminalName={defaultTerminal?.displayName} defaultEditorName={defaultEditor?.displayName} pullingRepos={pullingRepos} disablePull />
-                      <RepoSection title="Unpushed Commits" repos={result.withUnpushed || []} color="orange" onPull={handlePull} onOpenInTerminal={handleOpenInTerminal} onOpenInEditor={handleOpenInEditor} onOpenInLmsGithub={handleOpenInLmsGithub} defaultTerminalName={defaultTerminal?.displayName} defaultEditorName={defaultEditor?.displayName} pullingRepos={pullingRepos} />
-                      <RepoSection title="Unpulled Commits" repos={result.withUnpulled || []} color="purple" onPull={handlePull} onOpenInTerminal={handleOpenInTerminal} onOpenInEditor={handleOpenInEditor} onOpenInLmsGithub={handleOpenInLmsGithub} defaultTerminalName={defaultTerminal?.displayName} defaultEditorName={defaultEditor?.displayName} pullingRepos={pullingRepos} onPullAll={() => handlePullAllUnpulled(result.withUnpulled || [])} isPullingAll={isPullingAllUnpulled} />
-                      <RepoSection title="Clean" repos={result.clean || []} color="green" muted onPull={handlePull} onOpenInTerminal={handleOpenInTerminal} onOpenInEditor={handleOpenInEditor} onOpenInLmsGithub={handleOpenInLmsGithub} onClean={handleClean} onCleanAll={() => handleCleanAllClean(result.clean || [])} defaultTerminalName={defaultTerminal?.displayName} defaultEditorName={defaultEditor?.displayName} pullingRepos={pullingRepos} cleaningRepos={cleaningRepos} isCleaningAll={isCleaningAllClean} showCleanOption />
-                      <RepoSection title="Uninitialized" repos={result.uninitialized || []} color="gray" muted onOpenInTerminal={handleOpenInTerminal} onOpenInEditor={handleOpenInEditor} onOpenInLmsGithub={handleOpenInLmsGithub} defaultTerminalName={defaultTerminal?.displayName} defaultEditorName={defaultEditor?.displayName} />
-                      <RepoSection title="Errors" repos={result.errors || []} color="red" showErrors onPull={handlePull} onOpenInTerminal={handleOpenInTerminal} onOpenInEditor={handleOpenInEditor} onOpenInLmsGithub={handleOpenInLmsGithub} defaultTerminalName={defaultTerminal?.displayName} defaultEditorName={defaultEditor?.displayName} pullingRepos={pullingRepos} disablePull />
+                      <RepoSection title="Uncommitted Changes" repos={displayResult.withChanges || []} color="yellow" onPull={handlePull} onOpenInTerminal={handleOpenInTerminal} onOpenInEditor={handleOpenInEditor} onOpenInLmsGithub={handleOpenInLmsGithub} defaultTerminalName={defaultTerminal?.displayName} defaultEditorName={defaultEditor?.displayName} pullingRepos={pullingRepos} disablePull />
+                      <RepoSection title="Unpushed Commits" repos={displayResult.withUnpushed || []} color="orange" onPull={handlePull} onOpenInTerminal={handleOpenInTerminal} onOpenInEditor={handleOpenInEditor} onOpenInLmsGithub={handleOpenInLmsGithub} defaultTerminalName={defaultTerminal?.displayName} defaultEditorName={defaultEditor?.displayName} pullingRepos={pullingRepos} />
+                      <RepoSection title="Unpulled Commits" repos={displayResult.withUnpulled || []} color="purple" onPull={handlePull} onOpenInTerminal={handleOpenInTerminal} onOpenInEditor={handleOpenInEditor} onOpenInLmsGithub={handleOpenInLmsGithub} defaultTerminalName={defaultTerminal?.displayName} defaultEditorName={defaultEditor?.displayName} pullingRepos={pullingRepos} onPullAll={() => handlePullAllUnpulled(displayResult.withUnpulled || [])} isPullingAll={isPullingAllUnpulled} />
+                      <RepoSection title="Clean" repos={displayResult.clean || []} color="green" muted onPull={handlePull} onOpenInTerminal={handleOpenInTerminal} onOpenInEditor={handleOpenInEditor} onOpenInLmsGithub={handleOpenInLmsGithub} onClean={handleClean} onCleanAll={() => handleCleanAllClean(displayResult.clean || [])} defaultTerminalName={defaultTerminal?.displayName} defaultEditorName={defaultEditor?.displayName} pullingRepos={pullingRepos} cleaningRepos={cleaningRepos} isCleaningAll={isCleaningAllClean} showCleanOption />
+                      <RepoSection title="Uninitialized" repos={displayResult.uninitialized || []} color="gray" muted onOpenInTerminal={handleOpenInTerminal} onOpenInEditor={handleOpenInEditor} onOpenInLmsGithub={handleOpenInLmsGithub} defaultTerminalName={defaultTerminal?.displayName} defaultEditorName={defaultEditor?.displayName} />
+                      <RepoSection title="Errors" repos={displayResult.errors || []} color="red" showErrors onPull={handlePull} onOpenInTerminal={handleOpenInTerminal} onOpenInEditor={handleOpenInEditor} onOpenInLmsGithub={handleOpenInLmsGithub} defaultTerminalName={defaultTerminal?.displayName} defaultEditorName={defaultEditor?.displayName} pullingRepos={pullingRepos} disablePull />
                     </div>
 
                     {/* Execution Time - pinned at bottom */}
@@ -419,4 +452,6 @@ export default function ScanResults({ folders, scanState, onScanStateChange, def
       )}
     </div>
   );
-}
+});
+
+export default ScanResults;

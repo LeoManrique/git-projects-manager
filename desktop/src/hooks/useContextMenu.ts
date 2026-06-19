@@ -13,8 +13,8 @@ export interface UseContextMenuOptions {
 export interface UseContextMenuReturn {
   isOpen: boolean;
   position: MenuPosition | null;
-  buttonRef: React.RefObject<HTMLButtonElement>;
-  menuRef: React.RefObject<HTMLDivElement>;
+  buttonRef: React.RefObject<HTMLButtonElement | null>;
+  menuRef: React.RefObject<HTMLDivElement | null>;
   open: () => void;
   close: () => void;
   toggle: () => void;

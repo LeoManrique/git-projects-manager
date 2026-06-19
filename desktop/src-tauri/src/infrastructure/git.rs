@@ -29,7 +29,7 @@ impl GitOperations {
         let repo = Repository::open(repo_path)?;
         let head = repo.head()?;
 
-        if let Some(name) = head.shorthand() {
+        if let Ok(name) = head.shorthand() {
             Ok(name.to_string())
         } else {
             Ok("HEAD".to_string())
