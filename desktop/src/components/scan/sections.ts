@@ -4,8 +4,8 @@ import { ColorVariant } from './colorStyles';
 
 /**
  * The six fixed repo categories (FRONTEND.md §5.3), mirroring the macOS
- * app's RepoCategory: display order, colors, badge labels, and which row /
- * bulk actions each section offers.
+ * app's RepoCategory: display order (Clean last), colors, badge labels, and
+ * which row / bulk actions each section offers.
  */
 export interface SectionSpec {
   key: string;
@@ -61,17 +61,6 @@ export const SECTIONS: SectionSpec[] = [
   },
   {
     ...defaults,
-    key: 'clean',
-    title: 'Clean',
-    badgeLabel: 'clean',
-    color: 'green',
-    muted: true,
-    showClean: true,
-    hasBulkClean: true,
-    repos: (r) => r.clean,
-  },
-  {
-    ...defaults,
     key: 'uninitialized',
     title: 'Uninitialized',
     badgeLabel: 'uninitialized',
@@ -90,10 +79,18 @@ export const SECTIONS: SectionSpec[] = [
     pullDisabled: true,
     repos: (r) => r.errors,
   },
+  {
+    ...defaults,
+    key: 'clean',
+    title: 'Clean',
+    badgeLabel: 'clean',
+    color: 'green',
+    muted: true,
+    showClean: true,
+    hasBulkClean: true,
+    repos: (r) => r.clean,
+  },
 ];
-
-/** Sections surfaced inline in the All Folders overview (Clean excluded). */
-export const ACTIONABLE_SECTIONS = SECTIONS.filter((s) => s.key !== 'clean');
 
 /**
  * The given sections with their search-filtered repos, empty ones dropped

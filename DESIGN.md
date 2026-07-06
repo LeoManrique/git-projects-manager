@@ -36,8 +36,8 @@ Authoritative behavior spec: [FRONTEND.md](./FRONTEND.md).
 ## Platform strategy
 
 One Rust core, two frontends sharing the same layout: sidebar navigation, an
-All Folders overview with actionable repos expanded inline, and per-folder
-detail. Windows/Linux keep the Tauri app (webview, kanban included as a
+All Folders overview with every repo section expanded inline (Clean last),
+and per-folder detail. Windows/Linux keep the Tauri app (webview, kanban included as a
 sidebar view). macOS gets a native SwiftUI app (macOS 26 design language,
 system light/dark) limited to folders/scan/settings. Both share on-disk
 state, so they can be installed side by side.

@@ -127,11 +127,11 @@ Navigation is a sidebar + detail split, the same in both apps:
   folder name + monospace path; status area showing "Scanning…", "Not
   scanned", or `"{total} repos"` plus a clean count badge (unfiltered); a
   per-folder **Scan** control (disabled while that folder scans) and an
-  open-detail control. Below the header the folder's **actionable** sections
-  (every category except Clean) render expanded inline, so pending commit/pull
-  work is visible without opening a folder. A folder whose actionable sections
-  are all empty shows "All {total} repositories are clean" ("No matching
-  repositories" while a search filters everything out).
+  open-detail control. Below the header all of the folder's sections render
+  expanded inline (fixed order, Clean last), so pending commit/pull work is
+  visible without opening a folder. A folder with no visible sections shows
+  "No repositories found" ("No matching repositories" while a search filters
+  everything out).
 - **Per-folder detail** — all six sections, fixed order, empty sections
   hidden, plus a footer `"Completed in {executionTime, 2 decimals}s"`:
 
@@ -140,13 +140,21 @@ Navigation is a sidebar + detail split, the same in both apps:
   | Uncommitted Changes | yellow | open actions; Fetch & Pull visible but disabled |
   | Unpushed Commits | orange | open actions; Fetch & Pull |
   | Unpulled Commits | purple | open actions; Fetch & Pull; section bulk "Fetch & Pull All (n)" |
-  | Clean | green (muted rows) | open actions; Fetch & Pull; Clean Ignored Files; section bulk "Clean All (n)" |
   | Uninitialized | gray (muted rows) | open actions only |
   | Errors | red | open actions; Fetch & Pull visible but disabled; row shows errorMessage |
+  | Clean | green (muted rows) | open actions; Fetch & Pull; Clean Ignored Files; section bulk "Clean All (n)" |
 
-Rows show a category color dot, the repo **name** with its branch as an
-accent-colored chip, and the full path (monospace) underneath. Section headers
-show `TITLE (filtered count)` in the category color.
+Rows are a **single line**: a category color dot (softened to 50% opacity;
+section headers carry the full-strength color), then the repo path in
+monospace — directory muted, repo **name** emphasized — with the branch as an
+accent-colored chip after it. When too narrow, the path truncates
+**directory-first** (measured fit): the directory collapses to a trailing
+`…/` bridge — never below a first-letter hint, so a nested repo can't be
+mistaken for a root one — and the repo name middle-truncates only once the
+hint plus the full name no longer fit; the full path becomes a tooltip.
+Error rows add the errorMessage on a second line. Section headers show
+`TITLE (filtered count)` in the category color, with a leading category dot
+in the same column as the row dots.
 
 ### 5.4 Search semantics
 

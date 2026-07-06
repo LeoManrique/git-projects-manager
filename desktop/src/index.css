@@ -25,7 +25,9 @@
 
   /* Font families - system fonts for native feel */
   --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
-  --font-mono: "SF Mono", "Menlo", "Monaco", "Cascadia Code", "Consolas", monospace;
+  /* ui-monospace resolves to the real system mono (SF Mono on macOS) —
+     WebKit cannot resolve "SF Mono" by family name. */
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", "Consolas", "Menlo", "Monaco", monospace;
 
   /* Border radius - tighter for native feel */
   --radius-sm: 3px;

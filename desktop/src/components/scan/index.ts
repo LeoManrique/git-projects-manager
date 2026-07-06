@@ -7,5 +7,5 @@ export type { RepoActionHandlers } from './RepoRow';
 export { StatusBadge } from './StatusBadge';
 export { colorStyles } from './colorStyles';
 export type { ColorVariant } from './colorStyles';
-export { SECTIONS, ACTIONABLE_SECTIONS, visibleSections } from './sections';
+export { SECTIONS, visibleSections } from './sections';
 export type { SectionSpec } from './sections';

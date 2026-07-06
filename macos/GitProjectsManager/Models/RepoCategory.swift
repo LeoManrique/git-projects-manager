@@ -1,13 +1,14 @@
 import SwiftUI
 
-/// The six fixed repo categories, in display order (FRONTEND.md §5.3).
+/// The six fixed repo categories, in display order — Clean last
+/// (FRONTEND.md §5.3).
 enum RepoCategory: String, CaseIterable, Identifiable {
     case changes
     case unpushed
     case unpulled
-    case clean
     case uninitialized
     case errors
+    case clean
 
     var id: String { rawValue }
 
@@ -42,17 +43,6 @@ enum RepoCategory: String, CaseIterable, Identifiable {
         case .clean: .green
         case .uninitialized: .gray
         case .errors: .red
-        }
-    }
-
-    var symbol: String {
-        switch self {
-        case .changes: "pencil.circle.fill"
-        case .unpushed: "arrow.up.circle.fill"
-        case .unpulled: "arrow.down.circle.fill"
-        case .clean: "checkmark.circle.fill"
-        case .uninitialized: "questionmark.circle.fill"
-        case .errors: "exclamationmark.triangle.fill"
         }
     }
 

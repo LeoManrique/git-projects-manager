@@ -11,32 +11,13 @@ struct RepoRowView: View {
 
     var body: some View {
         HStack(spacing: 10) {
+            // Softer than the full-strength section-header dot.
             Circle()
-                .fill(category.color.opacity(category.isMuted ? 0.5 : 1))
+                .fill(category.color.opacity(0.5))
                 .frame(width: 8, height: 8)
 
             VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(AppModel.repoName(repo.path))
-                        .fontWeight(.medium)
-                        .foregroundStyle(category.isMuted ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
-                        .lineLimit(1)
-                    if let branch = repo.branch {
-                        Text(branch)
-                            .font(.caption)
-                            .foregroundStyle(Color.accentColor)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 1)
-                            .background(Color.accentColor.opacity(0.12), in: Capsule())
-                            .lineLimit(1)
-                    }
-                }
-                Text(repo.path)
-                    .font(.caption)
-                    .monospaced()
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                PathText(path: repo.path, branch: repo.branch, muted: category.isMuted)
                 if category == .errors, let message = repo.errorMessage {
                     Text(message)
                         .font(.caption)
@@ -44,6 +25,9 @@ struct RepoRowView: View {
                         .lineLimit(2)
                 }
             }
+            // Claim the slack (instead of the Spacer) so PathText measures
+            // the true available width.
+            .layoutPriority(1)
 
             Spacer(minLength: 8)
 

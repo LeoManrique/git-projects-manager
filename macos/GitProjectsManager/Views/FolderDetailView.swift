@@ -92,8 +92,13 @@ struct SectionHeader: View {
     let repos: [RepoStatus]
 
     var body: some View {
-        HStack {
-            Label("\(category.title) (\(repos.count))", systemImage: category.symbol)
+        // Same 8pt dot + 10pt gap as RepoRowView, so the header dot and the
+        // row dots form one column (matches the Tauri app).
+        HStack(spacing: 10) {
+            Circle()
+                .fill(category.color)
+                .frame(width: 8, height: 8)
+            Text("\(category.title) (\(repos.count))")
                 .font(.callout.weight(.semibold))
                 .foregroundStyle(category.color)
 

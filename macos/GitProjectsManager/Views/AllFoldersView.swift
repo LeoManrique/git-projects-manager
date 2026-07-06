@@ -1,9 +1,9 @@
 import SwiftUI
 
-/// Dashboard listing every monitored folder with its actionable repositories
-/// expanded inline, so uncommitted / unpushed / unpulled work is visible at a
-/// glance without drilling into each folder (FRONTEND.md §5.3). Clean repos are
-/// summarized in the header and shown in full in the per-folder detail view.
+/// Dashboard listing every monitored folder with all of its repo sections
+/// expanded inline, so pending work is visible at a glance without drilling
+/// into each folder (FRONTEND.md §5.3). Clean repos are summarized in the
+/// header and listed last.
 struct AllFoldersView: View {
     @Environment(AppModel.self) private var model
 
@@ -30,24 +30,22 @@ struct AllFoldersView: View {
     }
 }
 
-/// One monitored folder in the overview: a summary header plus its actionable
-/// repos (every category except Clean) grouped and expanded inline.
+/// One monitored folder in the overview: a summary header plus its repos
+/// grouped by category and expanded inline.
 struct FolderOverviewSection: View {
     @Environment(AppModel.self) private var model
     let folder: MonitoredFolder
 
     private var isScanning: Bool { model.scanningFolders.contains(folder.id) }
 
-    /// Actionable categories (Clean excluded) that still have repos after the
-    /// active search filter, in display order.
-    private var actionableGroups: [(RepoCategory, [RepoStatus])] {
+    /// Categories that still have repos after the active search filter, in
+    /// display order.
+    private var visibleGroups: [(RepoCategory, [RepoStatus])] {
         guard let result = model.results[folder.id] else { return [] }
-        return RepoCategory.allCases
-            .filter { $0 != .clean }
-            .compactMap { category in
-                let repos = model.filtered(category.repos(in: result))
-                return repos.isEmpty ? nil : (category, repos)
-            }
+        return RepoCategory.allCases.compactMap { category in
+            let repos = model.filtered(category.repos(in: result))
+            return repos.isEmpty ? nil : (category, repos)
+        }
     }
 
     var body: some View {
@@ -60,10 +58,10 @@ struct FolderOverviewSection: View {
 
     @ViewBuilder
     private var content: some View {
-        if let result = model.results[folder.id] {
-            let groups = actionableGroups
+        if model.results[folder.id] != nil {
+            let groups = visibleGroups
             if groups.isEmpty {
-                emptyRow(result)
+                emptyRow
             } else {
                 ForEach(groups, id: \.0) { category, repos in
                     SectionHeader(category: category, repos: repos)
@@ -84,20 +82,10 @@ struct FolderOverviewSection: View {
         }
     }
 
-    @ViewBuilder
-    private func emptyRow(_ result: ScanResult) -> some View {
-        if !model.searchText.isEmpty {
-            Text("No matching repositories")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-        } else {
-            Label(
-                "All \(result.totalRepositories) repositories are clean",
-                systemImage: "checkmark.circle.fill"
-            )
+    private var emptyRow: some View {
+        Text(model.searchText.isEmpty ? "No repositories found" : "No matching repositories")
             .font(.callout)
-            .foregroundStyle(.green)
-        }
+            .foregroundStyle(.secondary)
     }
 }
 

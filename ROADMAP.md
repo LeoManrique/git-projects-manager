@@ -10,14 +10,18 @@
 - [x] `FRONTEND.md` — behavior source of truth for both frontends (kanban excluded)
 - [x] Native macOS app (`macos/`): SwiftUI (macOS 26+, Liquid Glass, @Observable)
   - [x] `gpm-ffi` UniFFI bridge (async scan/pull/clean over tokio)
-  - [x] Sidebar navigation, All Folders overview (actionable repos expanded
-        inline, clean summarized), per-folder detail sections, repo actions,
+  - [x] Sidebar navigation, All Folders overview (all sections expanded
+        inline, Clean last), per-folder detail sections, repo actions,
         folder CRUD, Settings scene (Default Apps, Git Clean), search,
         auto-scan + focus rescan + supersession
 - [x] Tauri UI aligned with the macOS app: sidebar navigation (All Folders,
       Kanban, folders + attention badges, Add Folder/Settings footer), All
-      Folders overview with actionable sections expanded inline, per-folder
-      detail view, macOS-style repo rows (name + branch chip + path)
+      Folders overview with sections expanded inline, per-folder detail view,
+      macOS-style repo rows
+- [x] Single-line repo rows in both apps (muted directory + emphasized name
+      + branch chip) with filename-first path truncation ported from leogit's
+      `PathText`: directory shrinks to a `…/` hint before the name
+      middle-truncates
 - [x] Docs: README, DESIGN, TECHNICAL, FRONTEND; justfile recipes (`dev-macos`, `clippy`, `test`)
 - [x] Post-migration hardening: per-process unique temp names for atomic store
       writes (two apps share the files), async FFI `cancel_scan` (no main-thread

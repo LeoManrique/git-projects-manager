@@ -1,7 +1,7 @@
 import { RepoStatus } from '../../types';
-import { repoName } from '../../lib/repoUtils';
 import { useContextMenu } from '../../hooks';
 import { colorStyles, ColorVariant } from './colorStyles';
+import { PathText } from './PathText';
 import { DotsIcon } from '../icons';
 
 /** Per-repo action callbacks and in-flight state, shared by every section. */
@@ -29,9 +29,9 @@ interface RepoRowProps {
 }
 
 /**
- * One repository row, mirroring the macOS app: category dot, repo name with
- * branch chip, monospace path underneath, and a hover kebab menu with the
- * repo actions (FRONTEND.md §5.5).
+ * One repository row, mirroring the macOS app: a single line with category
+ * dot, repo path (muted directory + emphasized name), branch chip, and a
+ * hover kebab menu with the repo actions (FRONTEND.md §5.3/§5.5).
  */
 export function RepoRow({
   repo,
@@ -69,31 +69,23 @@ export function RepoRow({
         menu.open();
       }}
     >
-      <span
-        className={`mt-[7px] w-2 h-2 rounded-full flex-shrink-0 ${styles.dot} ${muted ? 'opacity-50' : ''}`}
-      />
+      {/* Softer than the full-strength section-header dot. */}
+      <span className={`mt-[6px] w-2 h-2 rounded-full flex-shrink-0 opacity-50 ${styles.dot}`} />
 
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 min-w-0">
-          <span
-            className={`text-xs font-medium truncate ${muted ? 'text-text-secondary' : 'text-text-primary'}`}
-          >
-            {repoName(repo.path)}
-          </span>
-          {repo.branch && (
-            <span className="flex-shrink-0 max-w-40 truncate px-1.5 rounded-full bg-accent-blue/10 text-accent-blue text-[11px] leading-4">
-              {repo.branch}
-            </span>
-          )}
-        </div>
-        <p className="text-[11px] leading-4 font-mono text-text-muted truncate">{repo.path}</p>
+        <PathText
+          path={repo.path}
+          branch={repo.branch ?? undefined}
+          muted={muted}
+          className="text-xs leading-5"
+        />
         {showError && repo.errorMessage && (
           <p className="text-[11px] leading-4 text-accent-red/90">{repo.errorMessage}</p>
         )}
       </div>
 
       {isBusy ? (
-        <span className="mt-1 w-3.5 h-3.5 flex-shrink-0 border-2 border-text-muted border-t-transparent rounded-full animate-spin" />
+        <span className="mt-[3px] w-3.5 h-3.5 flex-shrink-0 border-2 border-text-muted border-t-transparent rounded-full animate-spin" />
       ) : (
         <button
           ref={menu.buttonRef}
@@ -102,7 +94,7 @@ export function RepoRow({
             menu.toggle();
             (e.currentTarget as HTMLButtonElement).blur();
           }}
-          className={`p-1 rounded flex-shrink-0 hover:bg-dark-border transition-colors ${
+          className={`p-0.5 rounded flex-shrink-0 hover:bg-dark-border transition-colors ${
             menu.isOpen ? 'bg-dark-border' : 'opacity-0 group-hover:opacity-100'
           }`}
           title="Actions"

@@ -3,8 +3,8 @@ import { UseScannerReturn } from '../../hooks/useScanner';
 import { StatusBadge } from './StatusBadge';
 import { RepoSection } from './RepoSection';
 import { RepoActionHandlers } from './RepoRow';
-import { ACTIONABLE_SECTIONS, visibleSections } from './sections';
-import { CheckCircleIcon, FolderIcon, OpenDetailIcon, RefreshIcon } from '../icons';
+import { SECTIONS, visibleSections } from './sections';
+import { FolderIcon, OpenDetailIcon, RefreshIcon } from '../icons';
 
 interface AllFoldersOverviewProps {
   folders: MonitoredFolder[];
@@ -16,10 +16,10 @@ interface AllFoldersOverviewProps {
 }
 
 /**
- * Dashboard listing every monitored folder with its actionable repositories
+ * Dashboard listing every monitored folder with all of its repo sections
  * expanded inline, mirroring the macOS All Folders view (FRONTEND.md §5.3):
- * pending commit/pull work is visible without opening a folder, while Clean
- * is summarized in the header and listed only in the per-folder detail.
+ * pending commit/pull work is visible without opening a folder, with Clean
+ * summarized in the header and listed last.
  */
 export function AllFoldersOverview({
   folders,
@@ -130,15 +130,12 @@ function FolderOverviewBody({
   scanner: UseScannerReturn;
   handlers: RepoActionHandlers;
 }) {
-  const groups = visibleSections(ACTIONABLE_SECTIONS, result, searchQuery);
+  const groups = visibleSections(SECTIONS, result, searchQuery);
 
   if (groups.length === 0) {
-    return searchQuery.trim() ? (
-      <p className="px-2 py-1 text-xs text-text-muted">No matching repositories</p>
-    ) : (
-      <p className="flex items-center gap-1.5 px-2 py-1 text-xs text-accent-green">
-        <CheckCircleIcon className="w-4 h-4" />
-        All {result.totalRepositories} repositories are clean
+    return (
+      <p className="px-2 py-1 text-xs text-text-muted">
+        {searchQuery.trim() ? 'No matching repositories' : 'No repositories found'}
       </p>
     );
   }
