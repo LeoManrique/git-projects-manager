@@ -23,7 +23,13 @@ Frontend behavior for both apps is specified in [FRONTEND.md](./FRONTEND.md) —
 single source of truth. Architecture details live in [TECHNICAL.md](./TECHNICAL.md).
 
 The apps work standalone; the sync server is optional and only used when the user
-signs in (Tauri app only).
+signs in (Tauri app only). Sign-in needs your own Google OAuth "Desktop app"
+credentials — the public source ships no client secret; supply one at build time
+via `GOOGLE_OAUTH_CLIENT_SECRET` (see [TECHNICAL.md](./TECHNICAL.md)).
+
+## License
+
+MIT — see [LICENSE](./LICENSE).
 
 ## Quick start
 

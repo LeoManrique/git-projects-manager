@@ -34,6 +34,17 @@ read/write the same files: `config.json` (folders), `settings.json`,
 keychain (`keyring` with `apple-native`/`windows-native`/`sync-secret-service`
 features; file fallback `session.json`, 0600).
 
+## Sync configuration (build-time)
+
+Kanban sync (Tauri only) reads three values from `core/src/config.rs`, each
+resolved as compile-time env (`option_env!`) → dev runtime env → hardcoded
+fallback: `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`,
+`SYNC_SERVER_URL`. The **client secret fallback is empty in the public
+source** — no credential ships in git; set `GOOGLE_OAUTH_CLIENT_SECRET` at
+build time to enable sign-in. The client ID and server URL keep working
+public-endpoint fallbacks. Desktop-client secrets are non-confidential to
+Google, but are still kept out of source on principle.
+
 ## macOS build specifics
 
 - UniFFI proc-macro setup (`uniffi::setup_scaffolding!`), library-mode bindgen
