@@ -27,13 +27,16 @@
       writes (two apps share the files), async FFI `cancel_scan` (no main-thread
       block), silent focus-scan no longer supersedes visible scans, keyring
       `vendored` dbus for Linux builds
+- [x] macOS releases ship the native SwiftUI app: `deploy_releases.sh` builds
+      and uploads it (version bump covers `project.yml`), `install_release.sh`
+      installs it (macOS 26+ check, replaces older Tauri installs)
 
 ## Pending
 
 - [ ] Re-run the multi-agent adversarial code review of the migration (first
       attempt aborted on session usage limits; a manual review pass was done instead)
-- [ ] macOS app releases: signing identity, notarization, add to
-      `scripts/deploy_releases.sh` / `install_release.sh`
+- [ ] macOS app releases: signing identity + notarization (currently ad-hoc
+      signed; installer strips quarantine)
 - [ ] App icon asset catalog for the macOS app (currently reuses icon.icns)
 - [ ] Retire the Tauri app on macOS once the native app has parity confidence
 - [ ] Consider: scan-cancel UI, per-repo push action, folder reordering

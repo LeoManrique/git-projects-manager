@@ -2,8 +2,9 @@
 set -euo pipefail
 
 # Installs Git Projects Manager from the latest GitHub release for the host platform:
-#   macOS → /Applications/Git Projects Manager.app
-#   Linux → system install via the released .deb (Debian/Ubuntu)
+#   macOS → the native SwiftUI app (requires macOS 26+) at
+#           /Applications/Git Projects Manager.app
+#   Linux → system install of the Tauri app via the released .deb (Debian/Ubuntu)
 # Intended to be curlable:
 #   curl -fsSL https://raw.githubusercontent.com/LeoManrique/git-projects-manager/master/scripts/install_release.sh | bash
 #
@@ -24,8 +25,8 @@ error()   { echo -e "  ${RED}✗ $1${NC}"; exit 1; }
 REPO="LeoManrique/git-projects-manager"
 API_URL="https://api.github.com/repos/$REPO/releases/latest"
 TMP_DIR="/tmp/git-projects-manager-install"
-PROC="git-projects-manager"           # bundle executable name on every platform
-APP_NAME="Git Projects Manager.app"   # macOS bundle name inside the zip
+PROC="git-projects-manager"           # Tauri executable name (Linux; also old macOS installs)
+APP_NAME="Git Projects Manager.app"   # macOS bundle name inside the zip; executable matches
 
 # ── Step 1: Detect platform ──
 step 1 "Detecting platform"
@@ -44,6 +45,13 @@ case "$OS" in
   linux)  PLATFORM="linux-$ARCH"; ARTIFACT_EXT="deb" ;;
   *) error "Unsupported OS: $OS (this installer supports macOS and Linux)" ;;
 esac
+
+# The released macOS app is the native SwiftUI one, which needs macOS 26+.
+if [ "$OS" = "darwin" ]; then
+  MACOS_VERSION=$(sw_vers -productVersion)
+  [ "${MACOS_VERSION%%.*}" -ge 26 ] 2>/dev/null \
+    || error "The macOS app requires macOS 26 or later (this Mac runs $MACOS_VERSION)"
+fi
 success "Platform: $PLATFORM"
 
 # ── Step 2: Stop any running instance ──
@@ -52,20 +60,33 @@ success "Platform: $PLATFORM"
 # install until the next launch. Kill it first.
 step 2 "Stopping running instance"
 
-if pgrep -x "$PROC" >/dev/null 2>&1; then
-  pkill -TERM -x "$PROC" 2>/dev/null || true
+STOPPED=0
+# stop_matching <pgrep match flag> <pattern> <label> — graceful TERM, then KILL.
+stop_matching() {
+  pgrep "$1" "$2" >/dev/null 2>&1 || return 0
+  pkill -TERM "$1" "$2" 2>/dev/null || true
   for _ in $(seq 1 16); do
-    pgrep -x "$PROC" >/dev/null 2>&1 || break
+    pgrep "$1" "$2" >/dev/null 2>&1 || break
     sleep 0.5
   done
-  if pgrep -x "$PROC" >/dev/null 2>&1; then
-    warn "Force-killing $PROC (graceful stop timed out)"
-    pkill -KILL -x "$PROC" 2>/dev/null || true
+  if pgrep "$1" "$2" >/dev/null 2>&1; then
+    warn "Force-killing $3 (graceful stop timed out)"
+    pkill -KILL "$1" "$2" 2>/dev/null || true
   fi
-  success "Stopped running instance"
+  success "Stopped $3"
+  STOPPED=1
+}
+
+if [ "$OS" = "darwin" ]; then
+  # Match the executable path inside the bundle — unambiguous regardless of
+  # how the kernel reports the (space-containing) process name.
+  stop_matching -f "/Contents/MacOS/${APP_NAME%.app}" "running app"
+  # A previous install may have been the retired macOS Tauri build.
+  stop_matching -x "$PROC" "legacy Tauri app"
 else
-  success "No running instances"
+  stop_matching -x "$PROC" "running app"
 fi
+[ "$STOPPED" -eq 1 ] || success "No running instances"
 
 # ── Step 3: Fetch latest release metadata ──
 step 3 "Fetching latest release from GitHub"

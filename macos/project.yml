@@ -16,7 +16,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.gitprojectsmanager.mac
         PRODUCT_NAME: Git Projects Manager
-        MARKETING_VERSION: "2.2.0"
+        MARKETING_VERSION: "3.0.0"
         CURRENT_PROJECT_VERSION: "1"
         SWIFT_VERSION: "6.0"
         # UniFFI-generated bindings do not compile under a MainActor default
@@ -28,6 +28,9 @@ targets:
         OTHER_LDFLAGS: $(inherited) -lgpm_ffi -lz -liconv
         ENABLE_USER_SCRIPT_SANDBOXING: false
         ENABLE_HARDENED_RUNTIME: false
+        # The Rust staticlib is built for the host arch only, and releases
+        # ship one artifact per arch (deploy_releases.sh) — never universal.
+        ONLY_ACTIVE_ARCH: YES
         # No App Intents in this app — skip the metadata extractor (it logs a
         # "Metadata extraction skipped" warning on every build otherwise).
         LM_SKIP_METADATA_EXTRACTION: YES
@@ -48,6 +51,11 @@ targets:
       properties:
         CFBundleDisplayName: Git Projects Manager
         CFBundleIconFile: AppIcon
+        # xcodegen writes a literal 1.0/1 otherwise — reference the build
+        # settings so version bumps (and the deploy_releases.sh override)
+        # actually land in the bundle.
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSMinimumSystemVersion: "26.0"
         LSApplicationCategoryType: public.app-category.developer-tools
         NSHumanReadableCopyright: ""

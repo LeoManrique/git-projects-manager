@@ -15,8 +15,9 @@ Monorepo layout:
   only, no kanban), bridged to `gpm-core` via UniFFI.
 - [`server/`](./server) — the optional sync server (axum + SQLite). Stores per-user
   kanban state, authenticated via Google OAuth.
-- [`scripts/`](./scripts) — release/install scripts for the desktop app and the deploy
-  script for the sync server.
+- [`scripts/`](./scripts) — release/install scripts for the apps (macOS releases ship
+  the native SwiftUI app; Linux/Windows the Tauri app) and the deploy script for the
+  sync server.
 
 Frontend behavior for both apps is specified in [FRONTEND.md](./FRONTEND.md) — the
 single source of truth. Architecture details live in [TECHNICAL.md](./TECHNICAL.md).

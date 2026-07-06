@@ -71,9 +71,20 @@ features; file fallback `session.json`, 0600).
 - `just test` — core unit tests (glob matcher etc.).
 - Frontend: `pnpm build` (tsc strict + vite), eslint.
 
-## Versions
+## Versions & releases
 
-App version lives in `desktop/package.json` (tauri.conf.json reads it);
-`core`/`ffi` crates track it manually. Release flow unchanged:
-`scripts/deploy_releases.sh` per platform; macOS app is not yet part of the
-release scripts (see ROADMAP.md).
+App version lives in `desktop/package.json` (tauri.conf.json reads it),
+mirrored in `desktop/src-tauri/Cargo.toml` and `macos/project.yml`
+(`MARKETING_VERSION`) — `scripts/deploy_releases.sh` bumps all three in one
+commit; `core`/`ffi` crates track it manually.
+
+`deploy_releases.sh` runs once per device and uploads that platform's
+artifact to the shared GitHub release tag: **macOS → the native SwiftUI app**
+(xcodebuild Release, host arch only, `MARKETING_VERSION` pinned to the release
+version, zipped with `ditto` into `dist-release/`), Linux → Tauri `.deb`,
+Windows → Tauri NSIS `.exe`. `scripts/install_release.sh` installs the latest
+release: on macOS (26+ required) it stops any running instance — including an
+older Tauri install, which it replaces at the same
+`/Applications/Git Projects Manager.app` path — unzips, strips quarantine, and
+registers with Launch Services. Bundles are ad-hoc signed
+(signing/notarization: see ROADMAP.md).

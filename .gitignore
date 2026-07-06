@@ -18,11 +18,14 @@ lerna-debug.log*
 *.sln
 *.sw?
 
+# Release artifacts (deploy_releases.sh; the desktop/ path is the pre-3.0 location)
+/dist-release
+desktop/dist-release
+
 # Desktop
 desktop/node_modules
 desktop/dist
 desktop/dist-ssr
-desktop/dist-release
 desktop/src-tauri/target
 *.local
 
