@@ -10,9 +10,11 @@
 const OAUTH_CLIENT_ID_FALLBACK: &str = "926356926853-l6jbhemd4pecslsl2blctnr55cdsrrhc.apps.googleusercontent.com";
 
 /// GCP "Desktop app" OAuth 2.0 client secret. Required by Google's token
-/// endpoint even with PKCE. Not actually secret — the binary is distributed
-/// publicly, so treat this as a registration identifier, not a credential.
-const OAUTH_CLIENT_SECRET_FALLBACK: &str = "GOCSPX-REDACTED";
+/// endpoint even with PKCE (Google does not treat desktop-client secrets as
+/// confidential). Left empty in the public source: supply your own Google
+/// OAuth app's value at build time via `GOOGLE_OAUTH_CLIENT_SECRET`. Sync
+/// sign-in is disabled without it.
+const OAUTH_CLIENT_SECRET_FALLBACK: &str = "";
 
 /// Production sync server URL. Replace before shipping.
 const SYNC_SERVER_URL_FALLBACK: &str = "https://gpm-sync.leonardomanrique.com";
