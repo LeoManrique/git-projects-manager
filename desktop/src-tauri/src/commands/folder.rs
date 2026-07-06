@@ -1,5 +1,5 @@
-use crate::domain::MonitoredFolder;
-use crate::state::AppState;
+use gpm_core::domain::MonitoredFolder;
+use gpm_core::AppState;
 use tauri::State;
 
 #[tauri::command]

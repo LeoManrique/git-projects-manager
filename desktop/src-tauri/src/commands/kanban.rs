@@ -1,9 +1,9 @@
-use crate::domain::auth::SyncStatus;
-use crate::domain::kanban::{KanbanCard, KanbanState};
-use crate::infrastructure::github_cli::{self, GhAuthStatus, GhRepo};
-use crate::infrastructure::repos_cache::ReposCache;
-use crate::infrastructure::sync_client::SyncOutcome;
-use crate::state::AppState;
+use gpm_core::domain::auth::SyncStatus;
+use gpm_core::domain::kanban::{KanbanCard, KanbanState};
+use gpm_core::infrastructure::github_cli::{self, GhAuthStatus, GhRepo};
+use gpm_core::infrastructure::repos_cache::ReposCache;
+use gpm_core::infrastructure::sync_client::SyncOutcome;
+use gpm_core::AppState;
 use serde::Serialize;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -78,6 +78,8 @@ pub async fn refresh_kanban(
 }
 
 #[tauri::command]
+// Tauri's invoke layer hands commands owned State/args; the signature is the command contract.
+#[allow(clippy::needless_pass_by_value)]
 pub fn load_kanban_local(state: State<AppState>) -> Result<Option<KanbanRefresh>, String> {
     let Some(cache) = state.repos_cache.load().map_err(|e| e.to_string())? else {
         return Ok(None);
@@ -91,6 +93,8 @@ pub fn load_kanban_local(state: State<AppState>) -> Result<Option<KanbanRefresh>
 }
 
 #[tauri::command]
+// Tauri's invoke layer hands commands owned State/args; the signature is the command contract.
+#[allow(clippy::needless_pass_by_value)]
 pub fn move_kanban_card(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
@@ -122,6 +126,8 @@ pub fn move_kanban_card(
 }
 
 #[tauri::command]
+// Tauri's invoke layer hands commands owned State/args; the signature is the command contract.
+#[allow(clippy::needless_pass_by_value)]
 pub fn delete_github_repo(
     state: State<AppState>,
     name_with_owner: String,
@@ -155,15 +161,10 @@ pub fn delete_github_repo(
 }
 
 #[tauri::command]
+// Tauri's invoke layer hands commands owned State/args; the signature is the command contract.
+#[allow(clippy::needless_pass_by_value)]
 pub fn open_url(url: String) -> Result<(), String> {
-    if !(url.starts_with("https://") || url.starts_with("http://")) {
-        return Err("only http(s) URLs are allowed".into());
-    }
-    std::process::Command::new("open")
-        .arg(&url)
-        .spawn()
-        .map_err(|e| e.to_string())?;
-    Ok(())
+    gpm_core::infrastructure::launcher::open_url(&url).map_err(|e| e.to_string())
 }
 
 /// Build the final kanban state by adopting server's authoritative card data

@@ -1,7 +1,7 @@
-use crate::config;
-use crate::domain::auth::SyncUser;
-use crate::infrastructure::oauth;
-use crate::state::AppState;
+use gpm_core::config;
+use gpm_core::domain::auth::SyncUser;
+use gpm_core::infrastructure::oauth;
+use gpm_core::AppState;
 use anyhow::{Result, anyhow};
 use tauri::{AppHandle, State};
 use tauri_plugin_shell::ShellExt;
@@ -43,10 +43,10 @@ pub async fn sign_in_with_google(
 #[tauri::command]
 pub async fn sign_out(state: State<'_, AppState>) -> Result<(), String> {
     let token = state.auth.read().as_ref().map(|s| s.token.clone());
-    if let Some(t) = token {
-        if let Err(e) = state.sync_client.sign_out(&t).await {
-            tracing::warn!(?e, "server sign-out call failed; clearing local session anyway");
-        }
+    if let Some(t) = token
+        && let Err(e) = state.sync_client.sign_out(&t).await
+    {
+        tracing::warn!(?e, "server sign-out call failed; clearing local session anyway");
     }
     if let Err(e) = state.token_store.clear() {
         tracing::warn!(?e, "failed to clear token store");
@@ -56,6 +56,8 @@ pub async fn sign_out(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
+// Tauri's invoke layer hands commands owned State/args; the signature is the command contract.
+#[allow(clippy::needless_pass_by_value)]
 pub fn get_sync_user(state: State<'_, AppState>) -> Option<SyncUser> {
     state.auth.read().as_ref().map(|s| s.user.clone())
 }

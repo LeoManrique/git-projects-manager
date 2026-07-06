@@ -1,12 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod commands;
-mod config;
-mod domain;
-mod infrastructure;
-mod state;
 
-use state::AppState;
+use gpm_core::AppState;
 use tauri::Manager;
 
 fn main() {

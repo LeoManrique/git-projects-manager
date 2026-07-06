@@ -1,0 +1,28 @@
+[package]
+name = "gpm-core"
+version = "2.2.0"
+edition = "2024"
+description = "Tauri-free core for Git Projects Manager: domain logic, git scanning, and persistence shared by the Tauri (Windows/Linux) and SwiftUI (macOS) frontends."
+
+[lib]
+name = "gpm_core"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+git2 = "0.21"
+walkdir = "2"
+dirs = "6"
+anyhow = "1"
+parking_lot = "0.12"
+rayon = "1.12"
+tracing = "0.1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+# vendored: build the dbus client statically so Linux builds don't need libdbus-dev.
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service", "vendored"] }
+oauth2 = { version = "5", default-features = false, features = ["reqwest", "rustls-tls"] }
+tiny_http = "0.12"
+url = "2"

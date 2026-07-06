@@ -33,3 +33,13 @@ server/.env.prod
 server/*.db
 /node_modules
 /dist
+
+# Rust core
+core/target
+
+# macOS app
+macos/ffi/target
+macos/generated
+macos/GitProjectsManager.xcodeproj
+macos/build
+macos/DerivedData

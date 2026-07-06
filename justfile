@@ -1,5 +1,6 @@
 # git-projects-manager — task runner
-# Monorepo: desktop/ (Tauri + React) and server/ (axum + SQLite)
+# Monorepo: core/ (shared Rust), desktop/ (Tauri + React, Win/Linux),
+# macos/ (SwiftUI + UniFFI), server/ (axum + SQLite)
 
 # List available recipes
 default:
@@ -32,10 +33,17 @@ dev-web:
 dev-server:
     cd server && cargo run
 
+# Build and launch the native macOS app (Debug)
+dev-macos: macos-project
+    cd macos && xcodebuild -project GitProjectsManager.xcodeproj \
+        -scheme GitProjectsManager -configuration Debug \
+        -derivedDataPath DerivedData build
+    open "macos/DerivedData/Build/Products/Debug/Git Projects Manager.app"
+
 # --- Build ---
 
-# Build everything for release (desktop + server)
-build: build-desktop build-server
+# Build everything for release (desktop + server + macOS app)
+build: build-desktop build-server build-macos
 
 # Build the desktop app bundle for the current platform
 build-desktop:
@@ -44,3 +52,27 @@ build-desktop:
 # Build the sync server in release mode
 build-server:
     cd server && cargo build --release
+
+# Regenerate the Xcode project (needs the Rust bindings to exist first)
+macos-project:
+    macos/scripts/build-rust.sh debug
+    cd macos && xcodegen generate
+
+# Build the native macOS app (Release)
+build-macos: macos-project
+    cd macos && xcodebuild -project GitProjectsManager.xcodeproj \
+        -scheme GitProjectsManager -configuration Release \
+        -derivedDataPath DerivedData build
+
+# --- Quality ---
+
+# Run all Rust tests
+test:
+    cd core && cargo test
+    cd macos/ffi && cargo test
+
+# Clippy pedantic across all Rust crates (CLAUDE.md requirement)
+clippy:
+    cd core && cargo clippy --all-targets -- -W clippy::pedantic
+    cd desktop/src-tauri && cargo clippy --all-targets -- -W clippy::pedantic
+    cd macos/ffi && cargo clippy --all-targets -- -W clippy::pedantic

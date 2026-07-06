@@ -1,2 +1,2 @@
-export { ViewSwitcher } from './ViewSwitcher';
-export type { View } from './ViewSwitcher';
+export { Sidebar } from './Sidebar';
+export type { Selection } from './Sidebar';

@@ -1,6 +1,6 @@
-use crate::domain::{GitCleanResult, ScanResult};
-use crate::infrastructure::git::GitOperations;
-use crate::state::AppState;
+use gpm_core::domain::{GitCleanResult, ScanResult};
+use gpm_core::infrastructure::git::GitOperations;
+use gpm_core::AppState;
 use std::path::Path;
 use tauri::State;
 
@@ -41,7 +41,7 @@ pub async fn cancel_scan(state: State<'_, AppState>) -> Result<(), String> {
     // Create new scanner for next scan
     drop(scanner);
     let mut scanner = state.scanner.write();
-    *scanner = crate::domain::scanner::Scanner::new();
+    *scanner = gpm_core::domain::scanner::Scanner::new();
 
     Ok(())
 }

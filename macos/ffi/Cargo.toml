@@ -1,0 +1,23 @@
+[package]
+name = "gpm-ffi"
+version = "2.2.0"
+edition = "2024"
+description = "UniFFI bridge exposing gpm-core to the native SwiftUI macOS app."
+
+[lib]
+name = "gpm_ffi"
+crate-type = ["staticlib", "lib"]
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "uniffi-bindgen.rs"
+
+[dependencies]
+gpm-core = { path = "../../core" }
+uniffi = { version = "0.32", features = ["cli", "tokio"] }
+tokio = { version = "1", features = ["rt-multi-thread"] }
+thiserror = "2"
+anyhow = "1"
+
+[profile.release]
+lto = true
