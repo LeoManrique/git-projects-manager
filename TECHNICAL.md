@@ -78,8 +78,14 @@ of source on principle.
 - `Scanner` (core) walks each monitored folder (walkdir, ~60 excluded dir
   names, hidden dirs skipped), detects repos by `.git/`, checks status in
   parallel with rayon (git2 for branch/dirty; `git` CLI for
-  upstream/fetch/ahead/behind), and detects uninitialized sibling directories.
-- `onlyLocalChecks` per folder skips fetch + ahead/behind.
+  upstream/fetch/ahead/behind/remote-presence), and detects uninitialized
+  sibling directories.
+- `onlyLocalChecks` per folder skips fetch + ahead/behind; `hasRemote`
+  (`git remote`) is local, so it is always checked.
+- **Unpublished overlay**: repos with no remote (`hasRemote == Some(false)`)
+  are collected into `ScanResult.unpublished` *in addition to* their exclusive
+  bucket (changes/unpushed/unpulled/clean). Errored/uninitialized entries are
+  excluded. Categorization stays otherwise mutually exclusive.
 - Cancellation: `Arc<AtomicBool>` polled during directory walk only; a
   cancelled `Scanner` is replaced with a fresh instance. No UI currently
   exposes cancel.
@@ -89,7 +95,7 @@ of source on principle.
 
 - `just clippy` — clippy pedantic, zero warnings across `core`,
   `desktop/src-tauri`, `macos/ffi` (CLAUDE.md requirement).
-- `just test` — core unit tests (glob matcher etc.).
+- `just test` — core tests (glob matcher, unpublished-overlay integration test, …).
 - Frontend: `pnpm build` (tsc strict + vite), eslint.
 
 ## Versions & releases

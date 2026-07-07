@@ -38,6 +38,11 @@
       count capsules, sync chip, named relative dates; dead `review` column
       id removed)
 
+- [x] Unpublished (no-remote) category as an overlay in both apps: a repo with
+      no remote appears in `ScanResult.unpublished` on top of its primary
+      section (blue, no Fetch & Pull); backed by a `hasRemote` flag on
+      `RepoStatus` and a core integration test
+
 ## Pending
 
 - [ ] Re-run the multi-agent adversarial code review of the migration (first

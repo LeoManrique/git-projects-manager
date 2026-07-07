@@ -21,8 +21,10 @@ folders and surfaces repository status at a glance.
   repos beneath them (smart exclusions: node_modules, target, caches, hidden
   dirs). Per-folder "only local checks" skips network round-trips.
 - **Categorize repos**: Uncommitted Changes (yellow), Unpushed (orange),
-  Unpulled (purple), Clean (green), Uninitialized (gray — directories with
-  files but no git), Errors (red).
+  Unpulled (purple), Unpublished (blue — no remote, never pushed to a host),
+  Clean (green), Uninitialized (gray — directories with files but no git),
+  Errors (red). Unpublished is an overlay: a no-remote repo also shows in its
+  primary status section (e.g. Uncommitted *and* Unpublished).
 - **Act on repos**: open in default terminal/editor/`lms-github`, fetch & pull
   (single or all unpulled), clean git-ignored files with exclude patterns
   (single or all clean).

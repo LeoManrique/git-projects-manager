@@ -10,6 +10,10 @@ impl StatusChecker {
     pub fn check(path: &Path, only_local_checks: bool) -> RepoStatus {
         let path_str = path.display().to_string();
 
+        // Whether the repo was ever published (has a remote). Purely local, so
+        // it runs even when only_local_checks skips network round-trips.
+        let has_remote = GitOperations::has_remote(path).ok();
+
         // Get branch - handle UnbornBranch (no commits yet) specially
         let (branch, is_unborn) = match GitOperations::get_current_branch(path) {
             Ok(b) => (Some(b), false),
@@ -24,6 +28,7 @@ impl StatusChecker {
                         has_changes: None,
                         has_unpushed: None,
                         has_unpulled: None,
+                        has_remote,
                         has_error: true,
                         error_message: Some(format!("Failed to get branch: {e}")),
                     };
@@ -41,6 +46,7 @@ impl StatusChecker {
                     has_changes: None,
                     has_unpushed: None,
                     has_unpulled: None,
+                    has_remote,
                     has_error: true,
                     error_message: Some(format!("Failed to check changes: {e}")),
                 };
@@ -67,6 +73,7 @@ impl StatusChecker {
             has_changes,
             has_unpushed: has_unpushed_for_unborn.or(has_unpushed),
             has_unpulled,
+            has_remote,
             has_error: false,
             error_message: None,
         }

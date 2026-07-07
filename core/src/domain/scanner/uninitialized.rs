@@ -107,6 +107,7 @@ impl UninitializedDetector {
                 has_changes: None,
                 has_unpushed: None,
                 has_unpulled: None,
+                has_remote: None,
                 has_error: false,
                 error_message: None,
             });

@@ -9,6 +9,9 @@ pub struct RepoStatus {
     pub has_changes: Option<bool>,
     pub has_unpushed: Option<bool>,
     pub has_unpulled: Option<bool>,
+    /// Whether the repo has a remote configured. `Some(false)` means the repo
+    /// has never been published to a host (see `ScanResult.unpublished`).
+    pub has_remote: Option<bool>,
     pub has_error: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error_message: Option<String>,
@@ -22,6 +25,9 @@ pub struct ScanResult {
     pub with_changes: Vec<RepoStatus>,
     pub with_unpushed: Vec<RepoStatus>,
     pub with_unpulled: Vec<RepoStatus>,
+    /// Repos with no remote configured (never published). This is an *overlay*
+    /// category: a repo here also appears in its primary status bucket above.
+    pub unpublished: Vec<RepoStatus>,
     pub clean: Vec<RepoStatus>,
     pub errors: Vec<RepoStatus>,
     pub uninitialized: Vec<RepoStatus>,

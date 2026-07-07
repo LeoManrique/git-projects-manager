@@ -80,6 +80,20 @@ impl GitOperations {
         Ok(!output.stdout.is_empty())
     }
 
+    /// True if the repository has at least one remote configured. A repo with
+    /// no remote has never been published to a host (see `ScanResult.unpublished`).
+    ///
+    /// # Errors
+    /// Returns an error if the `git remote` command cannot be executed.
+    pub fn has_remote(repo_path: &Path) -> Result<bool> {
+        let output = git_command()
+            .arg("remote")
+            .current_dir(repo_path)
+            .output()?;
+
+        Ok(!String::from_utf8_lossy(&output.stdout).trim().is_empty())
+    }
+
     /// # Errors
     /// Returns an error if the `git rev-parse` command cannot be executed.
     pub fn has_upstream_branch(repo_path: &Path) -> Result<bool> {

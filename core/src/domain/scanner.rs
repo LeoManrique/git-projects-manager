@@ -72,13 +72,23 @@ impl Scanner {
             with_changes: vec![],
             with_unpushed: vec![],
             with_unpulled: vec![],
+            unpublished: vec![],
             clean: vec![],
             errors: vec![],
             uninitialized: uninitialized_folders,
             execution_time: start_time.elapsed().as_secs_f64(),
         };
 
+        // Only real git repos reach this loop; uninitialized folders are kept in
+        // their own list and never considered for the Unpublished overlay.
         for status in statuses {
+            // Unpublished is an overlay: a repo with no remote also lands in one
+            // of the exclusive buckets below. Errored repos are excluded (their
+            // remote state is unknown).
+            if !status.has_error && status.has_remote == Some(false) {
+                result.unpublished.push(status.clone());
+            }
+
             if status.has_error {
                 result.errors.push(status);
             } else if status.has_changes == Some(true) {
