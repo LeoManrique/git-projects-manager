@@ -106,7 +106,6 @@ export function useKanban(): UseKanbanReturn {
       backlog: [],
       'active-low': [],
       'active-high': [],
-      review: [],
       done: [],
       closed: [],
     };

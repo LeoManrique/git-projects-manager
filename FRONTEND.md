@@ -8,15 +8,17 @@ Source of truth for how **both** frontends behave:
 Both sit on the same Rust core (`core/`, crate `gpm-core`) and share the same on-disk
 stores, so a machine with both apps installed sees identical data.
 
-**Scope**: Folders, Scanning, and Settings. The **Kanban board is out of scope** — it is a
-Tauri-app-only feature and intentionally absent from the macOS app. Because cloud sync
-exists solely to sync kanban state, **Account/sign-in is also Tauri-only**.
+**Scope**: Folders, Scanning, Settings, the Kanban board (§7), and Account/sign-in
+(§6.3) — all present in **both** apps.
 
 This spec defines *behavior*. Both apps share the same layout — sidebar navigation,
-an All Folders overview with actionable repos expanded inline, and a per-folder
-detail view — but visual presentation follows each platform's idiom (§8): the Tauri
-app keeps its dense dark developer-tool look; the macOS app uses the native macOS 26
-design language (Liquid Glass, system light/dark appearance) and is *not* a pixel copy.
+an All Folders overview with actionable repos expanded inline, a per-folder detail
+view, and the kanban board — but visual presentation follows each platform's idiom
+(§9): the Tauri app keeps its dense dark developer-tool look; the macOS app uses the
+native macOS 26 design language (Liquid Glass, system light/dark appearance) and is
+*not* a pixel copy. The kanban design language is defined by the macOS app (tinted
+column headers with count capsules, soft rounded surfaces, named relative dates,
+sync status chip); the Tauri board mirrors it in its dark palette.
 
 ---
 
@@ -58,8 +60,8 @@ camelCase keys, written atomically (temp file + rename) by the core.
 |---|---|---|
 | `config.json` | `{ folders: [MonitoredFolder] }` | insertion order preserved; no sorting anywhere |
 | `settings.json` | `{ defaultTerminal?, defaultEditor?, gitCleanSettings? }` | ids, not paths |
-| `kanban_v2.json`, `repos_cache_v1.json` | kanban state / GitHub repo cache | Tauri app only |
-| OS keychain (`git-projects-manager` / `sync_session`) | sync session | Tauri app only |
+| `kanban_v2.json`, `repos_cache_v1.json` | kanban state / GitHub repo cache | shared by both apps (§7) |
+| OS keychain (`git-projects-manager` / `sync_session`) | sync session | shared by both apps |
 
 Frontend-only state (scan results, expansion, search text, selected view) is **session
 memory** — never persisted. Every launch starts fresh and rescans.
@@ -119,10 +121,10 @@ core's cancellation API exists but is unused.
 
 Navigation is a sidebar + detail split, the same in both apps:
 
-- **Sidebar**: an **All Folders** entry, then the monitored folders (stored
-  order), each showing a scanning spinner or, when > 0, an attention badge
-  (changed + unpushed + unpulled + errors; always unfiltered). The Tauri app
-  also lists its Kanban view and pins Add Folder + Settings at the bottom (§8).
+- **Sidebar**: an **All Folders** entry and a **Kanban** entry (§7), then the
+  monitored folders (stored order), each showing a scanning spinner or, when
+  > 0, an attention badge (changed + unpushed + unpulled + errors; always
+  unfiltered). The Tauri app pins Add Folder + Settings at the bottom (§9).
 - **All Folders overview** (default view) — per folder, a sticky header:
   folder name + monospace path; status area showing "Scanning…", "Not
   scanned", or `"{total} repos"` plus a clean count badge (unfiltered); a
@@ -209,30 +211,78 @@ multi-folder pass are silent (previous data kept).
   relative path may match.
 - Explainer text documents that Clean removes git-ignored files (`git clean -fdX`).
 
-### 6.3 Account (Tauri app only)
+### 6.3 Account
 
-Google sign-in via loopback PKCE; session in OS keychain; syncs kanban only.
-Not present in the macOS app. (Detailed behavior lives with the kanban docs.)
+Google sign-in via loopback PKCE; session in the OS keychain; exists solely to
+sync the kanban board (§7). The explainer states the app works fully without
+signing in. Signed-out: a "Sign in with Google" button ("Waiting for browser…"
+while pending). Signed-in: shows `name || email || sub` (email as a second line
+when both exist) and a Sign Out button. Errors render inline. Both the Settings
+Account panel and the board's sync status chip menu (§7) offer sign-in/out.
 
-## 7. Non-goals / intentionally absent
+## 7. Kanban board
+
+A sidebar view organizing the user's **GitHub repositories** as cards.
+
+- **Data source**: `gh repo list` (GitHub CLI, limit 1000). Cards are never
+  user-created: every repo appears exactly once, joined by `nameWithOwner`.
+  On each refresh the board reconciles — new repos land in **Backlog**, cards
+  for repos no longer on GitHub are pruned.
+- **gh gate**: the board requires `gh` installed and authenticated. Otherwise
+  a full-board empty state explains the fix (install gh / run `gh auth login`
+  / the error message) with a **Recheck** action.
+- **Columns** (fixed): Backlog (gray), Active · Low (blue), Active · High
+  (red), Done (green), Closed (yellow). Unknown/legacy column ids display as
+  Backlog. Column header: color dot + title + count capsule. Cards sort by
+  `nameWithOwner` within a column.
+- **Card**: repo name (+ `ARCHIVED` chip), owner login, lock glyph when
+  private, relative pushed time in named form ("yesterday", "2 weeks ago");
+  tooltip shows the description.
+- **Drag & drop** moves a card between columns (optimistic update; the store
+  write bumps `updatedAt`; a one-card background sync runs when signed in;
+  on failure the board refetches authoritative state). Dropping on the same
+  column is a no-op; the target column highlights in its accent color.
+- **Card actions** (hover menu + right-click): *View on GitHub*; *Delete
+  Repository…* — destructive, confirm dialog, offered only when the gh
+  account owns the repo; runs `gh repo delete` then rebuilds the board.
+- **Refresh model**: first visit paints instantly from the offline cache
+  (`repos_cache_v1.json`), then revalidates; a manual Refresh control; a
+  window-focus revalidate debounced to 1.5 s; sign-in/out triggers a refresh.
+  A full-board spinner appears only on first launch with no cache.
+- **Cloud sync** (signed-in only): refresh pushes the full card set and
+  merges the server's authoritative response (per-card last-writer-wins by
+  `updatedAt`; local cards for repos the server hasn't seen are kept; server
+  cards for repos gone from GitHub are dropped). Status per refresh:
+  `disabled` (signed out) · `synced` · `offline` (network failure, local
+  state kept) · `expired` (session rejected and cleared — sign in again).
+  A **sync status chip** shows the status; its menu hosts sign-in/out (§6.3).
+- **Board header**: most recent board error (left) and the authenticated
+  `gh` account (right).
+- **Search**: the macOS app's shared search field also filters cards and
+  column counts (substring on `owner/name`); the Tauri app offers no kanban
+  search (§9).
+
+## 8. Non-goals / intentionally absent
 
 - No scan-cancel UI, no repo sorting, no folder reordering, no light theme in the
   Tauri app, no keyboard shortcuts in the Tauri app beyond native input behavior.
+- No kanban card reordering within a column, no custom columns, no manual card
+  creation (the GitHub repo list is the single source of cards).
 - Dead code from the web app (RadioGroup/SelectList) is not part of this spec and
   must not be ported.
 
-## 8. Platform presentation mapping
+## 9. Platform presentation mapping
 
 | Concern | Tauri (Win/Linux) | SwiftUI (macOS 26+) |
 |---|---|---|
 | Chrome | Custom sidebar (§5.3) + content header (title, search, Scan All); dark-only dense UI | `NavigationSplitView` sidebar (§5.3); Liquid Glass toolbar with Scan All |
 | Appearance | Fixed dark palette | System light & dark, accent-aware; semantic colors for badge roles (green/yellow/orange/purple/gray/red) |
 | Folder CRUD | Settings modal → "Monitored Folders" panel; sidebar **Add Folder** opens it | Main window: sidebar add button + sheet; edit via context menu/sheet |
-| Settings | In-app modal via sidebar gear (Monitored Folders / Default Apps / Git Clean / Account) | Native Settings scene (⌘,): Default Apps, Git Clean |
+| Settings | In-app modal via sidebar gear (Monitored Folders / Default Apps / Git Clean / Account) | Native Settings scene (⌘,): Default Apps, Git Clean, Account |
 | Repo actions | Hover kebab dropdown (also on right-click) | Native context menu (right-click) + hover affordance |
-| Search | Content-header text input | `.searchable` toolbar field |
+| Search | Content-header text input (hidden on the kanban view) | `.searchable` toolbar field (also filters kanban) |
 | Directory picker | Tauri dialog plugin | `NSOpenPanel` / SwiftUI fileImporter |
-| Kanban | Sidebar item | absent |
-| Account | Settings panel | absent |
+| Kanban (§7) | Sidebar item; HTML5 drag & drop; header row hosts sync chip + Refresh | Sidebar item; native drag & drop; toolbar hosts sync chip + Refresh |
+| Account (§6.3) | Settings modal panel + sync chip menu | Settings scene Account tab + sync chip menu |
 
-Behavioral rules in §§1–7 are identical across platforms; only presentation differs.
+Behavioral rules in §§1–8 are identical across platforms; only presentation differs.

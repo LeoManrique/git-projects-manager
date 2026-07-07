@@ -9,13 +9,15 @@ core/            gpm-core (Rust, edition 2024) — Tauri-free shared core
 ├── infrastructure/  git ops (git2 + git CLI), stores (JSON, atomic writes),
 │                launcher (open in terminal/editor/URL), gh CLI, OAuth PKCE,
 │                sync client, keyring token store
+├── services/    shared orchestration: kanban refresh/move/delete + cloud
+│                sync merge, Google sign-in/out (used by both frontends)
 └── resources/   terminals.json / editors.json catalogs (compile-time embedded)
 
-desktop/         Tauri 2 app — Windows/Linux (kanban + sync included)
+desktop/         Tauri 2 app — Windows/Linux
 ├── src/         React 19 + TypeScript + Tailwind 4 (Vite)
-└── src-tauri/   thin command shim over gpm-core (26 #[tauri::command] wrappers)
+└── src-tauri/   thin command shim over gpm-core (#[tauri::command] wrappers)
 
-macos/           native macOS 26+ app (no kanban, no sync)
+macos/           native macOS 26+ app — full parity (kanban + sync included)
 ├── ffi/         gpm-ffi: UniFFI 0.32 staticlib over gpm-core
 │                (proc-macro exports; async scan/pull/clean on tokio)
 ├── generated/   Swift bindings (build artifact, gitignored)
@@ -30,13 +32,13 @@ server/          axum + SQLite sync server (kanban state; Google OAuth)
 
 Pretty JSON, camelCase, written atomically (temp file + rename). Both apps
 read/write the same files: `config.json` (folders), `settings.json`,
-`kanban_v2.json` + `repos_cache_v1.json` (Tauri only). Sync session in the OS
+`kanban_v2.json`, `repos_cache_v1.json`. Sync session in the OS
 keychain (`keyring` with `apple-native`/`windows-native`/`sync-secret-service`
 features; file fallback `session.json`, 0600).
 
 ## Sync configuration (build-time)
 
-Kanban sync (Tauri only) reads three values from `core/src/config.rs`, each
+Kanban sync (both apps) reads three values from `core/src/config.rs`, each
 resolved as compile-time env (`option_env!`) → dev runtime env → hardcoded
 fallback: `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`,
 `SYNC_SERVER_URL`. The **client secret fallback is empty in the public

@@ -4,6 +4,7 @@ import Observation
 
 enum SidebarItem: Hashable {
     case all
+    case kanban
     case folder(String)
 }
 
@@ -25,6 +26,9 @@ enum FolderFormTarget: Identifiable {
 @Observable
 final class AppModel {
     private let core: GpmCore
+
+    /// Kanban board state; shares the same core instance.
+    let kanban: KanbanModel
 
     // Data
     private(set) var folders: [MonitoredFolder] = []
@@ -61,6 +65,7 @@ final class AppModel {
 
     init() throws {
         core = try GpmCore()
+        kanban = KanbanModel(core: core)
     }
 
     // MARK: - Startup
@@ -173,6 +178,7 @@ final class AppModel {
     /// scan is in flight — a silent scan superseding a visible one would
     /// leave its progress indicators stranded.
     func appDidBecomeActive() {
+        kanban.appDidBecomeActive()
         guard hasInitialScan, !folders.isEmpty else { return }
         guard !isFullScanning, scanningFolders.isEmpty else { return }
         if let last = lastScanStartedAt, Date().timeIntervalSince(last) < 20 { return }

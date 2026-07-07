@@ -123,3 +123,41 @@ export function SearchIcon({ className = 'w-3.5 h-3.5' }: { className?: string }
     </svg>
   );
 }
+
+const CLOUD_PATH =
+  'M2.25 15a4.5 4.5 0 004.5 4.5H18a3.75 3.75 0 001.332-7.257 3 3 0 00-3.758-3.848 5.25 5.25 0 00-10.233 2.33A4.502 4.502 0 002.25 15z';
+
+export function CloudIcon({ className = 'w-3.5 h-3.5' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d={CLOUD_PATH} />
+    </svg>
+  );
+}
+
+export function CloudCheckIcon({ className = 'w-3.5 h-3.5' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d={CLOUD_PATH} />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9.5 13.5l2 2 3.5-3.5" />
+    </svg>
+  );
+}
+
+export function CloudSlashIcon({ className = 'w-3.5 h-3.5' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d={CLOUD_PATH} />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 4.5l15 15" />
+    </svg>
+  );
+}
+
+export function CloudAlertIcon({ className = 'w-3.5 h-3.5' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d={CLOUD_PATH} />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 10.5v3m0 2.25h.008" />
+    </svg>
+  );
+}

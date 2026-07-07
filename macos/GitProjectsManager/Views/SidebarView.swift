@@ -9,6 +9,9 @@ struct SidebarView: View {
             Label("All Folders", systemImage: "square.grid.2x2")
                 .tag(SidebarItem.all)
 
+            Label("Kanban", systemImage: "rectangle.split.3x1")
+                .tag(SidebarItem.kanban)
+
             Section("Folders") {
                 ForEach(model.folders, id: \.id) { folder in
                     sidebarRow(folder)

@@ -21,7 +21,7 @@ interface SidebarProps {
 /**
  * Navigation sidebar mirroring the macOS app: All Folders and Kanban views on
  * top, the monitored folders with attention badges below, and Add Folder /
- * Settings pinned at the bottom (FRONTEND.md §8).
+ * Settings pinned at the bottom (FRONTEND.md §9).
  */
 export function Sidebar({
   folders,

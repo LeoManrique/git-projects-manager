@@ -1,13 +1,17 @@
-import { useRef } from 'react';
+import { useRef, useState, type ComponentType } from 'react';
 import { useKanban } from '../../hooks/useKanban';
+import { useAuth } from '../../hooks/useAuth';
+import { useContextMenu } from '../../hooks';
 import { KanbanColumn } from './KanbanColumn';
 import { KANBAN_COLUMNS, ColumnId } from '../../config/kanbanColumns';
-import { GhAuthStatus } from '../../types';
+import { GhAuthStatus, SyncStatus } from '../../types';
+import { CloudIcon, CloudCheckIcon, CloudSlashIcon, CloudAlertIcon } from '../icons';
 
 export function KanbanBoard() {
   const {
     columns,
     auth,
+    syncStatus,
     isLoading,
     isRefreshing,
     error,
@@ -50,20 +54,25 @@ export function KanbanBoard() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 pt-3">
-        <div className="text-xs text-text-muted">
-          {auth?.status === 'ok' ? `gh: ${auth.user || 'authenticated'}` : ''}
-          {error && <span className="ml-2 text-accent-red">· {error}</span>}
+      <div className="flex items-center gap-2 px-4 pt-3">
+        <div className="flex-1 min-w-0">
+          {error && <div className="text-xs text-accent-red truncate">{error}</div>}
         </div>
-        <button
-          onClick={refresh}
-          disabled={isRefreshing}
-          className="text-xs px-2 py-1 rounded border border-dark-border text-text-secondary hover:text-text-primary hover:bg-dark-borderSubtle transition-colors disabled:opacity-50"
-        >
-          {isRefreshing ? 'Refreshing…' : 'Refresh'}
-        </button>
+        <div className="flex items-center gap-2">
+          {auth?.status === 'ok' && (
+            <span className="text-xs text-text-muted">gh: {auth.user || 'authenticated'}</span>
+          )}
+          <SyncStatusChip syncStatus={syncStatus} />
+          <button
+            onClick={refresh}
+            disabled={isRefreshing}
+            className="text-xs px-2.5 py-1 rounded-md border border-dark-border text-text-secondary hover:text-text-primary hover:bg-dark-borderSubtle transition-colors disabled:opacity-50"
+          >
+            {isRefreshing ? 'Refreshing…' : 'Refresh'}
+          </button>
+        </div>
       </div>
-      <div className="flex gap-4 p-4 flex-1 overflow-hidden">
+      <div className="flex gap-3 p-4 flex-1 overflow-hidden">
         {KANBAN_COLUMNS.map((column) => (
           <KanbanColumn
             key={column.id}
@@ -78,6 +87,118 @@ export function KanbanBoard() {
         ))}
       </div>
     </div>
+  );
+}
+
+const SYNC_CHIP: Record<
+  SyncStatus,
+  { label: string; classes: string; Icon: ComponentType<{ className?: string }> }
+> = {
+  disabled: { label: 'Sync off', classes: 'text-text-muted border-dark-border', Icon: CloudSlashIcon },
+  synced: {
+    label: 'Synced',
+    classes: 'text-accent-green bg-accent-green/10 border-accent-green/40',
+    Icon: CloudCheckIcon,
+  },
+  offline: {
+    label: 'Offline',
+    classes: 'text-accent-yellow bg-accent-yellow/10 border-accent-yellow/40',
+    Icon: CloudIcon,
+  },
+  expired: {
+    label: 'Session expired',
+    classes: 'text-accent-orange bg-accent-orange/10 border-accent-orange/40',
+    Icon: CloudAlertIcon,
+  },
+};
+
+function SyncStatusChip({ syncStatus }: { syncStatus: SyncStatus }) {
+  const { user, status, signIn, signOut } = useAuth();
+  const menu = useContextMenu({ menuWidth: 220 });
+  const [isSigningIn, setIsSigningIn] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const { label, classes, Icon } = SYNC_CHIP[syncStatus];
+
+  const handleToggle = () => {
+    setActionError(null);
+    menu.toggle();
+    menu.buttonRef.current?.blur();
+  };
+
+  const handleSignIn = async () => {
+    setActionError(null);
+    setIsSigningIn(true);
+    try {
+      await signIn();
+      menu.close();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setIsSigningIn(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    setActionError(null);
+    try {
+      await signOut();
+      menu.close();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  return (
+    <>
+      <button
+        ref={menu.buttonRef}
+        onClick={handleToggle}
+        className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border transition-colors ${classes}`}
+        aria-label="Sync status"
+      >
+        <Icon />
+        {label}
+      </button>
+
+      {menu.isOpen && menu.position && (
+        <div
+          ref={menu.menuRef}
+          className="fixed z-50 bg-dark-surface border border-dark-border rounded shadow-lg py-1 min-w-[220px]"
+          style={{ top: menu.position.top, left: menu.position.left }}
+        >
+          {status === 'signed-in' && user ? (
+            <>
+              <div className="px-3 py-1.5">
+                <div className="text-xs text-text-primary truncate">
+                  {user.name || user.email || user.sub}
+                </div>
+                {user.name && user.email && (
+                  <div className="text-[11px] text-text-muted truncate">{user.email}</div>
+                )}
+              </div>
+              <div className="border-t border-dark-border my-1" />
+              <button
+                onClick={handleSignOut}
+                className="w-full text-left px-3 py-1.5 text-xs hover:bg-dark-borderSubtle transition-colors text-text-primary"
+              >
+                Sign out
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={handleSignIn}
+              disabled={isSigningIn}
+              className="w-full text-left px-3 py-1.5 text-xs hover:bg-dark-borderSubtle transition-colors text-text-primary disabled:opacity-50 disabled:hover:bg-transparent"
+            >
+              {isSigningIn ? 'Waiting for browser…' : 'Sign in with Google…'}
+            </button>
+          )}
+          {actionError && (
+            <div className="px-3 py-1.5 text-[11px] text-accent-red break-words">{actionError}</div>
+          )}
+        </div>
+      )}
+    </>
   );
 }
 

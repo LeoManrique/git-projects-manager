@@ -25,6 +25,8 @@ struct DetailView: View {
     var body: some View {
         Group {
             switch model.selection {
+            case .kanban:
+                KanbanBoardView()
             case .folder(let id):
                 if let folder = model.folder(withId: id) {
                     FolderDetailView(folder: folder)
@@ -39,8 +41,17 @@ struct DetailView: View {
             ErrorBanner()
         }
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                scanAllButton
+            if model.selection == .kanban {
+                ToolbarItem(placement: .secondaryAction) {
+                    SyncStatusChip()
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    refreshBoardButton
+                }
+            } else {
+                ToolbarItem(placement: .primaryAction) {
+                    scanAllButton
+                }
             }
         }
     }
@@ -62,6 +73,65 @@ struct DetailView: View {
         .buttonStyle(.glassProminent)
         .disabled(model.folders.isEmpty)
         .help("Scan all monitored folders (⌘R)")
+    }
+
+    private var refreshBoardButton: some View {
+        Button {
+            Task { await model.kanban.refresh() }
+        } label: {
+            if model.kanban.isRefreshing {
+                Label {
+                    Text("Refreshing…")
+                } icon: {
+                    ProgressView().controlSize(.small)
+                }
+            } else {
+                Label("Refresh", systemImage: "arrow.clockwise")
+            }
+        }
+        .buttonStyle(.glassProminent)
+        .disabled(model.kanban.isRefreshing)
+        .help("Refresh repositories and sync the board")
+    }
+}
+
+/// Toolbar chip showing the kanban sync status; its menu hosts the
+/// sign-in/out shortcuts (full account management lives in Settings).
+struct SyncStatusChip: View {
+    @Environment(AppModel.self) private var model
+
+    @State private var isBusy = false
+    @State private var signInError: String?
+
+    var body: some View {
+        let kanban = model.kanban
+        Menu {
+            if let user = kanban.syncUser {
+                Text(user.name ?? user.email ?? user.sub)
+                if let email = user.email, user.name != nil {
+                    Text(email)
+                }
+                Divider()
+                Button("Sign Out") {
+                    Task { await kanban.signOut() }
+                }
+            } else {
+                Button(isBusy ? "Waiting for browser…" : "Sign in with Google…") {
+                    Task {
+                        isBusy = true
+                        signInError = await kanban.signIn()
+                        isBusy = false
+                    }
+                }
+                .disabled(isBusy)
+                if let signInError {
+                    Text(signInError)
+                }
+            }
+        } label: {
+            Label(kanban.syncStatus.displayLabel, systemImage: kanban.syncStatus.symbol)
+        }
+        .help("Kanban cloud sync: \(kanban.syncStatus.displayLabel)")
     }
 }
 

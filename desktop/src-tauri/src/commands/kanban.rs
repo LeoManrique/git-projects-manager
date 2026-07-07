@@ -1,21 +1,8 @@
-use gpm_core::domain::auth::SyncStatus;
-use gpm_core::domain::kanban::{KanbanCard, KanbanState};
-use gpm_core::infrastructure::github_cli::{self, GhAuthStatus, GhRepo};
-use gpm_core::infrastructure::repos_cache::ReposCache;
-use gpm_core::infrastructure::sync_client::SyncOutcome;
 use gpm_core::AppState;
-use serde::Serialize;
-use std::collections::HashSet;
-use std::sync::Arc;
-use tauri::{Manager, State};
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct KanbanRefresh {
-    pub repos: Vec<GhRepo>,
-    pub state: KanbanState,
-    pub sync_status: SyncStatus,
-}
+use gpm_core::domain::kanban::KanbanState;
+use gpm_core::infrastructure::github_cli::{self, GhAuthStatus};
+use gpm_core::services::kanban::{self, KanbanRefresh};
+use tauri::State;
 
 #[tauri::command]
 pub fn check_gh_auth() -> GhAuthStatus {
@@ -23,141 +10,36 @@ pub fn check_gh_auth() -> GhAuthStatus {
 }
 
 #[tauri::command]
-pub async fn refresh_kanban(
-    app: tauri::AppHandle,
-    state: State<'_, AppState>,
-) -> Result<KanbanRefresh, String> {
-    let repos = github_cli::list_repos().map_err(|e| e.to_string())?;
-    let names: Vec<String> = repos.iter().map(|r| r.name_with_owner.clone()).collect();
-    let local_state = state
-        .kanban_manager
-        .sync_with_repos(names.clone())
-        .map_err(|e| e.to_string())?;
-
-    let token = state.auth.read().as_ref().map(|s| s.token.clone());
-    let (final_state, sync_status) = match token {
-        None => (local_state, SyncStatus::Disabled),
-        Some(token) => {
-            let cards: Vec<KanbanCard> = local_state.cards.values().cloned().collect();
-            match state.sync_client.sync(&token, &cards).await {
-                SyncOutcome::Ok(merged) => {
-                    let names_set: HashSet<String> = names.iter().cloned().collect();
-                    let merged = merge_with_local(local_state, merged, &names_set);
-                    state.kanban_manager.save(&merged).map_err(|e| e.to_string())?;
-                    (merged, SyncStatus::Synced)
-                }
-                SyncOutcome::Unauthorized => {
-                    let app_state = app.state::<AppState>();
-                    if let Err(e) = app_state.token_store.clear() {
-                        tracing::warn!(?e, "failed to clear expired token from store");
-                    }
-                    *app_state.auth.write() = None;
-                    (local_state, SyncStatus::Expired)
-                }
-                SyncOutcome::Network(e) => {
-                    tracing::warn!(error = %e, "kanban sync failed; staying offline");
-                    (local_state, SyncStatus::Offline)
-                }
-            }
-        }
-    };
-
-    if let Err(e) = state.repos_cache.save(&ReposCache {
-        repos: repos.clone(),
-        sync_status,
-        fetched_at: chrono::Utc::now().timestamp_millis(),
-    }) {
-        tracing::warn!(?e, "failed to persist repos cache");
-    }
-
-    Ok(KanbanRefresh {
-        repos,
-        state: final_state,
-        sync_status,
-    })
+pub async fn refresh_kanban(state: State<'_, AppState>) -> Result<KanbanRefresh, String> {
+    kanban::refresh(state.inner()).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 // Tauri's invoke layer hands commands owned State/args; the signature is the command contract.
 #[allow(clippy::needless_pass_by_value)]
 pub fn load_kanban_local(state: State<AppState>) -> Result<Option<KanbanRefresh>, String> {
-    let Some(cache) = state.repos_cache.load().map_err(|e| e.to_string())? else {
-        return Ok(None);
-    };
-    let kanban_state = state.kanban_manager.load().map_err(|e| e.to_string())?;
-    Ok(Some(KanbanRefresh {
-        repos: cache.repos,
-        state: kanban_state,
-        sync_status: cache.sync_status,
-    }))
+    kanban::load_local(state.inner()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-// Tauri's invoke layer hands commands owned State/args; the signature is the command contract.
-#[allow(clippy::needless_pass_by_value)]
-pub fn move_kanban_card(
-    app: tauri::AppHandle,
+pub async fn move_kanban_card(
     state: State<'_, AppState>,
     name_with_owner: String,
     to_column: String,
 ) -> Result<KanbanState, String> {
-    let new_state = state
-        .kanban_manager
-        .move_card(&name_with_owner, &to_column)
-        .map_err(|e| e.to_string())?;
-
-    if let Some(card) = new_state.cards.get(&name_with_owner).cloned() {
-        let token = state.auth.read().as_ref().map(|s| s.token.clone());
-        if let Some(token) = token {
-            let app_handle = app.clone();
-            let sync_client = Arc::clone(&state.sync_client);
-            tauri::async_runtime::spawn(async move {
-                let outcome = sync_client.sync(&token, &[card]).await;
-                if matches!(outcome, SyncOutcome::Unauthorized) {
-                    let s = app_handle.state::<AppState>();
-                    let _ = s.token_store.clear();
-                    *s.auth.write() = None;
-                }
-            });
-        }
-    }
-
-    Ok(new_state)
+    kanban::move_card(state.inner(), &name_with_owner, &to_column)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-// Tauri's invoke layer hands commands owned State/args; the signature is the command contract.
-#[allow(clippy::needless_pass_by_value)]
-pub fn delete_github_repo(
-    state: State<AppState>,
+pub async fn delete_github_repo(
+    state: State<'_, AppState>,
     name_with_owner: String,
 ) -> Result<KanbanRefresh, String> {
-    github_cli::delete_repo(&name_with_owner).map_err(|e| e.to_string())?;
-    let repos = github_cli::list_repos().map_err(|e| e.to_string())?;
-    let names: Vec<String> = repos.iter().map(|r| r.name_with_owner.clone()).collect();
-    let kanban_state = state
-        .kanban_manager
-        .sync_with_repos(names)
-        .map_err(|e| e.to_string())?;
-    let sync_status = if state.auth.read().is_some() {
-        SyncStatus::Synced
-    } else {
-        SyncStatus::Disabled
-    };
-
-    if let Err(e) = state.repos_cache.save(&ReposCache {
-        repos: repos.clone(),
-        sync_status,
-        fetched_at: chrono::Utc::now().timestamp_millis(),
-    }) {
-        tracing::warn!(?e, "failed to persist repos cache");
-    }
-
-    Ok(KanbanRefresh {
-        repos,
-        state: kanban_state,
-        sync_status,
-    })
+    kanban::delete_repo(state.inner(), &name_with_owner)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -165,20 +47,4 @@ pub fn delete_github_repo(
 #[allow(clippy::needless_pass_by_value)]
 pub fn open_url(url: String) -> Result<(), String> {
     gpm_core::infrastructure::launcher::open_url(&url).map_err(|e| e.to_string())
-}
-
-/// Build the final kanban state by adopting server's authoritative card data
-/// for repos in `gh_names`, preserving local entries for repos the server
-/// hasn't seen yet.
-fn merge_with_local(
-    mut local: KanbanState,
-    remote: Vec<KanbanCard>,
-    gh_names: &HashSet<String>,
-) -> KanbanState {
-    for card in remote {
-        if gh_names.contains(&card.name_with_owner) {
-            local.cards.insert(card.name_with_owner.clone(), card);
-        }
-    }
-    local
 }

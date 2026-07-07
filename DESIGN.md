@@ -28,7 +28,8 @@ folders and surfaces repository status at a glance.
   (single or all clean).
 - **Scan automatically**: on launch, on demand, silently on window focus
   (20s throttle).
-- **Kanban board** (Tauri app only): GitHub repos as cards in columns, with
+- **Kanban board** (both apps): the user's GitHub repos as cards in five
+  fixed columns (auto-populated via the `gh` CLI, drag to organize), with
   optional Google-sign-in cloud sync (see `server/`).
 
 Authoritative behavior spec: [FRONTEND.md](./FRONTEND.md).
@@ -37,8 +38,9 @@ Authoritative behavior spec: [FRONTEND.md](./FRONTEND.md).
 
 One Rust core, two frontends sharing the same layout: sidebar navigation, an
 All Folders overview with every repo section expanded inline (Clean last),
-and per-folder detail. Windows/Linux keep the Tauri app (webview, kanban included as a
-sidebar view). macOS gets a native SwiftUI app (macOS 26 design language,
-system light/dark) limited to folders/scan/settings; macOS releases ship this
-app, replacing any older Tauri install. Both apps share on-disk state, so
-mixed setups stay consistent.
+per-folder detail, and the kanban board. Windows/Linux keep the Tauri app
+(webview); macOS gets a full-parity native SwiftUI app (macOS 26 design
+language, system light/dark) — macOS releases ship it, replacing any older
+Tauri install. The kanban design language is defined by the SwiftUI app and
+mirrored by the Tauri board. Both apps share on-disk state (including kanban
+state and the sync session), so mixed setups stay consistent.

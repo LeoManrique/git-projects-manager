@@ -9,8 +9,64 @@ struct SettingsView: View {
             Tab("Git Clean", systemImage: "paintbrush") {
                 GitCleanSettingsView()
             }
+            Tab("Account", systemImage: "person.crop.circle") {
+                AccountSettingsView()
+            }
         }
         .frame(width: 520)
+    }
+}
+
+/// Google sign-in for kanban cloud sync (FRONTEND.md §6.3). The app works
+/// fully without signing in — sync is opt-in.
+struct AccountSettingsView: View {
+    @Environment(AppModel.self) private var model
+
+    @State private var busy = false
+    @State private var error: String?
+
+    var body: some View {
+        Form {
+            Section("Cloud Sync") {
+                Text("Sign in with Google to sync your kanban board across devices. The app works fully without signing in — sync is opt-in.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+
+                if let user = model.kanban.syncUser {
+                    LabeledContent("Signed in as", value: user.name ?? user.email ?? user.sub)
+                    if let email = user.email, user.name != nil {
+                        LabeledContent("Email", value: email)
+                    }
+                    Button(busy ? "Signing out…" : "Sign Out") {
+                        Task {
+                            busy = true
+                            error = nil
+                            await model.kanban.signOut()
+                            busy = false
+                        }
+                    }
+                    .disabled(busy)
+                } else {
+                    Button(busy ? "Waiting for browser…" : "Sign in with Google") {
+                        Task {
+                            busy = true
+                            error = nil
+                            error = await model.kanban.signIn()
+                            busy = false
+                        }
+                    }
+                    .disabled(busy)
+                }
+            }
+
+            if let error {
+                Section {
+                    Label(error, systemImage: "exclamationmark.circle")
+                        .foregroundStyle(.red)
+                }
+            }
+        }
+        .formStyle(.grouped)
     }
 }
 

@@ -53,22 +53,27 @@ export function KanbanColumn({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       className={`
-        flex flex-col flex-1 min-w-[200px] rounded-lg
-        bg-dark-surface border border-dark-border
+        flex flex-col flex-1 min-w-[220px] rounded-xl border
         transition-all duration-150
-        ${isOver ? 'ring-2 ring-accent-blue bg-dark-elevated/50' : ''}
+        ${
+          isOver
+            ? `${styles.tint} ${styles.border} ring-2 ${styles.ring}`
+            : 'bg-dark-surface/60 border-dark-border'
+        }
       `}
     >
-      <div className={`px-3 py-2 border-b ${styles.border}`}>
-        <div className="flex items-center justify-between">
-          <span className={`font-medium text-sm ${styles.text}`}>{column.label}</span>
-          <span className={`text-xs px-2 py-0.5 rounded ${styles.badge}`}>{cards.length}</span>
-        </div>
+      <div className="px-3 pt-2.5 pb-2 flex items-center gap-2">
+        <span className={`w-2 h-2 rounded-full shrink-0 ${styles.dot}`} />
+        <span className="text-text-primary font-semibold text-sm truncate">{column.label}</span>
+        <span className="flex-1" />
+        <span className={`rounded-full px-2 py-0.5 font-semibold text-xs ${styles.badge}`}>
+          {cards.length}
+        </span>
       </div>
 
-      <div className="flex-1 p-2 space-y-2 overflow-y-auto">
+      <div className="flex-1 p-2.5 space-y-2 overflow-y-auto">
         {cards.length === 0 ? (
-          <div className="text-center text-text-muted text-xs py-4">No projects</div>
+          <div className="text-text-muted text-xs py-6 text-center">No projects</div>
         ) : (
           cards.map((cardView) => (
             <KanbanCard

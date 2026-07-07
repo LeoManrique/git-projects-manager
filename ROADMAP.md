@@ -7,7 +7,7 @@
   - [x] Atomic JSON writes; typed UnbornBranch detection; shared launcher module
   - [x] Fix keyring: platform features (`apple-native`, …) so sessions actually persist
   - [x] clippy pedantic: zero warnings across all Rust crates
-- [x] `FRONTEND.md` — behavior source of truth for both frontends (kanban excluded)
+- [x] `FRONTEND.md` — behavior source of truth for both frontends
 - [x] Native macOS app (`macos/`): SwiftUI (macOS 26+, Liquid Glass, @Observable)
   - [x] `gpm-ffi` UniFFI bridge (async scan/pull/clean over tokio)
   - [x] Sidebar navigation, All Folders overview (all sections expanded
@@ -30,6 +30,13 @@
 - [x] macOS releases ship the native SwiftUI app: `deploy_releases.sh` builds
       and uploads it (version bump covers `project.yml`), `install_release.sh`
       installs it (macOS 26+ check, replaces older Tauri installs)
+- [x] Kanban board + cloud sync in the native macOS app (full parity):
+      orchestration hoisted into `gpm-core::services` (shared with the Tauri
+      commands, DRY), kanban/gh/auth/sync exported over UniFFI, SwiftUI board
+      (native drag & drop, sync status chip, Account settings tab), and the
+      Tauri board restyled to match the new design (tinted column headers,
+      count capsules, sync chip, named relative dates; dead `review` column
+      id removed)
 
 ## Pending
 

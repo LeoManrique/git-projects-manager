@@ -1,12 +1,15 @@
 //! `UniFFI` bridge for the native `SwiftUI` macOS app.
 //!
-//! Exposes the folders/scan/settings surface of `gpm-core` (no kanban, no
-//! sync/auth — those are Tauri-app-only features, see FRONTEND.md). Types are
-//! mirrored into `UniFFI` records so the core crate stays bindgen-free.
+//! Exposes the folders/scan/settings/kanban/sync surface of `gpm-core`.
+//! Types are mirrored into `UniFFI` records so the core crate stays
+//! bindgen-free; orchestration lives in `gpm_core::services`, shared with
+//! the Tauri app.
 
 use gpm_core::AppState;
 use gpm_core::domain;
-use gpm_core::infrastructure::launcher;
+use gpm_core::infrastructure::{github_cli, launcher};
+use gpm_core::services;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 uniffi::setup_scaffolding!();
@@ -125,6 +128,140 @@ pub struct AppSettings {
 pub struct GitCleanResult {
     pub files_removed: Vec<String>,
     pub directories_removed: Vec<String>,
+}
+
+#[derive(uniffi::Record)]
+pub struct GhOwner {
+    pub login: String,
+}
+
+#[derive(uniffi::Record)]
+pub struct GhRepo {
+    pub name_with_owner: String,
+    pub name: String,
+    pub owner: GhOwner,
+    pub description: Option<String>,
+    pub url: String,
+    pub is_private: bool,
+    pub is_archived: bool,
+    pub pushed_at: Option<String>,
+}
+
+impl From<github_cli::GhRepo> for GhRepo {
+    fn from(r: github_cli::GhRepo) -> Self {
+        Self {
+            name_with_owner: r.name_with_owner,
+            name: r.name,
+            owner: GhOwner { login: r.owner.login },
+            description: r.description,
+            url: r.url,
+            is_private: r.is_private,
+            is_archived: r.is_archived,
+            pushed_at: r.pushed_at,
+        }
+    }
+}
+
+#[derive(uniffi::Enum)]
+pub enum GhAuthStatus {
+    Ok { user: String },
+    NotInstalled,
+    NotAuthenticated,
+    Error { message: String },
+}
+
+impl From<github_cli::GhAuthStatus> for GhAuthStatus {
+    fn from(s: github_cli::GhAuthStatus) -> Self {
+        match s {
+            github_cli::GhAuthStatus::Ok { user } => Self::Ok { user },
+            github_cli::GhAuthStatus::NotInstalled => Self::NotInstalled,
+            github_cli::GhAuthStatus::NotAuthenticated => Self::NotAuthenticated,
+            github_cli::GhAuthStatus::Error { message } => Self::Error { message },
+        }
+    }
+}
+
+#[derive(uniffi::Record)]
+pub struct KanbanCard {
+    pub name_with_owner: String,
+    pub column: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+impl From<domain::kanban::KanbanCard> for KanbanCard {
+    fn from(c: domain::kanban::KanbanCard) -> Self {
+        Self {
+            name_with_owner: c.name_with_owner,
+            column: c.column,
+            created_at: c.created_at,
+            updated_at: c.updated_at,
+        }
+    }
+}
+
+#[derive(uniffi::Record)]
+pub struct KanbanState {
+    pub version: u32,
+    pub cards: HashMap<String, KanbanCard>,
+}
+
+impl From<domain::kanban::KanbanState> for KanbanState {
+    fn from(s: domain::kanban::KanbanState) -> Self {
+        Self {
+            version: s.version,
+            cards: s.cards.into_iter().map(|(k, v)| (k, v.into())).collect(),
+        }
+    }
+}
+
+#[derive(uniffi::Enum)]
+pub enum SyncStatus {
+    Disabled,
+    Synced,
+    Offline,
+    Expired,
+}
+
+impl From<domain::auth::SyncStatus> for SyncStatus {
+    fn from(s: domain::auth::SyncStatus) -> Self {
+        match s {
+            domain::auth::SyncStatus::Disabled => Self::Disabled,
+            domain::auth::SyncStatus::Synced => Self::Synced,
+            domain::auth::SyncStatus::Offline => Self::Offline,
+            domain::auth::SyncStatus::Expired => Self::Expired,
+        }
+    }
+}
+
+#[derive(uniffi::Record)]
+pub struct SyncUser {
+    pub sub: String,
+    pub email: Option<String>,
+    pub name: Option<String>,
+}
+
+impl From<domain::auth::SyncUser> for SyncUser {
+    fn from(u: domain::auth::SyncUser) -> Self {
+        Self { sub: u.sub, email: u.email, name: u.name }
+    }
+}
+
+#[derive(uniffi::Record)]
+pub struct KanbanRefresh {
+    pub repos: Vec<GhRepo>,
+    pub state: KanbanState,
+    pub sync_status: SyncStatus,
+}
+
+impl From<services::kanban::KanbanRefresh> for KanbanRefresh {
+    fn from(r: services::kanban::KanbanRefresh) -> Self {
+        Self {
+            repos: r.repos.into_iter().map(GhRepo::from).collect(),
+            state: r.state.into(),
+            sync_status: r.sync_status.into(),
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -272,6 +409,35 @@ impl GpmCore {
         launcher::open_in_lms_github(&path)?;
         Ok(())
     }
+
+    /// Open an http(s) URL in the default browser.
+    ///
+    /// # Errors
+    /// Errs when the URL is not http(s) or the browser fails to launch.
+    // UniFFI exports take owned values; the signature is the FFI contract.
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn open_url(&self, url: String) -> FfiResult<()> {
+        launcher::open_url(&url)?;
+        Ok(())
+    }
+
+    // -- Kanban / sync --------------------------------------------------------
+
+    /// The signed-in sync user, if any (in-memory read; the persisted
+    /// session is loaded at startup).
+    #[must_use]
+    pub fn get_sync_user(&self) -> Option<SyncUser> {
+        services::auth::current_user(&self.state).map(SyncUser::from)
+    }
+
+    /// Offline-first snapshot of the last kanban refresh, or `None` when no
+    /// refresh has ever completed on this machine.
+    ///
+    /// # Errors
+    /// Errs when the cache or kanban store cannot be read or parsed.
+    pub fn load_kanban_local(&self) -> FfiResult<Option<KanbanRefresh>> {
+        Ok(services::kanban::load_local(&self.state)?.map(KanbanRefresh::from))
+    }
 }
 
 // Blocking operations exported as Swift `async` on a tokio runtime so they
@@ -334,5 +500,71 @@ impl GpmCore {
         .await
         .map_err(|e| GpmError::Failure(format!("clean task failed: {e}")))??;
         Ok(GitCleanResult { files_removed: files, directories_removed: dirs })
+    }
+
+    // -- Kanban / sync --------------------------------------------------------
+
+    /// Check GitHub CLI availability and authentication.
+    ///
+    /// # Errors
+    /// Errs when the check worker thread panics; `gh` problems are reported
+    /// inside the returned status instead.
+    pub async fn check_gh_auth(&self) -> FfiResult<GhAuthStatus> {
+        let status = tokio::task::spawn_blocking(github_cli::check_auth)
+            .await
+            .map_err(|e| GpmError::Failure(format!("gh auth check task failed: {e}")))?;
+        Ok(status.into())
+    }
+
+    /// Full board refresh: list GitHub repos, reconcile the local board,
+    /// sync with the cloud when signed in, persist the offline cache.
+    ///
+    /// # Errors
+    /// Errs when the `gh` repo listing fails or the kanban store cannot be
+    /// read or written; sync failures degrade to an offline/expired status.
+    pub async fn refresh_kanban(&self) -> FfiResult<KanbanRefresh> {
+        Ok(services::kanban::refresh(&self.state).await?.into())
+    }
+
+    /// Move a card to another column; a one-card cloud sync runs in the
+    /// background when signed in.
+    ///
+    /// # Errors
+    /// Errs when the kanban store cannot be read or written.
+    // UniFFI exports take owned values; the signature is the FFI contract.
+    #[allow(clippy::needless_pass_by_value)]
+    pub async fn move_kanban_card(
+        &self,
+        name_with_owner: String,
+        to_column: String,
+    ) -> FfiResult<KanbanState> {
+        Ok(services::kanban::move_card(&self.state, &name_with_owner, &to_column).await?.into())
+    }
+
+    /// Permanently delete a repository on GitHub, then rebuild the board.
+    ///
+    /// # Errors
+    /// Errs when the deletion or re-listing fails, or the kanban store
+    /// cannot be written.
+    // UniFFI exports take owned values; the signature is the FFI contract.
+    #[allow(clippy::needless_pass_by_value)]
+    pub async fn delete_github_repo(&self, name_with_owner: String) -> FfiResult<KanbanRefresh> {
+        Ok(services::kanban::delete_repo(&self.state, &name_with_owner).await?.into())
+    }
+
+    /// Google sign-in via the loopback-PKCE browser flow; persists the
+    /// resulting sync session.
+    ///
+    /// # Errors
+    /// Errs when the OAuth flow fails or times out, or the sync server
+    /// rejects the sign-in.
+    pub async fn sign_in_with_google(&self) -> FfiResult<SyncUser> {
+        let user = services::auth::sign_in(&self.state, launcher::open_url).await?;
+        Ok(user.into())
+    }
+
+    /// Best-effort server sign-out; the local session is always cleared.
+    pub async fn sign_out(&self) {
+        services::auth::sign_out(&self.state).await;
     }
 }
