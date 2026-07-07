@@ -61,7 +61,7 @@ camelCase keys, written atomically (temp file + rename) by the core.
 | `config.json` | `{ folders: [MonitoredFolder] }` | insertion order preserved; no sorting anywhere |
 | `settings.json` | `{ defaultTerminal?, defaultEditor?, gitCleanSettings? }` | ids, not paths |
 | `kanban_v2.json`, `repos_cache_v1.json` | kanban state / GitHub repo cache | shared by both apps (§7) |
-| OS keychain (`git-projects-manager` / `sync_session`) | sync session | shared by both apps |
+| OS keychain (`git-projects-manager` / `sync_session`) | sync session | shared by both apps (macOS may prompt once before the other app may read the item) |
 
 Frontend-only state (scan results, expansion, search text, selected view) is **session
 memory** — never persisted. Every launch starts fresh and rescans.
@@ -75,7 +75,7 @@ memory** — never persisted. Every launch starts fresh and rescans.
 | Auto-scan | The first time the folder list becomes non-empty in a session, scan all folders once |
 | Search | One search field filtering repo lists live (§5.4); session-only value |
 | Scan All | Primary toolbar action; disabled when no folders; shows in-progress state while a full scan runs; clicking again mid-scan supersedes the running scan (§5.2) |
-| Settings access | Tauri: sidebar gear button → Settings (modal). macOS: standard Settings scene (⌘,) plus folder management in the main window (§8) |
+| Settings access | Tauri: sidebar gear button → Settings (modal). macOS: standard Settings scene (⌘,) plus folder management in the main window (§9) |
 
 ## 4. Folder management (CRUD)
 
@@ -242,9 +242,11 @@ A sidebar view organizing the user's **GitHub repositories** as cards.
   write bumps `updatedAt`; a one-card background sync runs when signed in;
   on failure the board refetches authoritative state). Dropping on the same
   column is a no-op; the target column highlights in its accent color.
-- **Card actions** (hover menu + right-click): *View on GitHub*; *Delete
+- **Card actions** — hover ellipsis menu in both apps; macOS additionally
+  offers the native right-click context menu: *View on GitHub*; *Delete
   Repository…* — destructive, confirm dialog, offered only when the gh
-  account owns the repo; runs `gh repo delete` then rebuilds the board.
+  account owns the repo; runs `gh repo delete` then performs a full refresh
+  (including cloud sync when signed in).
 - **Refresh model**: first visit paints instantly from the offline cache
   (`repos_cache_v1.json`), then revalidates; a manual Refresh control; a
   window-focus revalidate debounced to 1.5 s; sign-in/out triggers a refresh.

@@ -28,7 +28,7 @@ fn main() {
 
                     // Set the env var for compiling core if not already set in ambient env
                     if std::env::var(key).is_err() {
-                        println!("cargo:rustc-env={}={}", key, val);
+                        println!("cargo:rustc-env={key}={val}");
                     }
                 }
             }

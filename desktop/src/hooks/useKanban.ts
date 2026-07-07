@@ -48,6 +48,12 @@ export function useKanban(): UseKanbanReturn {
       setState(result.state);
       setSyncStatus(result.syncStatus);
       lastRefreshRef.current = Date.now();
+      if (result.syncStatus === 'expired') {
+        // The backend cleared the expired session; let account UIs drop the
+        // stale signed-in state. Our own listener re-enters doRefresh, which
+        // the in-flight guard suppresses.
+        window.dispatchEvent(new Event(SYNC_USER_EVENT));
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -132,10 +138,16 @@ export function useKanban(): UseKanbanReturn {
   const deleteRepo = useCallback(async (nameWithOwner: string) => {
     setError(null);
     try {
+      // Backend deletes on GitHub, then runs a full refresh (including
+      // cloud sync when signed in) — the returned status is a real outcome.
       const result = await api.deleteGithubRepo(nameWithOwner);
       setRepos(result.repos);
       setState(result.state);
+      setSyncStatus(result.syncStatus);
       lastRefreshRef.current = Date.now();
+      if (result.syncStatus === 'expired') {
+        window.dispatchEvent(new Event(SYNC_USER_EVENT));
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }

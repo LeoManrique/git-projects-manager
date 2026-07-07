@@ -19,7 +19,7 @@ desktop/         Tauri 2 app — Windows/Linux
 
 macos/           native macOS 26+ app — full parity (kanban + sync included)
 ├── ffi/         gpm-ffi: UniFFI 0.32 staticlib over gpm-core
-│                (proc-macro exports; async scan/pull/clean on tokio)
+│                (proc-macro exports; async scan/git/kanban/sync on tokio)
 ├── generated/   Swift bindings (build artifact, gitignored)
 ├── GitProjectsManager/  SwiftUI (Swift 6, @Observable, Liquid Glass)
 ├── project.yml  XcodeGen spec → GitProjectsManager.xcodeproj (gitignored)
@@ -34,7 +34,9 @@ Pretty JSON, camelCase, written atomically (temp file + rename). Both apps
 read/write the same files: `config.json` (folders), `settings.json`,
 `kanban_v2.json`, `repos_cache_v1.json`. Sync session in the OS
 keychain (`keyring` with `apple-native`/`windows-native`/`sync-secret-service`
-features; file fallback `session.json`, 0600).
+features; file fallback `session.json`, 0600). Kanban read-modify-write
+cycles are serialized in-process; across processes files are last-writer-wins
+(atomic rename prevents corruption; the next refresh + cloud sync reconciles).
 
 ## Sync configuration (build-time)
 

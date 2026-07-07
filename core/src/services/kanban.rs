@@ -39,10 +39,14 @@ pub async fn refresh(state: &AppState) -> Result<KanbanRefresh> {
         Some(token) => {
             let cards: Vec<KanbanCard> = local_state.cards.values().cloned().collect();
             match state.sync_client.sync(&token, &cards).await {
-                SyncOutcome::Ok(merged) => {
+                SyncOutcome::Ok(remote) => {
                     let names_set: HashSet<String> = names.into_iter().collect();
-                    let merged = merge_with_local(local_state, merged, &names_set);
-                    state.kanban_manager.save(&merged)?;
+                    // Re-merge against the CURRENT store under its lock — a
+                    // card moved while this sync request was in flight must
+                    // not be clobbered by the stale response.
+                    let merged = state
+                        .kanban_manager
+                        .update(|current| merge_remote(current, remote, &names_set))?;
                     (merged, SyncStatus::Synced)
                 }
                 SyncOutcome::Unauthorized => {
@@ -118,48 +122,34 @@ pub async fn move_card(
     Ok(new_state)
 }
 
-/// Delete a repository on GitHub (`gh repo delete`), then rebuild the board
-/// from the fresh repo list and persist the cache.
+/// Delete a repository on GitHub (`gh repo delete`), then run a full refresh
+/// so the board, cloud state, and cache all reflect the deletion — and the
+/// reported sync status is a real outcome, not an assertion.
 ///
 /// # Errors
-/// Returns an error if the deletion or re-listing fails, or if the kanban
-/// store cannot be written.
+/// Returns an error if the deletion or the subsequent refresh fails.
 pub async fn delete_repo(state: &AppState, name_with_owner: &str) -> Result<KanbanRefresh> {
     let nwo = name_with_owner.to_string();
     tokio::task::spawn_blocking(move || github_cli::delete_repo(&nwo)).await??;
-
-    let repos = tokio::task::spawn_blocking(github_cli::list_repos).await??;
-    let names: Vec<String> = repos.iter().map(|r| r.name_with_owner.clone()).collect();
-    let kanban_state = state.kanban_manager.sync_with_repos(names)?;
-    let sync_status = if state.auth.read().is_some() {
-        SyncStatus::Synced
-    } else {
-        SyncStatus::Disabled
-    };
-
-    persist_cache(state, repos.clone(), sync_status);
-
-    Ok(KanbanRefresh {
-        repos,
-        state: kanban_state,
-        sync_status,
-    })
+    refresh(state).await
 }
 
-/// Build the final kanban state by adopting the server's authoritative card
-/// data for repos in `gh_names`, preserving local entries for repos the
-/// server hasn't seen yet.
-fn merge_with_local(
-    mut local: KanbanState,
-    remote: Vec<KanbanCard>,
-    gh_names: &HashSet<String>,
-) -> KanbanState {
+/// Adopt the server's authoritative card data for repos in `gh_names` —
+/// unless the local card is strictly newer (a move that landed while the
+/// sync request was in flight). Local-only cards are preserved.
+fn merge_remote(current: &mut KanbanState, remote: Vec<KanbanCard>, gh_names: &HashSet<String>) {
     for card in remote {
-        if gh_names.contains(&card.name_with_owner) {
-            local.cards.insert(card.name_with_owner.clone(), card);
+        if !gh_names.contains(&card.name_with_owner) {
+            continue;
+        }
+        let local_is_newer = current
+            .cards
+            .get(&card.name_with_owner)
+            .is_some_and(|local| local.updated_at > card.updated_at);
+        if !local_is_newer {
+            current.cards.insert(card.name_with_owner.clone(), card);
         }
     }
-    local
 }
 
 fn persist_cache(state: &AppState, repos: Vec<GhRepo>, sync_status: SyncStatus) {

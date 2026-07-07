@@ -56,7 +56,9 @@ struct KanbanBoardView: View {
                 }
                 Spacer(minLength: 0)
                 if let user = kanban.authedGhUser {
-                    Text("gh: \(user)")
+                    // gh can report an empty account name; match the Tauri
+                    // fallback rather than rendering a dangling "gh: ".
+                    Text("gh: \(user.isEmpty ? "authenticated" : user)")
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                 }

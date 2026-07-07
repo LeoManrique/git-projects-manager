@@ -145,7 +145,9 @@ final class KanbanModel {
     func move(_ nameWithOwner: String, to column: KanbanColumn) {
         guard var updated = state,
               var card = updated.cards[nameWithOwner],
-              card.column != column.rawValue
+              // Compare DISPLAYED columns (legacy ids render as Backlog), so
+              // dropping a card where it already appears stays a no-op.
+              (KanbanColumn(rawValue: card.column) ?? .backlog) != column
         else { return }
 
         card.column = column.rawValue
