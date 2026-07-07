@@ -41,11 +41,17 @@ features; file fallback `session.json`, 0600).
 Kanban sync (both apps) reads three values from `core/src/config.rs`, each
 resolved as compile-time env (`option_env!`) → dev runtime env → hardcoded
 fallback: `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`,
-`SYNC_SERVER_URL`. The **client secret fallback is empty in the public
-source** — no credential ships in git; set `GOOGLE_OAUTH_CLIENT_SECRET` at
-build time to enable sign-in. The client ID and server URL keep working
-public-endpoint fallbacks. Desktop-client secrets are non-confidential to
-Google, but are still kept out of source on principle.
+`SYNC_SERVER_URL`.
+
+A Cargo build script (`core/build.rs`) automatically loads these variables from
+`server/.env` at compile time to inject them.
+
+The **client secret fallback is empty in the public source** — no credential
+ships in git; set `GOOGLE_OAUTH_CLIENT_SECRET` in `server/.env` to enable
+sign-in. The client ID and server URL keep working public-endpoint fallbacks.
+Desktop-client secrets are non-confidential to Google, but are still kept out
+of source on principle.
+
 
 ## macOS build specifics
 
