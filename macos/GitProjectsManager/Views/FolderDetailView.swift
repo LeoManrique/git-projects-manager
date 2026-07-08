@@ -66,9 +66,7 @@ struct RepoSectionsView: View {
             List {
                 ForEach(sections, id: \.0) { category, repos in
                     Section {
-                        ForEach(repos, id: \.path) { repo in
-                            RepoRowView(repo: repo, category: category)
-                        }
+                        CategoryRepoRows(category: category, repos: repos)
                     } header: {
                         SectionHeader(category: category, repos: repos)
                     }

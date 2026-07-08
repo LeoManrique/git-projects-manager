@@ -67,9 +67,7 @@ struct FolderOverviewSection: View {
                     SectionHeader(category: category, repos: repos)
                         .padding(.top, 6)
                         .listRowSeparator(.hidden)
-                    ForEach(repos, id: \.path) { repo in
-                        RepoRowView(repo: repo, category: category)
-                    }
+                    CategoryRepoRows(category: category, repos: repos)
                 }
             }
         } else if isScanning {
