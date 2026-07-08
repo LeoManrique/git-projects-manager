@@ -113,9 +113,10 @@ final class AppModel {
 
     // MARK: - Scanning (FRONTEND.md §5)
 
-    /// Full scan of all folders. `silent` = window-focus rescan with no UI
-    /// indicators.
-    func scanAll(silent: Bool = false) async {
+    /// Full scan of all folders, with global + per-folder progress indicators.
+    /// Drives Scan All, the startup auto-scan, the post-pull/clean rescan, and
+    /// the window-focus rescan (§5.1) — all surface the same in-progress state.
+    func scanAll() async {
         let targets = folders
         guard !targets.isEmpty else { return }
 
@@ -123,11 +124,9 @@ final class AppModel {
         let version = scanVersion
         lastScanStartedAt = Date()
 
-        if !silent {
-            isFullScanning = true
-            errorMessage = nil
-            scanningFolders.formUnion(targets.map(\.id))
-        }
+        isFullScanning = true
+        errorMessage = nil
+        scanningFolders.formUnion(targets.map(\.id))
 
         await withTaskGroup(of: (String, ScanResult?).self) { group in
             for folder in targets {
@@ -143,15 +142,13 @@ final class AppModel {
                 // Supersession: a newer full scan owns the UI now (§5.2).
                 guard scanVersion == version else { continue }
                 if let result { results[folderId] = result }
-                if !silent { scanningFolders.remove(folderId) }
+                scanningFolders.remove(folderId)
             }
         }
 
         guard scanVersion == version else { return }
-        if !silent {
-            scanningFolders.subtract(targets.map(\.id))
-            isFullScanning = false
-        }
+        scanningFolders.subtract(targets.map(\.id))
+        isFullScanning = false
     }
 
     /// Scan a single folder (per-folder Scan control). On-demand, so it
@@ -173,16 +170,16 @@ final class AppModel {
         if let result { results[folder.id] = result }
     }
 
-    /// Window regained focus: silent rescan, throttled to once per 20s
-    /// since the last scan of any kind (§5.1). Never starts while a visible
-    /// scan is in flight — a silent scan superseding a visible one would
-    /// leave its progress indicators stranded.
+    /// Window regained focus: rescan all folders with the normal scan
+    /// indicators, throttled to once per 20s since the last scan of any kind
+    /// (§5.1). Skipped while a scan is already in flight so it never supersedes
+    /// one whose progress the user is watching.
     func appDidBecomeActive() {
         kanban.appDidBecomeActive()
         guard hasInitialScan, !folders.isEmpty else { return }
         guard !isFullScanning, scanningFolders.isEmpty else { return }
         if let last = lastScanStartedAt, Date().timeIntervalSince(last) < 20 { return }
-        Task { await scanAll(silent: true) }
+        Task { await scanAll() }
     }
 
     // MARK: - Folder CRUD (FRONTEND.md §4)

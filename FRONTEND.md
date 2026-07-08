@@ -111,9 +111,11 @@ previous result silently.
 1. **Full scan** — Scan All button, the startup auto-scan, and the automatic rescan
    after any pull/clean action. Shows global + per-folder progress.
 2. **Per-folder scan** — per-folder Scan control; per-folder progress only.
-3. **Silent scan** — when the app window regains focus (after the initial scan,
-   folders exist): rescan all folders with **no UI indicators**, throttled to at most
-   once per **20 seconds** since the last scan of any kind.
+3. **Focus rescan** — when the app window regains focus (after the initial scan,
+   folders exist): rescan all folders as a full scan, so it shows the **same
+   global + per-folder progress** as Scan All. Throttled to at most once per
+   **20 seconds** since the last scan of any kind, and skipped while a scan is
+   already in flight (so it never supersedes one the user is watching).
 
 ### 5.2 Supersession (concurrency rule)
 

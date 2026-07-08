@@ -3,8 +3,8 @@ import { api } from '../lib/api';
 import { MonitoredFolder, ScanResult, RepoStatus } from '../types';
 import { repoName } from '../lib/repoUtils';
 
-// Minimum interval between silent scans (FRONTEND.md §5.1)
-const SILENT_SCAN_MIN_INTERVAL_MS = 20_000;
+// Minimum interval between focus-triggered rescans (FRONTEND.md §5.1)
+const FOCUS_SCAN_MIN_INTERVAL_MS = 20_000;
 
 export interface UseScannerReturn {
   results: Record<string, ScanResult>;
@@ -25,9 +25,10 @@ export interface UseScannerReturn {
 }
 
 /**
- * Owns all scan state and repo operations (FRONTEND.md §5): full / per-folder /
- * silent scans with supersession, auto-scan on startup, focus rescan, and the
- * pull / clean actions with their automatic full rescan.
+ * Owns all scan state and repo operations (FRONTEND.md §5): full / per-folder
+ * scans with supersession, auto-scan on startup, the throttled focus rescan
+ * (a full scan, so it shows the normal indicators), and the pull / clean
+ * actions with their automatic full rescan.
  */
 export function useScanner(folders: MonitoredFolder[]): UseScannerReturn {
   const [results, setResults] = useState<Record<string, ScanResult>>({});
@@ -107,26 +108,6 @@ export function useScanner(folders: MonitoredFolder[]): UseScannerReturn {
     [performScan]
   );
 
-  /** Background rescan with no indicators, throttled to one per 20s (§5.1). */
-  const silentScan = useCallback(
-    async (foldersToScan: MonitoredFolder[]) => {
-      if (foldersToScan.length === 0) return;
-      if (Date.now() - lastScanTimeRef.current < SILENT_SCAN_MIN_INTERVAL_MS) return;
-
-      const version = scanVersionRef.current;
-      try {
-        const newResults = await performScan(foldersToScan);
-        lastScanTimeRef.current = Date.now();
-        // Never stomp a visible scan that started meanwhile.
-        if (version !== scanVersionRef.current) return;
-        setResults((prev) => ({ ...prev, ...newResults }));
-      } catch (err) {
-        console.error('Silent scan failed:', err);
-      }
-    },
-    [performScan]
-  );
-
   const scanAll = useCallback(() => {
     void scan(folders, true);
   }, [scan, folders]);
@@ -146,16 +127,19 @@ export function useScanner(folders: MonitoredFolder[]): UseScannerReturn {
     }
   }, [folders, scan]);
 
-  // Silent rescan when the window regains focus (§5.1).
+  // Rescan when the window regains focus: a normal full scan (so it shows the
+  // usual global + per-folder indicators), throttled to once per 20s and
+  // skipped while a scan is already in flight (§5.1).
   useEffect(() => {
     const handleFocus = () => {
-      if (hasInitialScanRef.current && folders.length > 0) {
-        void silentScan(folders);
-      }
+      if (!hasInitialScanRef.current || folders.length === 0) return;
+      if (isFullScanning || scanningFolders.size > 0) return;
+      if (Date.now() - lastScanTimeRef.current < FOCUS_SCAN_MIN_INTERVAL_MS) return;
+      void scan(folders, true);
     };
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
-  }, [folders, silentScan]);
+  }, [folders, scan, isFullScanning, scanningFolders]);
 
   const withRepoFlag = (
     setFlagged: React.Dispatch<React.SetStateAction<Set<string>>>,

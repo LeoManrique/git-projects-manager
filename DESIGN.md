@@ -28,8 +28,8 @@ folders and surfaces repository status at a glance.
 - **Act on repos**: open in default terminal/editor/`lms-github`, fetch & pull
   (single or all unpulled), clean git-ignored files with exclude patterns
   (single or all clean).
-- **Scan automatically**: on launch, on demand, silently on window focus
-  (20s throttle).
+- **Scan automatically**: on launch, on demand, and on window focus — the
+  focus rescan shows the same progress as a manual scan (20s throttle).
 - **Kanban board** (both apps): the user's GitHub repos as cards in five
   fixed columns (auto-populated via the `gh` CLI, drag to organize), with
   optional Google-sign-in cloud sync (see `server/`).

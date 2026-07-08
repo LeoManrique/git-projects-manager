@@ -25,8 +25,11 @@
 - [x] Docs: README, DESIGN, TECHNICAL, FRONTEND; justfile recipes (`dev-macos`, `clippy`, `test`)
 - [x] Post-migration hardening: per-process unique temp names for atomic store
       writes (two apps share the files), async FFI `cancel_scan` (no main-thread
-      block), silent focus-scan no longer supersedes visible scans, keyring
+      block), the focus rescan never supersedes an in-flight scan, keyring
       `vendored` dbus for Linux builds
+- [x] Focus rescans are no longer silent: the window-focus (and post-action)
+      rescan runs as a full scan in both apps, showing the same global +
+      per-folder progress as Scan All (still 20s-throttled)
 - [x] macOS releases ship the native SwiftUI app: `deploy_releases.sh` builds
       and uploads it (version bump covers `project.yml`), `install_release.sh`
       installs it (macOS 26+ check, replaces older Tauri installs)
