@@ -340,6 +340,12 @@ final class AppModel {
         NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
     }
 
+    func copyPath(_ path: String) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(path, forType: .string)
+    }
+
     // MARK: - Settings (FRONTEND.md §6)
 
     /// Returns a user-facing error message, or nil on success.

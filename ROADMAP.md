@@ -50,6 +50,10 @@
       the arch/macOS ones (build `--bundles nsis`, stop running instance, silent
       `/S` install, registry-verified)
 
+- [x] Repo row/context actions: added **Copy Path** in both apps, and gave every
+      category a stable case-insensitive alphabetical-by-path order (sorted once
+      in the core, shared by both frontends; covered by a core integration test)
+
 ## Pending
 
 - [ ] Re-run the multi-agent adversarial code review of the migration (first

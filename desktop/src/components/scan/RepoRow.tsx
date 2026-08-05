@@ -11,6 +11,7 @@ export interface RepoActionHandlers {
   onOpenInTerminal: (repoPath: string) => void;
   onOpenInEditor: (repoPath: string) => void;
   onOpenInLmsGithub: (repoPath: string) => void;
+  onCopyPath: (repoPath: string) => void;
   defaultTerminalName?: string;
   defaultEditorName?: string;
   pullingRepos: Set<string>;
@@ -116,6 +117,7 @@ export function RepoRow({
               handlers.onOpenInTerminal(repo.path)
             )}
           {menuItem('Open in LMS Github', () => handlers.onOpenInLmsGithub(repo.path))}
+          {menuItem('Copy Path', () => handlers.onCopyPath(repo.path))}
           {(showPull || showClean) && <div className="my-0.5 border-t border-dark-border" />}
           {showPull && menuItem('Fetch & Pull', () => handlers.onPull(repo.path), pullDisabled)}
           {showClean && menuItem('Clean Ignored Files', () => handlers.onClean(repo.path))}

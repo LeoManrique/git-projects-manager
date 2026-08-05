@@ -154,6 +154,11 @@ Navigation is a sidebar + detail split, the same in both apps:
   | Errors | red | open actions; Fetch & Pull visible but disabled; row shows errorMessage |
   | Clean | green (muted rows) | open actions; Fetch & Pull; Clean Ignored Files; section bulk "Clean All (n)" |
 
+Within every section, repos are ordered alphabetically (case-insensitive, by
+full absolute path — so they group by parent directory, A–Z within each group).
+The core sorts once, so the order is identical in both apps and stable across
+rescans.
+
 Rows are a **single line**: a category color dot (softened to 50% opacity;
 section headers carry the full-strength color), then the repo path in
 monospace — directory muted, repo **name** emphasized — with the branch as an
@@ -182,6 +187,8 @@ Per-repo actions (context/row menu):
 | Open in {editor} | default editor configured | opens repo in editor |
 | Open in {terminal} | default terminal configured | opens repo dir in terminal |
 | Open in LMS Github | always | runs `lms-github <path>` via login shell |
+| Show in Finder | macOS only | reveals the repo directory in Finder (the Tauri app has no reveal action yet) |
+| Copy Path | always | copies the repo's absolute path to the clipboard |
 | Fetch & Pull | not for Uninitialized; disabled for Changed/Errors | `git fetch` + `git pull`; success → full rescan; failure → "Failed to pull {path}: {err}" |
 | Clean Ignored Files | Clean section only | `git clean -fdX` dry-run filtered by exclude patterns (§6.2), survivors deleted; 0 removed → "No ignored files to clean in {name}"; always full rescan after |
 
@@ -274,8 +281,8 @@ A sidebar view organizing the user's **GitHub repositories** as cards.
 
 ## 8. Non-goals / intentionally absent
 
-- No scan-cancel UI, no repo sorting, no folder reordering, no light theme in the
-  Tauri app, no keyboard shortcuts in the Tauri app beyond native input behavior.
+- No scan-cancel UI, no folder reordering, no light theme in the Tauri app, no
+  keyboard shortcuts in the Tauri app beyond native input behavior.
 - No kanban card reordering within a column, no custom columns, no manual card
   creation (the GitHub repo list is the single source of cards).
 - Dead code from the web app (RadioGroup/SelectList) is not part of this spec and

@@ -25,9 +25,9 @@ folders and surfaces repository status at a glance.
   Clean (green), Uninitialized (gray — directories with files but no git),
   Errors (red). Unpublished is an overlay: a no-remote repo also shows in its
   primary status section (e.g. Uncommitted *and* Unpublished).
-- **Act on repos**: open in default terminal/editor/`lms-github`, fetch & pull
-  (single or all unpulled), clean git-ignored files with exclude patterns
-  (single or all clean).
+- **Act on repos**: open in default terminal/editor/`lms-github`, reveal in
+  Finder, copy path, fetch & pull (single or all unpulled), clean git-ignored
+  files with exclude patterns (single or all clean).
 - **Scan automatically**: on launch, on demand, and on window focus — the
   focus rescan shows the same progress as a manual scan (20s throttle).
 - **Kanban board** (both apps): the user's GitHub repos as cards in five

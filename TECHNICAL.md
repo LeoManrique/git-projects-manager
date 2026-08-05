@@ -86,6 +86,9 @@ of source on principle.
   are collected into `ScanResult.unpublished` *in addition to* their exclusive
   bucket (changes/unpushed/unpulled/clean). Errored/uninitialized entries are
   excluded. Categorization stays otherwise mutually exclusive.
+- **Ordering**: statuses are sorted case-insensitively by absolute path before
+  categorizing, so every `ScanResult` bucket is stable A–Z (grouped by parent
+  dir). Sorting once in the core keeps both frontends identical.
 - Cancellation: `Arc<AtomicBool>` polled during directory walk only; a
   cancelled `Scanner` is replaced with a fresh instance. No UI currently
   exposes cancel.

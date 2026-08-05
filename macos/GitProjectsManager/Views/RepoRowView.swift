@@ -97,6 +97,7 @@ struct RepoActions: View {
         }
         Button("Open in LMS Github") { model.openInLmsGithub(repo.path) }
         Button("Show in Finder") { model.revealInFinder(repo.path) }
+        Button("Copy Path") { model.copyPath(repo.path) }
 
         if category.showsPull || category.showsClean {
             Divider()

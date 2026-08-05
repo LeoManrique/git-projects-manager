@@ -59,13 +59,27 @@ impl Scanner {
         Self::categorize_results(path, statuses, uninitialized_folders, start_time)
     }
 
-    /// Categorize repository statuses into different groups
+    /// Case-insensitive ordering of repos by absolute path, shared by every
+    /// category so the frontends render a stable A–Z list.
+    fn by_path_ci(a: &RepoStatus, b: &RepoStatus) -> std::cmp::Ordering {
+        a.path.to_lowercase().cmp(&b.path.to_lowercase())
+    }
+
+    /// Categorize repository statuses into different groups.
+    ///
+    /// Repos are sorted case-insensitively by absolute path first, so every
+    /// category lists them in a stable A–Z order grouped by parent directory
+    /// (the directory walk itself yields OS-native readdir order). Each bucket
+    /// preserves this order because the loop below pushes in sequence.
     fn categorize_results(
         path: &Path,
-        statuses: Vec<RepoStatus>,
-        uninitialized_folders: Vec<RepoStatus>,
+        mut statuses: Vec<RepoStatus>,
+        mut uninitialized_folders: Vec<RepoStatus>,
         start_time: Instant,
     ) -> ScanResult {
+        statuses.sort_by(Self::by_path_ci);
+        uninitialized_folders.sort_by(Self::by_path_ci);
+
         let mut result = ScanResult {
             scanned_path: path.display().to_string(),
             total_repositories: statuses.len(),

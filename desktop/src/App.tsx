@@ -198,6 +198,13 @@ function App() {
         setError(`Failed to open LMS Github: ${err}`);
       }
     },
+    onCopyPath: async (path) => {
+      try {
+        await navigator.clipboard.writeText(path);
+      } catch (err) {
+        setError(`Failed to copy path: ${err}`);
+      }
+    },
     defaultTerminalName: defaultTerminal?.displayName,
     defaultEditorName: defaultEditor?.displayName,
     pullingRepos: scanner.pullingRepos,
