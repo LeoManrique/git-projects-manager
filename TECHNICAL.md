@@ -115,3 +115,13 @@ older Tauri install, which it replaces at the same
 `/Applications/Git Projects Manager.app` path — unzips, strips quarantine, and
 registers with Launch Services. Bundles are ad-hoc signed
 (signing/notarization: see ROADMAP.md).
+
+Local installs (a build made on this machine, not a published artifact) have
+one script per platform, all with the same shape — check platform, optionally
+build, stop the running instance, install: `install_arch.sh` (binary +
+`.desktop` entry + icons under `/usr/local`), `install_macos.sh --build`
+(`.app` → `/Applications`, ad-hoc re-signed), and `install_windows.py --build`
+(Python 3, stdlib only; builds `--bundles nsis`, runs the installer with `/S`,
+then confirms the install via the `com.gitprojectsmanager.app` uninstall
+registry key). The NSIS bundle owns the Start menu shortcut, uninstaller and
+WebView2 check, so nothing is copied by hand on Windows.

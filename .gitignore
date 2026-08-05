@@ -49,3 +49,6 @@ macos/generated
 macos/GitProjectsManager.xcodeproj
 macos/build
 macos/DerivedData
+
+# Python (scripts/)
+__pycache__/

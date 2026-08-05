@@ -46,6 +46,10 @@
       section (blue, no Fetch & Pull); backed by a `hasRemote` flag on
       `RepoStatus` and a core integration test
 
+- [x] `scripts/install_windows.py` — local-build installer for Windows, matching
+      the arch/macOS ones (build `--bundles nsis`, stop running instance, silent
+      `/S` install, registry-verified)
+
 ## Pending
 
 - [ ] Re-run the multi-agent adversarial code review of the migration (first
