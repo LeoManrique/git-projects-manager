@@ -1,10 +1,10 @@
 import SwiftUI
 
 /// A repo shown inside a specific category section. Its identity combines the
-/// category and the path so a no-remote repo — which appears in both its
-/// primary section and the Unpublished overlay — yields two distinct List
-/// rows. Keying rows on `path` alone let SwiftUI alias the duplicates, so the
-/// two rows shared one instance and the dot color flip-flopped between the
+/// category and the path so an overlay repo — which appears in both its primary
+/// section and the Unpublished or Remote Not Found overlay — yields two distinct
+/// List rows. Keying rows on `path` alone let SwiftUI alias the duplicates, so
+/// the two rows shared one instance and the dot color flip-flopped between the
 /// sections on every render.
 private struct CategorizedRepo: Identifiable {
     let category: RepoCategory

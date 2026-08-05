@@ -3,10 +3,10 @@ import { filterRepos } from '../../lib/repoUtils';
 import { ColorVariant } from './colorStyles';
 
 /**
- * The seven fixed repo categories (FRONTEND.md §5.3), mirroring the macOS
+ * The eight fixed repo categories (FRONTEND.md §5.3), mirroring the macOS
  * app's RepoCategory: display order (Clean last), colors, badge labels, and
- * which row / bulk actions each section offers. Unpublished is an overlay —
- * a repo with no remote also appears in its primary status section.
+ * which row / bulk actions each section offers. Unpublished and Remote Not
+ * Found are overlays — a repo in either also appears in its primary section.
  */
 export interface SectionSpec {
   key: string;
@@ -68,6 +68,15 @@ export const SECTIONS: SectionSpec[] = [
     color: 'blue',
     showPull: false,
     repos: (r) => r.unpublished,
+  },
+  {
+    ...defaults,
+    key: 'remoteNotFound',
+    title: 'Remote Not Found',
+    badgeLabel: 'remote gone',
+    color: 'pink',
+    showPull: false,
+    repos: (r) => r.remoteNotFound,
   },
   {
     ...defaults,

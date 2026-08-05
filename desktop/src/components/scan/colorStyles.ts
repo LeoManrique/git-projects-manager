@@ -1,4 +1,4 @@
-export type ColorVariant = 'green' | 'yellow' | 'orange' | 'purple' | 'red' | 'gray' | 'blue';
+export type ColorVariant = 'green' | 'yellow' | 'orange' | 'purple' | 'red' | 'gray' | 'blue' | 'pink';
 
 export const colorStyles: Record<
   ColorVariant,
@@ -59,5 +59,13 @@ export const colorStyles: Record<
     border: 'border-accent-blue/40',
     ring: 'ring-accent-blue/70',
     tint: 'bg-accent-blue/10',
+  },
+  pink: {
+    badge: 'bg-pink-500/10 text-pink-400',
+    text: 'text-pink-400',
+    dot: 'bg-pink-400',
+    border: 'border-pink-400/40',
+    ring: 'ring-pink-400/70',
+    tint: 'bg-pink-400/10',
   },
 };

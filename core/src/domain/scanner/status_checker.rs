@@ -1,13 +1,21 @@
-use crate::domain::RepoStatus;
-use crate::infrastructure::git::GitOperations;
+use super::remote_check::RemoteCheckCtx;
+use crate::domain::{PublishState, RepoStatus};
+use crate::infrastructure::git::{GitOperations, RemoteReachability};
 use std::path::Path;
 
 /// Responsible for checking the status of a single git repository
 pub struct StatusChecker;
 
 impl StatusChecker {
-    /// Check the status of a repository at the given path
-    pub fn check(path: &Path, only_local_checks: bool) -> RepoStatus {
+    /// Check the status of a repository at the given path.
+    ///
+    /// `remote_ctx` is present only for online scans; it debounces the `gh`
+    /// confirmation used to promote a repo to [`PublishState::RemoteNotFound`].
+    pub fn check(
+        path: &Path,
+        only_local_checks: bool,
+        remote_ctx: Option<&RemoteCheckCtx>,
+    ) -> RepoStatus {
         let path_str = path.display().to_string();
 
         // Whether the repo was ever published (has a remote). Purely local, so
@@ -28,7 +36,7 @@ impl StatusChecker {
                         has_changes: None,
                         has_unpushed: None,
                         has_unpulled: None,
-                        has_remote,
+                        publish_state: Self::base_publish_state(has_remote),
                         has_error: true,
                         error_message: Some(format!("Failed to get branch: {e}")),
                     };
@@ -46,7 +54,7 @@ impl StatusChecker {
                     has_changes: None,
                     has_unpushed: None,
                     has_unpulled: None,
-                    has_remote,
+                    publish_state: Self::base_publish_state(has_remote),
                     has_error: true,
                     error_message: Some(format!("Failed to check changes: {e}")),
                 };
@@ -61,11 +69,14 @@ impl StatusChecker {
         };
 
         // Check for unpushed/unpulled commits (skip if only_local_checks is enabled)
-        let (has_unpushed, has_unpulled) = if only_local_checks {
-            (None, None)
+        let (has_unpushed, has_unpulled, reachability) = if only_local_checks {
+            (None, None, None)
         } else {
             Self::check_remote_status(path)
         };
+
+        let publish_state =
+            Self::determine_publish_state(path, has_remote, reachability, remote_ctx);
 
         RepoStatus {
             path: path_str,
@@ -73,24 +84,59 @@ impl StatusChecker {
             has_changes,
             has_unpushed: has_unpushed_for_unborn.or(has_unpushed),
             has_unpulled,
-            has_remote,
+            publish_state,
             has_error: false,
             error_message: None,
         }
     }
 
-    /// Check unpushed/unpulled status against remote
-    fn check_remote_status(path: &Path) -> (Option<bool>, Option<bool>) {
+    /// Publish state from local signal alone: no remote → Unpublished, otherwise
+    /// Published. Used for error paths and as the baseline before the (online-
+    /// only) `RemoteNotFound` promotion.
+    fn base_publish_state(has_remote: Option<bool>) -> PublishState {
+        match has_remote {
+            Some(false) => PublishState::Unpublished,
+            _ => PublishState::Published,
+        }
+    }
+
+    /// Promote a published repo to `RemoteNotFound` only when `git fetch`
+    /// definitively said "not found" *and* the debounced `gh` check confirms it.
+    /// Every uncertain case falls back to the local-only baseline.
+    fn determine_publish_state(
+        path: &Path,
+        has_remote: Option<bool>,
+        reachability: Option<RemoteReachability>,
+        remote_ctx: Option<&RemoteCheckCtx>,
+    ) -> PublishState {
+        let base = Self::base_publish_state(has_remote);
+        if base == PublishState::Published
+            && has_remote == Some(true)
+            && reachability == Some(RemoteReachability::NotFound)
+            && let Some(ctx) = remote_ctx
+            && ctx.is_remote_gone(path)
+        {
+            return PublishState::RemoteNotFound;
+        }
+        base
+    }
+
+    /// Check unpushed/unpulled status against remote, returning the fetch's
+    /// reachability so the caller can detect a deleted remote. Only repos with
+    /// an upstream branch are probed (others yield `None` on every field).
+    fn check_remote_status(
+        path: &Path,
+    ) -> (Option<bool>, Option<bool>, Option<RemoteReachability>) {
         if !GitOperations::has_upstream_branch(path).unwrap_or(false) {
-            return (None, None);
+            return (None, None, None);
         }
 
-        // Fetch from remote to get latest state
-        let _ = GitOperations::fetch(path);
+        // Fetch from remote to get latest state (and classify reachability).
+        let reachability = GitOperations::fetch(path).ok();
 
         let unpushed = GitOperations::has_unpushed_commits(path).ok();
         let unpulled = GitOperations::has_unpulled_commits(path).ok();
 
-        (unpushed, unpulled)
+        (unpushed, unpulled, reachability)
     }
 }

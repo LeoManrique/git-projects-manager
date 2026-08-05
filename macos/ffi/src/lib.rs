@@ -51,6 +51,23 @@ impl From<domain::MonitoredFolder> for MonitoredFolder {
     }
 }
 
+#[derive(uniffi::Enum)]
+pub enum PublishState {
+    Published,
+    Unpublished,
+    RemoteNotFound,
+}
+
+impl From<domain::PublishState> for PublishState {
+    fn from(p: domain::PublishState) -> Self {
+        match p {
+            domain::PublishState::Published => Self::Published,
+            domain::PublishState::Unpublished => Self::Unpublished,
+            domain::PublishState::RemoteNotFound => Self::RemoteNotFound,
+        }
+    }
+}
+
 #[derive(uniffi::Record)]
 pub struct RepoStatus {
     pub path: String,
@@ -58,7 +75,7 @@ pub struct RepoStatus {
     pub has_changes: Option<bool>,
     pub has_unpushed: Option<bool>,
     pub has_unpulled: Option<bool>,
-    pub has_remote: Option<bool>,
+    pub publish_state: PublishState,
     pub has_error: bool,
     pub error_message: Option<String>,
 }
@@ -71,7 +88,7 @@ impl From<domain::RepoStatus> for RepoStatus {
             has_changes: r.has_changes,
             has_unpushed: r.has_unpushed,
             has_unpulled: r.has_unpulled,
-            has_remote: r.has_remote,
+            publish_state: r.publish_state.into(),
             has_error: r.has_error,
             error_message: r.error_message,
         }
@@ -86,6 +103,7 @@ pub struct ScanResult {
     pub with_unpushed: Vec<RepoStatus>,
     pub with_unpulled: Vec<RepoStatus>,
     pub unpublished: Vec<RepoStatus>,
+    pub remote_not_found: Vec<RepoStatus>,
     pub clean: Vec<RepoStatus>,
     pub errors: Vec<RepoStatus>,
     pub uninitialized: Vec<RepoStatus>,
@@ -102,6 +120,7 @@ impl From<domain::ScanResult> for ScanResult {
             with_unpushed: map(s.with_unpushed),
             with_unpulled: map(s.with_unpulled),
             unpublished: map(s.unpublished),
+            remote_not_found: map(s.remote_not_found),
             clean: map(s.clean),
             errors: map(s.errors),
             uninitialized: map(s.uninitialized),

@@ -32,7 +32,8 @@ server/          axum + SQLite sync server (kanban state; Google OAuth)
 
 Pretty JSON, camelCase, written atomically (temp file + rename). Both apps
 read/write the same files: `config.json` (folders), `settings.json`,
-`kanban_v2.json`, `repos_cache_v1.json`. Sync session in the OS
+`kanban_v2.json`, `repos_cache_v1.json`, `remote_checks_v1.json` (gh
+remote-existence debounce). Sync session in the OS
 keychain (`keyring` with `apple-native`/`windows-native`/`sync-secret-service`
 features; file fallback `session.json`, 0600). Kanban read-modify-write
 cycles are serialized in-process; across processes files are last-writer-wins
@@ -80,12 +81,22 @@ of source on principle.
   parallel with rayon (git2 for branch/dirty; `git` CLI for
   upstream/fetch/ahead/behind/remote-presence), and detects uninitialized
   sibling directories.
-- `onlyLocalChecks` per folder skips fetch + ahead/behind; `hasRemote`
-  (`git remote`) is local, so it is always checked.
-- **Unpublished overlay**: repos with no remote (`hasRemote == Some(false)`)
-  are collected into `ScanResult.unpublished` *in addition to* their exclusive
-  bucket (changes/unpushed/unpulled/clean). Errored/uninitialized entries are
-  excluded. Categorization stays otherwise mutually exclusive.
+- `onlyLocalChecks` per folder skips fetch + ahead/behind; the `git remote`
+  presence check is local, so publish state is still resolved (but never
+  `RemoteNotFound`, which needs a fetch).
+- **Publish-state overlays**: a `PublishState` enum (`Published` / `Unpublished`
+  / `RemoteNotFound`) on each `RepoStatus` is the single source of truth;
+  `categorize_results` derives two overlay vecs from it — `unpublished`
+  (no remote) and `remote_not_found` (remote gone) — *in addition to* the repo's
+  exclusive bucket (changes/unpushed/unpulled/clean). Errored/uninitialized
+  entries are excluded; the exclusive buckets stay mutually exclusive.
+- **Remote-gone detection** (online scans only): the fetch already run for
+  upstream repos is classified `Reachable`/`NotFound`/`Unreachable`. A definitive
+  `NotFound` is confirmed with `gh repo view` (run in the repo dir) before a repo
+  is promoted to `RemoteNotFound`; any uncertainty (offline, auth, non-GitHub,
+  no `gh`) stays `Published` — no false positives. The `gh` confirmation is
+  debounced by `remote_checks_v1.json` (per-repo `{checked_at, exists}`,
+  re-checked at most once per 24h).
 - **Ordering**: statuses are sorted case-insensitively by absolute path before
   categorizing, so every `ScanResult` bucket is stable A–Z (grouped by parent
   dir). Sorting once in the core keeps both frontends identical.
@@ -98,7 +109,8 @@ of source on principle.
 
 - `just clippy` — clippy pedantic, zero warnings across `core`,
   `desktop/src-tauri`, `macos/ffi` (CLAUDE.md requirement).
-- `just test` — core tests (glob matcher, unpublished-overlay integration test, …).
+- `just test` — core tests (glob matcher, fetch/`gh` reachability classifiers,
+  unpublished-overlay + repo-ordering integration tests, …).
 - Frontend: `pnpm build` (tsc strict + vite), eslint.
 
 ## Versions & releases

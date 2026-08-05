@@ -9,6 +9,38 @@ use std::os::windows::process::CommandExt;
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
+/// Outcome of a `git fetch` against a repo's remote, classified from the exit
+/// status and stderr. Only [`RemoteReachability::NotFound`] is a *definitive*
+/// "the remote is gone" signal; connectivity/auth failures are `Unreachable`
+/// and must never be treated as a deleted remote.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RemoteReachability {
+    /// Fetch succeeded — the remote exists and is reachable.
+    Reachable,
+    /// The host reports the repository does not exist.
+    NotFound,
+    /// The fetch failed for a non-definitive reason (offline, DNS, auth, …).
+    Unreachable,
+}
+
+/// Classify a `git fetch` result. Kept pure (no I/O) so it is unit-testable.
+///
+/// "Not found" is checked before anything else because some transports (SSH)
+/// pair it with a generic "could not read from remote" line we'd otherwise
+/// misread as a connectivity failure.
+#[must_use]
+pub fn classify_fetch(success: bool, stderr: &str) -> RemoteReachability {
+    if success {
+        return RemoteReachability::Reachable;
+    }
+    let s = stderr.to_lowercase();
+    if s.contains("not found") || s.contains("does not exist") {
+        RemoteReachability::NotFound
+    } else {
+        RemoteReachability::Unreachable
+    }
+}
+
 /// Creates a git command with platform-specific settings to hide console windows
 fn git_command() -> Command {
     #[allow(unused_mut)]
@@ -108,16 +140,20 @@ impl GitOperations {
         Ok(output.status.success())
     }
 
+    /// Fetch from the remote, reporting whether it is reachable, gone, or
+    /// merely unreachable (see [`RemoteReachability`]).
+    ///
     /// # Errors
-    /// Returns an error if the `git fetch` command cannot be executed.
-    pub fn fetch(repo_path: &Path) -> Result<()> {
-        git_command()
+    /// Returns an error if the `git fetch` command cannot be spawned.
+    pub fn fetch(repo_path: &Path) -> Result<RemoteReachability> {
+        let output = git_command()
             .arg("fetch")
             .arg("--quiet")
             .current_dir(repo_path)
             .output()?;
 
-        Ok(())
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Ok(classify_fetch(output.status.success(), &stderr))
     }
 
     /// # Errors
@@ -293,5 +329,36 @@ mod tests {
         assert!(path_matches_any(".vscode/settings.json", &patterns));
         assert!(path_matches_any(".vscode/", &patterns));
         assert!(path_matches_any("sub/.vscode/foo", &patterns));
+    }
+
+    #[test]
+    fn classify_fetch_success_is_reachable() {
+        assert_eq!(classify_fetch(true, ""), RemoteReachability::Reachable);
+    }
+
+    #[test]
+    fn classify_fetch_detects_deleted_remote() {
+        // GitHub HTTPS
+        assert_eq!(
+            classify_fetch(false, "remote: Repository not found.\nfatal: repository 'https://github.com/x/y.git/' not found"),
+            RemoteReachability::NotFound
+        );
+        // GitHub SSH pairs "not found" with a generic connectivity line.
+        assert_eq!(
+            classify_fetch(false, "ERROR: Repository not found.\nfatal: Could not read from remote repository."),
+            RemoteReachability::NotFound
+        );
+    }
+
+    #[test]
+    fn classify_fetch_treats_connectivity_and_auth_as_unreachable() {
+        assert_eq!(
+            classify_fetch(false, "fatal: unable to access '...': Could not resolve host: github.com"),
+            RemoteReachability::Unreachable
+        );
+        assert_eq!(
+            classify_fetch(false, "fatal: Authentication failed for 'https://github.com/x/y.git/'"),
+            RemoteReachability::Unreachable
+        );
     }
 }

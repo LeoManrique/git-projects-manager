@@ -1,4 +1,4 @@
-use crate::domain::RepoStatus;
+use crate::domain::{PublishState, RepoStatus};
 use crate::infrastructure::ignore_patterns::EXCLUDED_DIRS;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -107,7 +107,9 @@ impl UninitializedDetector {
                 has_changes: None,
                 has_unpushed: None,
                 has_unpulled: None,
-                has_remote: None,
+                // Not a git repo; value is unused (uninitialized entries never
+                // enter the publish-state overlays), but the field is required.
+                publish_state: PublishState::Unpublished,
                 has_error: false,
                 error_message: None,
             });

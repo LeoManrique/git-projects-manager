@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Scan results for a single monitored folder: the six fixed category
+/// Scan results for a single monitored folder: the eight fixed category
 /// sections (FRONTEND.md §5.3).
 struct FolderDetailView: View {
     @Environment(AppModel.self) private var model

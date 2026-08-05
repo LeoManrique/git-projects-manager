@@ -1,5 +1,6 @@
 use anyhow::{Context, Result, anyhow};
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 use std::process::Command;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -70,6 +71,58 @@ pub fn check_auth() -> GhAuthStatus {
     GhAuthStatus::Ok { user }
 }
 
+/// Whether the GitHub repository a local clone points to still exists.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RepoExistence {
+    /// `gh` confirmed the repository exists.
+    Exists,
+    /// The host reports the repository does not exist.
+    NotFound,
+    /// Could not determine (gh missing/unauthenticated, offline, or the remote
+    /// is not a GitHub host). Callers must treat this as "don't flag".
+    Unknown,
+}
+
+/// Classify the result of `gh repo view`. Kept pure (no I/O) for unit tests.
+///
+/// Only an explicit "not found" / unresolvable-repository message counts as
+/// [`RepoExistence::NotFound`]; every other failure (auth, network, non-GitHub
+/// remote) is [`RepoExistence::Unknown`] so a transient error never masquerades
+/// as a deleted remote.
+#[must_use]
+pub fn classify_repo_view(success: bool, combined: &str) -> RepoExistence {
+    if success {
+        return RepoExistence::Exists;
+    }
+    let s = combined.to_lowercase();
+    if s.contains("could not resolve to a repository") || s.contains("not found") {
+        RepoExistence::NotFound
+    } else {
+        RepoExistence::Unknown
+    }
+}
+
+/// Ask `gh` whether the GitHub repo behind a local clone still exists, running
+/// in the repo's directory so `gh` resolves the remote itself (no URL parsing).
+///
+/// Returns [`RepoExistence::Unknown`] if `gh` cannot be spawned, so a missing
+/// CLI degrades gracefully rather than flagging repos.
+#[must_use]
+pub fn repo_exists_in_dir(repo_path: &Path) -> RepoExistence {
+    let output = gh()
+        .arg("gh repo view --json name")
+        .current_dir(repo_path)
+        .output();
+
+    let Ok(output) = output else {
+        return RepoExistence::Unknown;
+    };
+
+    let combined = String::from_utf8_lossy(&output.stdout).to_string()
+        + &String::from_utf8_lossy(&output.stderr);
+    classify_repo_view(output.status.success(), &combined)
+}
+
 fn validate_name_with_owner(nwo: &str) -> Result<()> {
     let mut slashes = 0;
     for c in nwo.chars() {
@@ -120,4 +173,42 @@ pub fn list_repos() -> Result<Vec<GhRepo>> {
     let repos: Vec<GhRepo> = serde_json::from_str(&stdout)
         .with_context(|| format!("failed to parse gh output: {stdout}"))?;
     Ok(repos)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn repo_view_success_means_exists() {
+        assert_eq!(classify_repo_view(true, "{\"name\":\"x\"}"), RepoExistence::Exists);
+    }
+
+    #[test]
+    fn repo_view_graphql_resolve_error_means_not_found() {
+        assert_eq!(
+            classify_repo_view(
+                false,
+                "GraphQL: Could not resolve to a Repository with the name 'owner/repo'. (repository)"
+            ),
+            RepoExistence::NotFound
+        );
+    }
+
+    #[test]
+    fn repo_view_non_github_or_auth_error_is_unknown() {
+        // Remote is not a GitHub host → cannot judge existence.
+        assert_eq!(
+            classify_repo_view(
+                false,
+                "none of the git remotes configured for this repository point to a known GitHub host"
+            ),
+            RepoExistence::Unknown
+        );
+        // Offline / connectivity.
+        assert_eq!(
+            classify_repo_view(false, "error connecting to api.github.com"),
+            RepoExistence::Unknown
+        );
+    }
 }

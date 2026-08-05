@@ -1,8 +1,9 @@
 mod finder;
+mod remote_check;
 mod status_checker;
 mod uninitialized;
 
-use crate::domain::{RepoStatus, ScanResult};
+use crate::domain::{PublishState, RepoStatus, ScanResult};
 use rayon::prelude::*;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -10,6 +11,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use finder::RepositoryFinder;
+use remote_check::{RemoteCheckCtx, REMOTE_CHECK_TTL_SECS};
 use status_checker::StatusChecker;
 use uninitialized::UninitializedDetector;
 
@@ -49,11 +51,22 @@ impl Scanner {
         // Find uninitialized project folders
         let uninitialized_folders = UninitializedDetector::find(&repositories);
 
+        // Detecting a deleted remote requires a network fetch, so the debounce
+        // cache is only loaded for online scans; local-only scans stay offline.
+        let remote_ctx =
+            (!only_local_checks).then(|| RemoteCheckCtx::load(REMOTE_CHECK_TTL_SECS));
+
         // Check status of all repositories in parallel
         let statuses: Vec<RepoStatus> = repositories
             .par_iter()
-            .map(|repo_path| StatusChecker::check(repo_path, only_local_checks))
+            .map(|repo_path| {
+                StatusChecker::check(repo_path, only_local_checks, remote_ctx.as_ref())
+            })
             .collect();
+
+        if let Some(ctx) = &remote_ctx {
+            ctx.persist();
+        }
 
         // Categorize results
         Self::categorize_results(path, statuses, uninitialized_folders, start_time)
@@ -87,6 +100,7 @@ impl Scanner {
             with_unpushed: vec![],
             with_unpulled: vec![],
             unpublished: vec![],
+            remote_not_found: vec![],
             clean: vec![],
             errors: vec![],
             uninitialized: uninitialized_folders,
@@ -94,13 +108,17 @@ impl Scanner {
         };
 
         // Only real git repos reach this loop; uninitialized folders are kept in
-        // their own list and never considered for the Unpublished overlay.
+        // their own list and never considered for the publish-state overlays.
         for status in statuses {
-            // Unpublished is an overlay: a repo with no remote also lands in one
-            // of the exclusive buckets below. Errored repos are excluded (their
-            // remote state is unknown).
-            if !status.has_error && status.has_remote == Some(false) {
-                result.unpublished.push(status.clone());
+            // Unpublished and Remote Not Found are mutually-exclusive overlays:
+            // a repo in either also lands in one of the exclusive buckets below.
+            // Errored repos are excluded (their remote state is unknown).
+            if !status.has_error {
+                match status.publish_state {
+                    PublishState::Unpublished => result.unpublished.push(status.clone()),
+                    PublishState::RemoteNotFound => result.remote_not_found.push(status.clone()),
+                    PublishState::Published => {}
+                }
             }
 
             if status.has_error {

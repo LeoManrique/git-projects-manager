@@ -22,9 +22,12 @@ folders and surfaces repository status at a glance.
   dirs). Per-folder "only local checks" skips network round-trips.
 - **Categorize repos**: Uncommitted Changes (yellow), Unpushed (orange),
   Unpulled (purple), Unpublished (blue — no remote, never pushed to a host),
-  Clean (green), Uninitialized (gray — directories with files but no git),
-  Errors (red). Unpublished is an overlay: a no-remote repo also shows in its
-  primary status section (e.g. Uncommitted *and* Unpublished).
+  Remote Not Found (pink — a remote is configured but the host reports it is
+  gone), Clean (green), Uninitialized (gray — directories with files but no
+  git), Errors (red). Unpublished and Remote Not Found are overlays: the repo
+  also shows in its primary status section (e.g. Clean *and* Remote Not Found).
+  Remote Not Found never fires on uncertainty (offline, auth, non-GitHub, no
+  `gh`) — it needs `git fetch` to say "not found" and `gh` to confirm.
 - **Act on repos**: open in default terminal/editor/`lms-github`, reveal in
   Finder, copy path, fetch & pull (single or all unpulled), clean git-ignored
   files with exclude patterns (single or all clean).

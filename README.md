@@ -1,8 +1,9 @@
 # git-projects-manager
 
 Monitor the git status of every repository under your project folders — uncommitted
-changes, unpushed/unpulled commits, never-published (no-remote) projects, and forgotten
-uninitialized directories — from one dashboard.
+changes, unpushed/unpulled commits, never-published (no-remote) projects, repos whose
+remote was deleted on the host, and forgotten uninitialized directories — from one
+dashboard.
 
 Monorepo layout:
 

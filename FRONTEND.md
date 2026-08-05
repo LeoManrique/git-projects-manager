@@ -33,23 +33,29 @@ RepoStatus {
   hasChanges: bool?      // uncommitted changes (untracked included); nil = unknown
   hasUnpushed: bool?     // local commits ahead of upstream; nil = unknown/skipped
   hasUnpulled: bool?     // upstream commits not local; nil = unknown/skipped
-  hasRemote: bool?       // a remote is configured; false = never published; nil = unknown
+  publishState: enum     // "published" | "unpublished" | "remoteNotFound"
   hasError: bool
   errorMessage: string?
 }
 
 ScanResult {
   scannedPath, totalRepositories, executionTime (seconds, float),
-  withChanges[], withUnpushed[], withUnpulled[], unpublished[], clean[], errors[], uninitialized[]
+  withChanges[], withUnpushed[], withUnpulled[], unpublished[], remoteNotFound[], clean[], errors[], uninitialized[]
 }
 ```
 
 - The backend categorizes; frontends never re-derive categories from the flags.
   A repo may appear in several category arrays (e.g. changed *and* unpushed).
-- `unpublished` = repos with **no remote configured** (never pushed to a host). It is
-  an **overlay**: a repo here *also* appears in its primary status bucket (e.g. a
-  no-remote repo with edits is in both `withChanges` and `unpublished`). Errored and
-  uninitialized entries are never included.
+- `publishState` drives two mutually-exclusive **overlays** — a repo in either
+  *also* appears in its primary status bucket (e.g. a no-remote repo with edits
+  is in both `withChanges` and `unpublished`). Errored and uninitialized entries
+  are never included in an overlay.
+  - `unpublished` = **no remote configured** (never pushed to a host).
+  - `remoteNotFound` = a remote **is** configured but the host reports it is gone.
+    Requires an online scan: `git fetch` must return "not found" **and** `gh`
+    must confirm it. Anything uncertain (offline, auth failure, non-GitHub
+    remote, no `gh`, or `onlyLocalChecks`) stays `published` — never a false
+    positive. Confirmations are debounced (once per 24h per repo).
 - `uninitialized` = directories that contain files but are not git repositories,
   found as siblings of discovered repos.
 - `onlyLocalChecks = true` ⇒ scanner skips `git fetch` and unpushed/unpulled checks
@@ -141,7 +147,7 @@ Navigation is a sidebar + detail split, the same in both apps:
   visible without opening a folder. A folder with no visible sections shows
   "No repositories found" ("No matching repositories" while a search filters
   everything out).
-- **Per-folder detail** — all seven sections, fixed order, empty sections
+- **Per-folder detail** — all eight sections, fixed order, empty sections
   hidden, plus a footer `"Completed in {executionTime, 2 decimals}s"`:
 
   | Section | Color | Row actions |
@@ -150,6 +156,7 @@ Navigation is a sidebar + detail split, the same in both apps:
   | Unpushed Commits | orange | open actions; Fetch & Pull |
   | Unpulled Commits | purple | open actions; Fetch & Pull; section bulk "Fetch & Pull All (n)" |
   | Unpublished | blue | open actions only (no remote, so no Fetch & Pull); overlay — same repos also appear above |
+  | Remote Not Found | pink | open actions only (remote is gone, so no Fetch & Pull); overlay — same repos also appear above |
   | Uninitialized | gray (muted rows) | open actions only |
   | Errors | red | open actions; Fetch & Pull visible but disabled; row shows errorMessage |
   | Clean | green (muted rows) | open actions; Fetch & Pull; Clean Ignored Files; section bulk "Clean All (n)" |
@@ -293,7 +300,7 @@ A sidebar view organizing the user's **GitHub repositories** as cards.
 | Concern | Tauri (Win/Linux) | SwiftUI (macOS 26+) |
 |---|---|---|
 | Chrome | Custom sidebar (§5.3) + content header (title, search, Scan All); dark-only dense UI | `NavigationSplitView` sidebar (§5.3); Liquid Glass toolbar with Scan All |
-| Appearance | Fixed dark palette | System light & dark, accent-aware; semantic colors for badge roles (green/yellow/orange/purple/blue/gray/red) |
+| Appearance | Fixed dark palette | System light & dark, accent-aware; semantic colors for badge roles (green/yellow/orange/purple/blue/pink/gray/red) |
 | Folder CRUD | Settings modal → "Monitored Folders" panel; sidebar **Add Folder** opens it | Main window: sidebar add button + sheet; edit via context menu/sheet |
 | Settings | In-app modal via sidebar gear (Monitored Folders / Default Apps / Git Clean / Account) | Native Settings scene (⌘,): Default Apps, Git Clean, Account |
 | Repo actions | Hover kebab dropdown (also on right-click) | Native context menu (right-click) + hover affordance |

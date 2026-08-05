@@ -54,6 +54,14 @@
       category a stable case-insensitive alphabetical-by-path order (sorted once
       in the core, shared by both frontends; covered by a core integration test)
 
+- [x] **Remote Not Found** overlay (both apps): repos whose configured remote was
+      deleted on the host no longer masquerade as Clean. A `PublishState` enum
+      (`Published`/`Unpublished`/`RemoteNotFound`) replaces the old `hasRemote`
+      flag as the single source of truth; detection needs `git fetch` to report
+      "not found" **and** a `gh` confirmation (debounced once/24h via
+      `remote_checks_v1.json`), so offline/auth/non-GitHub cases never false-
+      positive. Pink section, no Fetch & Pull; classifiers unit-tested
+
 ## Pending
 
 - [ ] Re-run the multi-agent adversarial code review of the migration (first

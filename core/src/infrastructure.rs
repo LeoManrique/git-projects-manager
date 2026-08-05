@@ -6,6 +6,7 @@ pub mod ignore_patterns;
 pub mod kanban_store;
 pub mod launcher;
 pub mod oauth;
+pub mod remote_check_store;
 pub mod repos_cache;
 pub mod settings_store;
 pub mod sync_client;
