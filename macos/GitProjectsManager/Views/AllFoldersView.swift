@@ -30,6 +30,18 @@ struct AllFoldersView: View {
     }
 }
 
+/// One category group inside a folder's overview. Its identity combines the
+/// folder and the category because every folder's groups share a single List,
+/// whose row identities are flat: keying on the category alone made one
+/// folder's `Clean` header alias the next folder's, so headers showed another
+/// folder's count (the same aliasing `CategorizedRepo` fixes for rows).
+private struct FolderCategoryGroup: Identifiable {
+    let folderID: String
+    let category: RepoCategory
+    let repos: [RepoStatus]
+    var id: String { "\(folderID)\n\(category.rawValue)" }
+}
+
 /// One monitored folder in the overview: a summary header plus its repos
 /// grouped by category and expanded inline.
 struct FolderOverviewSection: View {
@@ -40,11 +52,12 @@ struct FolderOverviewSection: View {
 
     /// Categories that still have repos after the active search filter, in
     /// display order.
-    private var visibleGroups: [(RepoCategory, [RepoStatus])] {
+    private var visibleGroups: [FolderCategoryGroup] {
         guard let result = model.results[folder.id] else { return [] }
         return RepoCategory.allCases.compactMap { category in
             let repos = model.filtered(category.repos(in: result))
-            return repos.isEmpty ? nil : (category, repos)
+            guard !repos.isEmpty else { return nil }
+            return FolderCategoryGroup(folderID: folder.id, category: category, repos: repos)
         }
     }
 
@@ -63,11 +76,11 @@ struct FolderOverviewSection: View {
             if groups.isEmpty {
                 emptyRow
             } else {
-                ForEach(groups, id: \.0) { category, repos in
-                    SectionHeader(category: category, repos: repos)
+                ForEach(groups) { group in
+                    SectionHeader(category: group.category, repos: group.repos)
                         .padding(.top, 6)
                         .listRowSeparator(.hidden)
-                    CategoryRepoRows(category: category, repos: repos)
+                    CategoryRepoRows(category: group.category, repos: group.repos)
                 }
             }
         } else if isScanning {
