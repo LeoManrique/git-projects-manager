@@ -50,7 +50,9 @@ targets:
       path: GitProjectsManager/Info.plist
       properties:
         CFBundleDisplayName: Git Projects Manager
-        CFBundleIconFile: AppIcon
+        # Icon Composer asset (Resources/AppIcon.icon); actool compiles it into
+        # Assets.car, so this is CFBundleIconName rather than CFBundleIconFile.
+        CFBundleIconName: AppIcon
         # xcodegen writes a literal 1.0/1 otherwise — reference the build
         # settings so version bumps (and the deploy_releases.sh override)
         # actually land in the bundle.

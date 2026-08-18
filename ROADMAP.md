@@ -62,13 +62,15 @@
       `remote_checks_v1.json`), so offline/auth/non-GitHub cases never false-
       positive. Pink section, no Fetch & Pull; classifiers unit-tested
 
+- [x] macOS app icon: Icon Composer `AppIcon.icon` (glyph-only layer, system
+      draws tile/fill/mask) replaces the padded `.icns` that rendered small
+
 ## Pending
 
 - [ ] Re-run the multi-agent adversarial code review of the migration (first
       attempt aborted on session usage limits; a manual review pass was done instead)
 - [ ] macOS app releases: signing identity + notarization (currently ad-hoc
       signed; installer strips quarantine)
-- [ ] App icon asset catalog for the macOS app (currently reuses icon.icns)
 - [ ] Retire the Tauri app on macOS once the native app has parity confidence
 - [ ] Consider: scan-cancel UI, per-repo push action, folder reordering
 - [ ] Update stale `desktop/docs/*` (SETUP paths, QUICK_START npm→pnpm)

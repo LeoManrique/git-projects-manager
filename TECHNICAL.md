@@ -22,6 +22,7 @@ macos/           native macOS 26+ app — full parity (kanban + sync included)
 │                (proc-macro exports; async scan/git/kanban/sync on tokio)
 ├── generated/   Swift bindings (build artifact, gitignored)
 ├── GitProjectsManager/  SwiftUI (Swift 6, @Observable, Liquid Glass)
+│   └── Resources/AppIcon.icon  Icon Composer app icon (glyph + fill)
 ├── project.yml  XcodeGen spec → GitProjectsManager.xcodeproj (gitignored)
 └── scripts/build-rust.sh  cargo build + uniffi-bindgen (Xcode pre-build phase)
 
@@ -73,6 +74,22 @@ of source on principle.
   paths). Ad-hoc codesigned for local builds.
 - `xcodegen generate` requires the generated bindings to exist — run
   `macos/scripts/build-rust.sh` first (`just macos-project` does both).
+
+### App icon
+
+`Resources/AppIcon.icon` is an Icon Composer bundle (`icon.json` + `Assets/`),
+not an `.icns`. XcodeGen types it as `wrapper.icon` and derives
+`ASSETCATALOG_COMPILER_APPICON_NAME` from its name; `actool` compiles it into
+`Assets.car` and emits a legacy `.icns` alongside, so the Info.plist key is
+`CFBundleIconName` (not `CFBundleIconFile`).
+
+The layer PNG is the **glyph alone** on a transparent canvas — no background,
+no rounded tile. macOS 26 draws the tile, the `automatic-gradient` fill, the
+shadow and the Liquid Glass mask itself; baking a tile into the artwork nests
+it inside the system's and renders the glyph far too small. `actool`
+normalizes the layer by its opaque bounding box, so the asset is cropped tight
+and framed purely by `position.scale` (0.5 → the glyph spans ~61% of the tile
+width, matching Apple's 824/1024 icon grid).
 
 ## Scanning
 
