@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { api } from '../../lib/api';
-import { MonitoredFolder } from '../../types';
+import { MonitoredFolder, FolderFormValues } from '../../types';
 import { FolderForm } from './FolderForm';
 
 interface FolderManagerProps {
@@ -37,13 +37,13 @@ export default function FolderManager({ folders, onRefresh }: FolderManagerProps
     }
   };
 
-  const handleAdd = async (path: string, name: string, onlyLocalChecks: boolean) => {
-    await executeOperation(() => api.addMonitoredFolder(path, name, onlyLocalChecks), 'Failed to add folder');
+  const handleAdd = async (values: FolderFormValues) => {
+    await executeOperation(() => api.addMonitoredFolder(values), 'Failed to add folder');
   };
 
-  const handleUpdate = async (path: string, name: string, onlyLocalChecks: boolean) => {
+  const handleUpdate = async (values: FolderFormValues) => {
     if (!editingId) return;
-    await executeOperation(() => api.updateMonitoredFolder(editingId, path, name, onlyLocalChecks), 'Failed to update folder');
+    await executeOperation(() => api.updateMonitoredFolder(editingId, values), 'Failed to update folder');
   };
 
   const handleDelete = async (id: string) => {
@@ -88,6 +88,7 @@ export default function FolderManager({ folders, onRefresh }: FolderManagerProps
       {showAddForm && !editingId && (
         <div className="flex-shrink-0">
           <FolderForm
+            key="add"
             onSubmit={handleAdd}
             onCancel={resetForm}
             submitLabel="Add"
@@ -136,9 +137,8 @@ export default function FolderManager({ folders, onRefresh }: FolderManagerProps
                 {/* Inline edit form */}
                 {isEditing && (
                   <FolderForm
-                    initialPath={folder.path}
-                    initialName={folder.name}
-                    initialOnlyLocalChecks={folder.onlyLocalChecks}
+                    key={folder.id}
+                    initial={folder}
                     onSubmit={handleUpdate}
                     onCancel={resetForm}
                     submitLabel="Save"

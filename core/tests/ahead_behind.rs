@@ -79,11 +79,11 @@ impl Fixture {
     }
 
     fn scan(&self) -> gpm_core::domain::ScanResult {
-        Scanner::new().scan_folder(&self.scanned, false)
+        Scanner::new().scan_folder(&self.scanned, false, true)
     }
 
     fn scan_local_only(&self) -> gpm_core::domain::ScanResult {
-        Scanner::new().scan_folder(&self.scanned, true)
+        Scanner::new().scan_folder(&self.scanned, true, true)
     }
 
     /// Leave a repo whose upstream ref names an object that is not there, and

@@ -75,6 +75,11 @@ test:
 bench-scan path mode="":
     cd core && cargo run --release --example timescan -- "{{path}}" {{mode}}
 
+# Type-check, bundle and lint the Tauri frontend
+check-desktop:
+    cd desktop && pnpm build
+    cd desktop && pnpm lint
+
 # Clippy pedantic across all Rust crates (CLAUDE.md requirement)
 clippy:
     cd core && cargo clippy --all-targets -- -W clippy::pedantic

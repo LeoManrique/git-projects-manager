@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { FolderManager } from './components/folders';
-import { AllFoldersOverview, FolderDetail, RepoActionHandlers } from './components/scan';
+import { AllFoldersOverview, FolderDetail, ScanButton, RepoActionHandlers } from './components/scan';
 import DefaultAppsSettings from './components/settings/DefaultAppsSettings';
 import GitCleanSettings from './components/settings/GitCleanSettings';
 import AccountSettings from './components/settings/AccountSettings';
@@ -10,7 +10,7 @@ import { api } from './lib/api';
 import { localOnlyNotice } from './lib/repoUtils';
 import { MonitoredFolder, TerminalApp, EditorApp } from './types';
 import { useScanner } from './hooks/useScanner';
-import { FolderIcon, AppsIcon, CloseIcon, CleanIcon, UserIcon, RefreshIcon, SearchIcon } from './components/icons';
+import { FolderIcon, AppsIcon, CloseIcon, CleanIcon, UserIcon, SearchIcon } from './components/icons';
 import './App.css';
 
 type SettingsCategory = 'folders' | 'apps' | 'gitclean' | 'account';
@@ -218,9 +218,12 @@ function App() {
     selection.view === 'folder' ? folders.find(f => f.id === selection.folderId) : undefined;
   const title =
     selection.view === 'kanban' ? 'Kanban' : selectedFolder ? selectedFolder.name : 'All Folders';
-  // Which of the folders in view skip the network, so "no unpushed commits"
-  // is never read as a finding when it was never checked (FRONTEND.md §5.4).
-  const localChecksNotice = localOnlyNotice(selectedFolder ? [selectedFolder] : folders);
+  // The folders the current view is about — what the scan button acts on, and
+  // what the local-checks notice describes, so the two can never disagree.
+  const foldersInView = selectedFolder ? [selectedFolder] : folders;
+  // Which of them skip the network, so "no unpushed commits" is never read as a
+  // finding when it was never checked (FRONTEND.md §5.4).
+  const localChecksNotice = localOnlyNotice(foldersInView);
 
   return (
     <div className="h-screen flex bg-dark-bg text-text-primary overflow-hidden">
@@ -235,7 +238,7 @@ function App() {
       />
 
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Content header: title + search + Scan All */}
+        {/* Content header: title + search + the view's scan control */}
         <header className="flex-shrink-0 flex items-center gap-3 px-4 py-2 border-b border-dark-border bg-dark-surface/30">
           <div className="flex-1 min-w-0">
             <h1 className="text-base font-semibold text-text-primary truncate leading-tight">{title}</h1>
@@ -265,23 +268,11 @@ function App() {
                   {localChecksNotice}
                 </span>
               )}
-              <button
-                onClick={scanner.scanAll}
-                disabled={folders.length === 0}
-                className="flex-shrink-0 flex items-center gap-1.5 bg-accent-blue hover:bg-accent-blueHover text-white text-xs font-medium py-1.5 px-3 rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {scanner.isFullScanning ? (
-                  <>
-                    <span className="w-3 h-3 border-2 border-white/70 border-t-transparent rounded-full animate-spin" />
-                    Scanning…
-                  </>
-                ) : (
-                  <>
-                    <RefreshIcon className="w-3 h-3" />
-                    Scan All
-                  </>
-                )}
-              </button>
+              <ScanButton
+                folder={selectedFolder}
+                hasFolders={folders.length > 0}
+                scanner={scanner}
+              />
             </>
           )}
         </header>

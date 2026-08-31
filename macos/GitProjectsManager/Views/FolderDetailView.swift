@@ -33,17 +33,8 @@ struct FolderDetailView: View {
         }
         .navigationTitle(folder.name)
         .navigationSubtitle(folder.path)
-        .toolbar {
-            ToolbarItem {
-                Button {
-                    Task { await model.scan(folder: folder) }
-                } label: {
-                    Label("Scan Folder", systemImage: "arrow.clockwise.circle")
-                }
-                .disabled(isScanning)
-                .help("Rescan \(folder.name)")
-            }
-        }
+        // No scan control of its own: the toolbar's single ScanButton already
+        // targets the folder in view (FRONTEND.md §5.1).
     }
 }
 

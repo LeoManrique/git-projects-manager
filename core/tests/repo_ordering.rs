@@ -56,7 +56,7 @@ fn repos_are_sorted_case_insensitively_by_path() {
     }
 
     // only_local_checks = true keeps the scan offline.
-    let result = Scanner::new().scan_folder(&base, true);
+    let result = Scanner::new().scan_folder(&base, true, true);
 
     let names: Vec<String> = result
         .clean

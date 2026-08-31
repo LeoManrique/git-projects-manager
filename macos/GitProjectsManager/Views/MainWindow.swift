@@ -55,7 +55,7 @@ struct DetailView: View {
                     }
                 }
                 ToolbarItem(placement: .primaryAction) {
-                    scanAllButton
+                    ScanButton()
                 }
             }
         }
@@ -64,35 +64,11 @@ struct DetailView: View {
     /// Which of the folders in view skip the network, so "no unpushed commits"
     /// is never read as a finding when it was never checked (FRONTEND.md §5.4).
     private var localChecksNotice: String? {
-        let inView: [MonitoredFolder]
-        if case .folder(let id) = model.selection, let folder = model.folder(withId: id) {
-            inView = [folder]
-        } else {
-            inView = model.folders
-        }
+        let inView = model.foldersInView
         let localOnly = inView.filter(\.onlyLocalChecks).count
         guard localOnly > 0 else { return nil }
         guard localOnly < inView.count else { return "Local checks only" }
         return "\(localOnly) of \(inView.count) folders: local checks only"
-    }
-
-    private var scanAllButton: some View {
-        Button {
-            Task { await model.scanAll() }
-        } label: {
-            if model.isFullScanning {
-                Label {
-                    Text("Scanning…")
-                } icon: {
-                    ProgressView().controlSize(.small)
-                }
-            } else {
-                Label("Scan All", systemImage: "arrow.clockwise")
-            }
-        }
-        .buttonStyle(.glassProminent)
-        .disabled(model.folders.isEmpty)
-        .help("Scan all monitored folders (⌘R)")
     }
 
     private var refreshBoardButton: some View {

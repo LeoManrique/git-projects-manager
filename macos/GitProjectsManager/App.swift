@@ -7,6 +7,14 @@ struct GitProjectsManagerApp: App {
     private let model: AppModel?
 
     init() {
+        // AppKit's stock tooltip delay is long enough that a toolbar button's
+        // help text reads as missing, and inconsistent with it: once a tooltip
+        // has been shown the next one appears almost instantly, so two adjacent
+        // controls behave differently depending on which was hovered first.
+        // The delay is in milliseconds, and registering it here applies it to
+        // this app only — a value the user set globally still wins, since the
+        // registration domain is the lowest-priority one.
+        UserDefaults.standard.register(defaults: ["NSInitialToolTipDelay": 350])
         model = try? AppModel()
     }
 
@@ -35,11 +43,13 @@ struct GitProjectsManagerApp: App {
         .commands {
             CommandGroup(after: .toolbar) {
                 if let model {
-                    Button("Scan All Folders") {
-                        Task { await model.scanAll() }
+                    // Same action and same title as the toolbar's ScanButton,
+                    // so ⌘R never scans something other than what is on screen.
+                    Button(model.scanActionTitle) {
+                        Task { await model.scanSelection() }
                     }
                     .keyboardShortcut("r", modifiers: .command)
-                    .disabled(model.folders.isEmpty)
+                    .disabled(model.folders.isEmpty || model.isScanningSelection)
                 }
             }
         }

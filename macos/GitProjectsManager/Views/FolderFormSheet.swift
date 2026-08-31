@@ -9,6 +9,7 @@ struct FolderFormSheet: View {
     @State private var path = ""
     @State private var name = ""
     @State private var onlyLocalChecks = false
+    @State private var detectUninitialized = true
     @State private var validationError: String?
     @State private var isSaving = false
     @State private var showPicker = false
@@ -39,6 +40,13 @@ struct FolderFormSheet: View {
                         text: $name,
                         prompt: Text("e.g. My Projects")
                     )
+                }
+
+                Section {
+                    Toggle("Only code projects", isOn: $detectUninitialized)
+                    Text("Reports sub-folders without a git repository as Uninitialized.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
 
                 Section {
@@ -91,6 +99,7 @@ struct FolderFormSheet: View {
             path = folder.path
             name = folder.name
             onlyLocalChecks = folder.onlyLocalChecks
+            detectUninitialized = folder.detectUninitialized
         }
     }
 
@@ -108,7 +117,8 @@ struct FolderFormSheet: View {
                 target: target,
                 path: path,
                 name: name,
-                onlyLocalChecks: onlyLocalChecks
+                onlyLocalChecks: onlyLocalChecks,
+                detectUninitialized: detectUninitialized
             )
             isSaving = false
             if let error {

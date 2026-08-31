@@ -20,7 +20,9 @@ fn main() {
     );
     for run in 1..=3 {
         let started = Instant::now();
-        let r = Scanner::new().scan_folder(std::path::Path::new(&path), only_local_checks);
+        // Uninitialized detection stays on: it is a second walk of the tree, so
+        // leaving it out would time a scan the app does not run by default.
+        let r = Scanner::new().scan_folder(std::path::Path::new(&path), only_local_checks, true);
         println!(
             "run {run}: {:.2}s  repos={} clean={} changed={} unpushed={} unpulled={} \
              errors={} uninitialized={} unpublished={} remote_not_found={}",

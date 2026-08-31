@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import {
   MonitoredFolder,
+  FolderFormValues,
   ScanResult,
   AppSettings,
   TerminalApp,
@@ -14,18 +15,27 @@ import {
   SyncUser,
 } from '../types';
 
+/**
+ * A folder's settings as command arguments, listed by name so that an extra
+ * property on the caller's object (an `id`, when the edit form was seeded from
+ * an existing folder) never reaches the payload.
+ */
+function folderArgs({ path, name, onlyLocalChecks, detectUninitialized }: FolderFormValues) {
+  return { path, name, onlyLocalChecks, detectUninitialized };
+}
+
 export const api = {
   // Folder management
   async getMonitoredFolders(): Promise<MonitoredFolder[]> {
     return await invoke('get_monitored_folders');
   },
 
-  async addMonitoredFolder(path: string, name: string, onlyLocalChecks: boolean): Promise<MonitoredFolder> {
-    return await invoke('add_monitored_folder', { path, name, onlyLocalChecks });
+  async addMonitoredFolder(values: FolderFormValues): Promise<MonitoredFolder> {
+    return await invoke('add_monitored_folder', folderArgs(values));
   },
 
-  async updateMonitoredFolder(id: string, path: string, name: string, onlyLocalChecks: boolean): Promise<void> {
-    await invoke('update_monitored_folder', { id, path, name, onlyLocalChecks });
+  async updateMonitoredFolder(id: string, values: FolderFormValues): Promise<void> {
+    await invoke('update_monitored_folder', { id, ...folderArgs(values) });
   },
 
   async deleteMonitoredFolder(id: string): Promise<void> {
@@ -33,8 +43,12 @@ export const api = {
   },
 
   // Scanning
-  async scanFolder(path: string, onlyLocalChecks: boolean): Promise<ScanResult> {
-    return await invoke('scan_folder', { path, onlyLocalChecks });
+  async scanFolder(folder: MonitoredFolder): Promise<ScanResult> {
+    return await invoke('scan_folder', {
+      path: folder.path,
+      onlyLocalChecks: folder.onlyLocalChecks,
+      detectUninitialized: folder.detectUninitialized,
+    });
   },
 
   // Git operations

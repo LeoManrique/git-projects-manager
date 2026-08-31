@@ -46,8 +46,12 @@ pub async fn clean_repo(path: String, state: State<'_, AppState>) -> Result<GitC
 pub async fn scan_folder(
     path: String,
     only_local_checks: bool,
+    detect_uninitialized: bool,
     state: State<'_, AppState>,
 ) -> Result<ScanResult, String> {
     let scanner = state.scanner.clone();
-    blocking(move || Ok(scanner.scan_folder(&PathBuf::from(path), only_local_checks))).await
+    blocking(move || {
+        Ok(scanner.scan_folder(&PathBuf::from(path), only_local_checks, detect_uninitialized))
+    })
+    .await
 }

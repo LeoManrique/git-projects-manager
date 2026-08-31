@@ -134,7 +134,7 @@ struct FolderSummaryHeader: View {
             }
             .buttonStyle(.borderless)
             .disabled(isScanning)
-            .help("Scan this folder")
+            .help("Scan \(folder.name)")
 
             Button {
                 model.selection = .folder(folder.id)

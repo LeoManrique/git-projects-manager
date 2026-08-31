@@ -142,7 +142,8 @@ final class AppModel {
                 group.addTask { [core] in
                     let result = try? await core.scanFolder(
                         path: folder.path,
-                        onlyLocalChecks: folder.onlyLocalChecks
+                        onlyLocalChecks: folder.onlyLocalChecks,
+                        detectUninitialized: folder.detectUninitialized
                     )
                     return (folder.id, result)
                 }
@@ -172,6 +173,49 @@ final class AppModel {
     /// clears the shared error surface (§5.6).
     func scan(folder: MonitoredFolder) async {
         await scan(folders: [folder], isFullScan: false, clearError: true)
+    }
+
+    // MARK: - The scan control (FRONTEND.md §5.1)
+
+    /// The folder the current view is about, if it is a folder's detail view.
+    private var selectedFolder: MonitoredFolder? {
+        if case .folder(let id) = selection { return folder(withId: id) }
+        return nil
+    }
+
+    /// The folders the current view is about: one in a folder's detail view,
+    /// every folder anywhere else. The scan control acts on exactly these, and
+    /// the local-checks notice describes exactly these, so the button and the
+    /// notice can never disagree about what a scan covers.
+    var foldersInView: [MonitoredFolder] {
+        selectedFolder.map { [$0] } ?? folders
+    }
+
+    /// Whether the folders in view are being scanned — by their own scan or by
+    /// a full one, which is why the folder case asks the per-folder set.
+    var isScanningSelection: Bool {
+        selectedFolder.map { scanningFolders.contains($0.id) } ?? isFullScanning
+    }
+
+    var scanActionTitle: String {
+        selectedFolder == nil ? "Scan All" : "Scan Folder"
+    }
+
+    var scanActionHelp: String {
+        if let folder = selectedFolder { return "Rescan \(folder.name) (⌘R)" }
+        return "Scan all monitored folders (⌘R)"
+    }
+
+    /// Scan what the current view shows. One entry point behind the toolbar
+    /// button and ⌘R: "scan" always means "scan what I am looking at", so a
+    /// folder's detail view rescans that folder and everything else runs the
+    /// full scan.
+    func scanSelection() async {
+        if let folder = selectedFolder {
+            await scan(folder: folder)
+        } else {
+            await scanAll()
+        }
     }
 
     /// The monitored folders that actually contain the given repos. Pulling or
@@ -216,18 +260,25 @@ final class AppModel {
         target: FolderFormTarget,
         path: String,
         name: String,
-        onlyLocalChecks: Bool
+        onlyLocalChecks: Bool,
+        detectUninitialized: Bool
     ) async -> String? {
         do {
             switch target {
             case .add:
-                _ = try core.addMonitoredFolder(path: path, name: name, onlyLocalChecks: onlyLocalChecks)
+                _ = try core.addMonitoredFolder(
+                    path: path,
+                    name: name,
+                    onlyLocalChecks: onlyLocalChecks,
+                    detectUninitialized: detectUninitialized
+                )
             case .edit(let folder):
                 try core.updateMonitoredFolder(
                     id: folder.id,
                     path: path,
                     name: name,
-                    onlyLocalChecks: onlyLocalChecks
+                    onlyLocalChecks: onlyLocalChecks,
+                    detectUninitialized: detectUninitialized
                 )
             }
         } catch {

@@ -25,7 +25,10 @@ sync status chip); the Tauri board mirrors it in its dark palette.
 ## 1. Domain model
 
 ```
-MonitoredFolder { id: UUID-string, path: string, name: string, onlyLocalChecks: bool }
+MonitoredFolder {
+  id: UUID-string, path: string, name: string,
+  onlyLocalChecks: bool, detectUninitialized: bool
+}
 
 RepoStatus {
   path: string           // absolute repo path
@@ -62,6 +65,7 @@ ScanResult {
 - `uninitialized` = directories that contain files but are not git repositories,
   found as siblings of discovered repos. Symlinked directories are skipped, the
   same way the repo walk skips them, so a link never produces a duplicate entry.
+  Reported only for folders with `detectUninitialized = true`.
   - `remoteStateUnknown` = the unpushed/unpulled comparison **was attempted and
     failed**, so those counts are unknown rather than false. Without it such a
     repo fell through to `clean`, which asserted "nothing to push" about a check
@@ -71,6 +75,12 @@ ScanResult {
   for every repo in that folder (fast, offline-safe); those fields come back nil.
   Because "no unpushed commits" then means "never asked", the UI must say so —
   see the indicator in §5.4.
+- `detectUninitialized = false` ⇒ scanner skips the uninitialized walk for that
+  folder and returns an empty `uninitialized` list; every other category is
+  unaffected. The question "a project you forgot to `git init`?" only makes
+  sense where every sub-folder is meant to be a project — asked of a
+  general-purpose folder (Documents, say) it reports every ordinary directory
+  and buries the repositories that are actually there.
 
 ## 2. Persistence contract (shared between apps)
 
@@ -96,13 +106,21 @@ memory** — never persisted. Every launch starts fresh and rescans.
 | Startup | Load folders + settings concurrently; failures degrade silently to empty state |
 | Auto-scan | The first time the folder list becomes non-empty in a session, scan all folders once |
 | Search | One search field filtering repo lists live (§5.4); session-only value |
-| Scan All | Primary toolbar action; disabled when no folders; shows in-progress state while a full scan runs; clicking again mid-scan supersedes the running scan (§5.2) |
+| Scan | One primary toolbar action, targeting the current view: **Scan All** in the overview, **Scan Folder** in a folder's detail view (§5.1); disabled when no folders exist or its target is already scanning |
 | Settings access | Tauri: sidebar gear button → Settings (modal). macOS: standard Settings scene (⌘,) plus folder management in the main window (§9) |
 
 ## 4. Folder management (CRUD)
 
 - **Fields**: absolute path (free text + native directory picker), display name,
-  "Only local checks (skip remote fetch/push/pull checks)" toggle (default off).
+  and two toggles:
+  - **"Only code projects"** (default **on**) — "Reports sub-folders without a
+    git repository as Uninitialized." Off for folders that hold ordinary
+    documents, where that finding is noise.
+  - **"Only local checks"** (default off) — skips remote fetch and push/pull
+    checks for faster, offline-friendly scans.
+
+  A folder stored before a toggle existed keeps the behavior it had: a missing
+  `detectUninitialized` reads as **true**.
 - **Validation**: path and name must be non-empty after trimming — error
   "Path and name are required". The core additionally rejects a path that
   **overlaps** an already-monitored folder — the same directory, one inside the
@@ -133,12 +151,19 @@ All modes call the core scan once per target folder, **concurrently**; each fold
 result merges into the results map on completion. A folder whose scan fails keeps its
 previous result silently.
 
-1. **Full scan** — Scan All button and the startup auto-scan. Shows global +
-   per-folder progress.
-2. **Per-folder scan** — the per-folder Scan control, and the automatic rescan
-   after a pull/clean (scoped to the folders the affected repos live in, since
-   an action on one repo cannot change another folder's state). Per-folder
-   progress only.
+There is **one** scan control, in the toolbar/header, and what it scans follows
+the view: the All Folders overview scans every folder, a folder's detail view
+scans that folder. "Scan" always means "scan what I am looking at", so the two
+modes below are the same button and the same keyboard shortcut (macOS: ⌘R), not
+two competing controls. Per-folder Scan buttons still sit in each overview row
+and in the not-scanned empty state, where they name their own target.
+
+1. **Full scan** — the scan control in the overview, and the startup auto-scan.
+   Shows global + per-folder progress.
+2. **Per-folder scan** — the scan control in a folder's detail view, the
+   per-folder buttons in the overview, and the automatic rescan after a
+   pull/clean (scoped to the folders the affected repos live in, since an action
+   on one repo cannot change another folder's state). Per-folder progress only.
 3. **Focus rescan** — when the app window regains focus (after the initial scan,
    folders exist): rescan all folders as a full scan, so it shows the **same
    global + per-folder progress** as Scan All. Throttled to at most once per
@@ -162,7 +187,9 @@ meanwhile, its results are **discarded**, not merged. Per-folder scans are likew
 discarded if a full scan started after them. A superseded scan also leaves the
 progress indicators alone — the newer scan owns them and will clear them — so a
 late finisher can never wipe a spinner the running scan is still showing. There
-is no user-facing cancel; the core's cancellation API exists but is unused.
+is no cancel, in the UI or in the core. The scan control is instead disabled
+while its own target is scanning, so a second click cannot start a scan that
+would only supersede the one on screen.
 
 ### 5.3 Results display
 
@@ -220,7 +247,7 @@ Case-insensitive substring match of the trimmed query against the repo **name**
 sections filtered to zero disappear. Header badges and totals stay unfiltered.
 **Bulk actions operate on the filtered list.** Folders themselves are never hidden.
 
-A chip sits beside the Scan All control whenever the folders in view include any
+A chip sits beside the scan control whenever the folders in view include any
 with `onlyLocalChecks`. It reads **"Local checks only"** when every folder in
 view is local-only, or **"{n} of {m} folders: local checks only"** when only some
 are; it is absent otherwise. Scope follows the selection — the selected folder in
@@ -351,7 +378,7 @@ A sidebar view organizing the user's **GitHub repositories** as cards.
 
 | Concern | Tauri (Win/Linux) | SwiftUI (macOS 26+) |
 |---|---|---|
-| Chrome | Custom sidebar (§5.3) + content header (title, search, Scan All); dark-only dense UI | `NavigationSplitView` sidebar (§5.3); Liquid Glass toolbar with Scan All |
+| Chrome | Custom sidebar (§5.3) + content header (title, search, scan control); dark-only dense UI | `NavigationSplitView` sidebar (§5.3); Liquid Glass toolbar with the scan control. Registers a 350 ms `NSInitialToolTipDelay` so toolbar help text appears promptly and at the same speed everywhere |
 | Appearance | Fixed dark palette | System light & dark, accent-aware; semantic colors for badge roles (green/yellow/orange/purple/blue/pink/gray/red) |
 | Folder CRUD | Settings modal → "Monitored Folders" panel; sidebar **Add Folder** opens it | Main window: sidebar add button + sheet; edit via context menu/sheet |
 | Settings | In-app modal via sidebar gear (Monitored Folders / Default Apps / Git Clean / Account) | Native Settings scene (⌘,): Default Apps, Git Clean, Account |

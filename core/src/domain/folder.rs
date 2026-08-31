@@ -10,16 +10,39 @@ pub struct MonitoredFolder {
     pub name: String,
     #[serde(default)]
     pub only_local_checks: bool,
+    /// Whether this folder is expected to hold code projects.
+    ///
+    /// The Uninitialized category answers "a project you forgot to `git init`",
+    /// which only makes sense where every subfolder is meant to be a project.
+    /// Pointed at a general-purpose folder (Documents, say) the same rule turns
+    /// every ordinary directory into a finding and buries the repositories that
+    /// are actually there, so such a folder is registered with this off.
+    ///
+    /// Defaults to on, both for a new folder and for one stored before the flag
+    /// existed, so an upgrade keeps the behavior the user already had.
+    #[serde(default = "enabled")]
+    pub detect_uninitialized: bool,
+}
+
+/// `serde`'s default for a missing `bool` is `false`; this one defaults to on.
+fn enabled() -> bool {
+    true
 }
 
 impl MonitoredFolder {
     #[must_use]
-    pub fn new(path: String, name: String, only_local_checks: bool) -> Self {
+    pub fn new(
+        path: String,
+        name: String,
+        only_local_checks: bool,
+        detect_uninitialized: bool,
+    ) -> Self {
         Self {
             id: Uuid::new_v4().to_string(),
             path,
             name,
             only_local_checks,
+            detect_uninitialized,
         }
     }
 }
@@ -121,9 +144,19 @@ mod tests {
         Config {
             folders: paths
                 .iter()
-                .map(|p| MonitoredFolder::new((*p).to_string(), (*p).to_string(), false))
+                .map(|p| MonitoredFolder::new((*p).to_string(), (*p).to_string(), false, true))
                 .collect(),
         }
+    }
+
+    #[test]
+    fn a_folder_stored_before_the_flag_existed_still_detects_uninitialized() {
+        // The upgrade path: `config.json` written by an older version has no
+        // `detectUninitialized` key, and must keep the behavior it had.
+        let json = r#"{"folders":[{"id":"1","path":"/a/dev","name":"Dev"}]}"#;
+        let config: Config = serde_json::from_str(json).unwrap();
+        assert!(config.folders[0].detect_uninitialized);
+        assert!(!config.folders[0].only_local_checks);
     }
 
     #[test]

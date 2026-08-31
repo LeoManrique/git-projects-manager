@@ -68,7 +68,7 @@ fn unpublished_repo_appears_in_both_buckets() {
     );
 
     // only_local_checks = true keeps the scan offline; has_remote is local.
-    let result = Scanner::new().scan_folder(&base, true);
+    let result = Scanner::new().scan_folder(&base, true, true);
 
     assert!(
         contains(&result.with_changes, &unpublished),

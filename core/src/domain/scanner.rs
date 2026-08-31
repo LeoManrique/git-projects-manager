@@ -51,15 +51,30 @@ impl Scanner {
     }
 
     /// Scan a folder for git repositories and check their status
+    ///
+    /// `detect_uninitialized` is the monitored folder's own setting: a folder
+    /// that is not a projects folder reports no Uninitialized entries, because
+    /// there every ordinary subdirectory would be one.
     #[must_use]
-    pub fn scan_folder(&self, path: &Path, only_local_checks: bool) -> ScanResult {
+    pub fn scan_folder(
+        &self,
+        path: &Path,
+        only_local_checks: bool,
+        detect_uninitialized: bool,
+    ) -> ScanResult {
         let start_time = Instant::now();
 
         // Find all git repositories
         let repositories = RepositoryFinder::find_repositories(path);
 
-        // Find uninitialized project folders
-        let uninitialized_folders = UninitializedDetector::find(&repositories);
+        // Find uninitialized project folders. Skipped entirely when the folder
+        // is not a projects folder — it is a second full walk of the tree, so
+        // not asking is also the cheaper answer.
+        let uninitialized_folders = if detect_uninitialized {
+            UninitializedDetector::find(&repositories)
+        } else {
+            Vec::new()
+        };
 
         // Detecting a deleted remote requires a network fetch, so the debounce
         // cache is only loaded for online scans; local-only scans stay offline.

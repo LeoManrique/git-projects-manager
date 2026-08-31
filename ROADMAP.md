@@ -114,6 +114,22 @@
       a partial result the frontends stored as complete. Both folder forms now
       show the core's reason instead of a generic failure. 11 new tests
 
+- [x] One scan control per view, in both apps: the toolbar/header button now
+      targets what is on screen (**Scan All** in the overview, **Scan Folder**
+      in a folder's detail view) and ⌘R runs the same action, replacing the two
+      side-by-side buttons on macOS and a Tauri header that scanned every folder
+      while a single one was open. Extracted as a shared `ScanButton` in both
+      apps, reading a single `foldersInView` the local-checks chip also uses.
+      macOS registers a 350 ms `NSInitialToolTipDelay` so toolbar help text
+      stops taking seconds to appear
+
+- [x] Per-folder **"Only code projects"** switch (default on): with
+      it off the scan skips the uninitialized walk entirely, so a general-purpose
+      folder (Documents) no longer reports every ordinary directory as a project
+      you forgot to `git init` — the noise was burying its actual repos. Missing
+      from an older `config.json` reads as on, so upgrades change nothing. The
+      Tauri form now passes one values object instead of positional booleans
+
 ## Pending
 - [ ] Re-run the multi-agent adversarial code review of the migration (first
       attempt aborted on session usage limits; a manual review pass was done instead)

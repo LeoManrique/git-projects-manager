@@ -55,7 +55,7 @@ fn fixture(tag: &str) -> PathBuf {
 
 /// Every path the scan reported, in any bucket.
 fn scanned_paths(root: &Path) -> Vec<String> {
-    let result = Scanner::new().scan_folder(root, true);
+    let result = Scanner::new().scan_folder(root, true, true);
     let mut paths: Vec<String> = result
         .clean
         .iter()

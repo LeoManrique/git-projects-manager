@@ -43,11 +43,18 @@ pub struct MonitoredFolder {
     pub path: String,
     pub name: String,
     pub only_local_checks: bool,
+    pub detect_uninitialized: bool,
 }
 
 impl From<domain::MonitoredFolder> for MonitoredFolder {
     fn from(f: domain::MonitoredFolder) -> Self {
-        Self { id: f.id, path: f.path, name: f.name, only_local_checks: f.only_local_checks }
+        Self {
+            id: f.id,
+            path: f.path,
+            name: f.name,
+            only_local_checks: f.only_local_checks,
+            detect_uninitialized: f.detect_uninitialized,
+        }
     }
 }
 
@@ -326,8 +333,14 @@ impl GpmCore {
         path: String,
         name: String,
         only_local_checks: bool,
+        detect_uninitialized: bool,
     ) -> FfiResult<MonitoredFolder> {
-        let folder = self.state.config_manager.add_folder(path, name, only_local_checks)?;
+        let folder = self.state.config_manager.add_folder(
+            path,
+            name,
+            only_local_checks,
+            detect_uninitialized,
+        )?;
         Ok(folder.into())
     }
 
@@ -339,8 +352,15 @@ impl GpmCore {
         path: String,
         name: String,
         only_local_checks: bool,
+        detect_uninitialized: bool,
     ) -> FfiResult<()> {
-        self.state.config_manager.update_folder(id, path, name, only_local_checks)?;
+        self.state.config_manager.update_folder(
+            id,
+            path,
+            name,
+            only_local_checks,
+            detect_uninitialized,
+        )?;
         Ok(())
     }
 
@@ -476,10 +496,19 @@ impl GpmCore {
     /// # Errors
     /// Errs when the scan worker thread panics or is cancelled by runtime
     /// shutdown; per-repo failures are reported inside the result instead.
-    pub async fn scan_folder(&self, path: String, only_local_checks: bool) -> FfiResult<ScanResult> {
+    pub async fn scan_folder(
+        &self,
+        path: String,
+        only_local_checks: bool,
+        detect_uninitialized: bool,
+    ) -> FfiResult<ScanResult> {
         let scanner = Arc::clone(&self.state.scanner);
         let result = tokio::task::spawn_blocking(move || {
-            scanner.scan_folder(std::path::Path::new(&path), only_local_checks)
+            scanner.scan_folder(
+                std::path::Path::new(&path),
+                only_local_checks,
+                detect_uninitialized,
+            )
         })
         .await
         .map_err(|e| GpmError::Failure(format!("scan task failed: {e}")))?;

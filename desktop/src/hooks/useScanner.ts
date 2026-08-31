@@ -81,7 +81,7 @@ export function useScanner(folders: MonitoredFolder[]): UseScannerReturn {
       await Promise.all(
         foldersToScan.map(async (folder) => {
           const result = await api
-            .scanFolder(folder.path, folder.onlyLocalChecks)
+            .scanFolder(folder)
             .catch((err: unknown) => {
               // Folder keeps its previous result silently (§5.1).
               console.error(`Scan failed for ${folder.path}:`, err);

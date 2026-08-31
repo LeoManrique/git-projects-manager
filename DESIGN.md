@@ -21,15 +21,18 @@ folders and surfaces repository status at a glance.
   repos beneath them (smart exclusions: node_modules, target, caches, hidden
   dirs — though a folder that is itself a repo is never hidden by its name).
   Folders may not overlap: one inside another would scan shared repos twice at
-  once, so the second is refused with the conflict named. Per-folder "only local
-  checks" skips network round-trips, and the scan toolbar says so, since skipped
+  once, so the second is refused with the conflict named. Two per-folder
+  switches say what the folder is: "only code projects" (on by default) decides
+  whether non-repo directories are worth reporting at all, and "only local
+  checks" skips network round-trips — the scan toolbar says so, since skipped
   checks would otherwise read as clean results.
 - **Categorize repos**: Uncommitted Changes (yellow), Unpushed (orange),
   Unpulled (purple), Unpublished (blue — no remote, never pushed to a host),
   Remote Not Found (pink — a remote is configured but the host reports it is
   gone), Unknown Remote State (gray — the remote comparison was attempted and
   failed, so the repo is *not* silently reported as clean), Clean (green),
-  Uninitialized (gray — directories with files but no git), Errors (red).
+  Uninitialized (gray — directories with files but no git, reported only for
+  folders that hold code projects), Errors (red).
   Unpublished, Remote Not Found and Unknown Remote State are overlays: the repo
   also shows in its primary status section (e.g. Clean *and* Remote Not Found).
   Remote Not Found never fires on uncertainty (offline, auth, non-GitHub, no
@@ -41,7 +44,8 @@ folders and surfaces repository status at a glance.
   Finder, copy path, fetch & pull (single or all unpulled), clean git-ignored
   files with exclude patterns (single or all clean).
 - **Scan automatically**: on launch, on demand, and on window focus — the
-  focus rescan shows the same progress as a manual scan (20s throttle).
+  focus rescan shows the same progress as a manual scan (20s throttle). On
+  demand means one control, which scans whatever the current view shows.
 - **Kanban board** (both apps): the user's GitHub repos as cards in five
   fixed columns (auto-populated via the `gh` CLI, drag to organize), with
   optional Google-sign-in cloud sync (see `server/`).

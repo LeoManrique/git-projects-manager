@@ -31,7 +31,7 @@ fn scan_with_timeout(root: &Path) -> gpm_core::domain::ScanResult {
     let root = root.to_path_buf();
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
-        let _ = tx.send(Scanner::new().scan_folder(&root, true));
+        let _ = tx.send(Scanner::new().scan_folder(&root, true, true));
     });
     rx.recv_timeout(std::time::Duration::from_secs(30))
         .expect("scan should terminate; a symlink cycle means it did not")

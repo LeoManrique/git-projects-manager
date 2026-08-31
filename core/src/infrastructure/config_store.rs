@@ -46,10 +46,16 @@ impl ConfigManager {
     /// # Errors
     /// Returns an error if the path overlaps a folder that is already
     /// monitored, or if the config cannot be loaded or saved back to disk.
-    pub fn add_folder(&self, path: String, name: String, only_local_checks: bool) -> Result<MonitoredFolder> {
+    pub fn add_folder(
+        &self,
+        path: String,
+        name: String,
+        only_local_checks: bool,
+        detect_uninitialized: bool,
+    ) -> Result<MonitoredFolder> {
         let mut config = self.load()?;
         Self::reject_overlap(&config, &path, None)?;
-        let folder = MonitoredFolder::new(path, name, only_local_checks);
+        let folder = MonitoredFolder::new(path, name, only_local_checks, detect_uninitialized);
         config.folders.push(folder.clone());
         self.save(&config)?;
         Ok(folder)
@@ -76,7 +82,14 @@ impl ConfigManager {
     /// saved.
     // `id` stays owned: pub API consumed with owned Strings by the desktop crate.
     #[allow(clippy::needless_pass_by_value)]
-    pub fn update_folder(&self, id: String, path: String, name: String, only_local_checks: bool) -> Result<()> {
+    pub fn update_folder(
+        &self,
+        id: String,
+        path: String,
+        name: String,
+        only_local_checks: bool,
+        detect_uninitialized: bool,
+    ) -> Result<()> {
         let mut config = self.load()?;
         Self::reject_overlap(&config, &path, Some(&id))?;
 
@@ -84,6 +97,7 @@ impl ConfigManager {
             folder.path = path;
             folder.name = name;
             folder.only_local_checks = only_local_checks;
+            folder.detect_uninitialized = detect_uninitialized;
             self.save(&config)?;
         } else {
             return Err(anyhow::anyhow!("Folder not found"));

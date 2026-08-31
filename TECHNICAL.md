@@ -95,7 +95,8 @@ width, matching Apple's 824/1024 icon grid).
 
 - `Scanner` (core) walks each monitored folder (walkdir, ~60 excluded dir
   names, hidden dirs skipped), detects repos by `.git/`, checks status in
-  parallel with rayon, and detects uninitialized sibling directories.
+  parallel with rayon, and — when the folder asks for it — detects uninitialized
+  sibling directories.
 - **Walk order**: `.git` and hidden directories are pruned first, then the
   directory is tested for `.git/`, and only a non-repo is pruned by an excluded
   name. Testing last made a repo the user named `build`, `dist`, `packages`,
@@ -203,7 +204,11 @@ width, matching Apple's 824/1024 icon grid).
   `DirEntry::file_type` (no syscall, does not follow symlinks), matching
   `RepositoryFinder`'s `follow_links(false)`. Following symlinks let a link back
   to an ancestor report the same folder once per level until the OS refused the
-  chain.
+  chain. It is a second full walk of the tree, and the folder's
+  `detect_uninitialized` flag skips it outright — a general-purpose folder
+  reports every ordinary directory otherwise. The flag reaches the core as a
+  `scan_folder` parameter, and `#[serde(default = "enabled")]` makes it `true`
+  for folders stored before it existed, so an upgrade changes nothing.
 - No cancellation. `Scanner` is a stateless unit struct shared by every scan.
   The removed flag was polled only by the directory walk, so it stopped the
   cheap half and left every `git fetch` running, and it returned a `ScanResult`
@@ -217,11 +222,12 @@ width, matching Apple's 824/1024 icon grid).
 - `just clippy` — clippy pedantic, zero warnings across `core`,
   `desktop/src-tauri`, `macos/ffi` (CLAUDE.md requirement).
 - `just test` — core tests: glob matcher, fetch/`gh` reachability classifiers,
-  subprocess-timeout unit tests, and integration tests for the unpublished
-  overlay, repo ordering, clean paths, symlinked uninitialized folders, and
+  folder-overlap and config-upgrade unit tests, subprocess-timeout unit tests,
+  and integration tests for the unpublished overlay, repo ordering, clean paths,
+  repo folder names, symlinked and opted-out uninitialized folders, and
   ahead/behind (a local bare repo stands in for the remote, so the whole suite
   is offline).
-- Frontend: `pnpm build` (tsc strict + vite), eslint.
+- `just check-desktop` — frontend gates: `pnpm build` (tsc strict + vite) then eslint.
 - `just bench-scan <path> [local]` — times three `scan_folder` runs and prints
   every bucket count, so a scanner change can be shown to be faster *and* to
   still find the same repos.

@@ -1,12 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { api } from '../../lib/api';
+import { FolderFormValues, NEW_FOLDER } from '../../types';
 import { BrowseFolderIcon } from '../icons';
 
 interface FolderFormProps {
-  initialPath?: string;
-  initialName?: string;
-  initialOnlyLocalChecks?: boolean;
-  onSubmit: (path: string, name: string, onlyLocalChecks: boolean) => Promise<void>;
+  /** Existing values when editing; a new folder's defaults when adding. */
+  initial?: FolderFormValues;
+  onSubmit: (values: FolderFormValues) => Promise<void>;
   onCancel: () => void;
   submitLabel: string;
   isLoading: boolean;
@@ -14,45 +14,41 @@ interface FolderFormProps {
 }
 
 export function FolderForm({
-  initialPath = '',
-  initialName = '',
-  initialOnlyLocalChecks = false,
+  initial = NEW_FOLDER,
   onSubmit,
   onCancel,
   submitLabel,
   isLoading,
   variant = 'standalone',
 }: FolderFormProps) {
-  const [formPath, setFormPath] = useState(initialPath);
-  const [formName, setFormName] = useState(initialName);
-  const [formOnlyLocalChecks, setFormOnlyLocalChecks] = useState(initialOnlyLocalChecks);
+  // One state object rather than a field each: the form's shape is the folder's
+  // shape, so adding a setting stays a single change here and in the caller.
+  //
+  // `initial` seeds the state once. Callers give the form a `key` tied to what
+  // it edits, so pointing it at another folder remounts it with fresh state —
+  // which is why there is no effect here syncing props into state.
+  const [values, setValues] = useState<FolderFormValues>(initial);
   const [error, setError] = useState('');
 
-  // Reset form when initial values change
-  useEffect(() => {
-    setFormPath(initialPath);
-    setFormName(initialName);
-    setFormOnlyLocalChecks(initialOnlyLocalChecks);
-  }, [initialPath, initialName, initialOnlyLocalChecks]);
+  const set = <K extends keyof FolderFormValues>(key: K, value: FolderFormValues[K]) =>
+    setValues((prev) => ({ ...prev, [key]: value }));
 
   const handleBrowse = async () => {
     try {
       const path = await api.browseFolder();
-      if (path) {
-        setFormPath(path);
-      }
+      if (path) set('path', path);
     } catch (err) {
       console.error('Failed to browse folder:', err);
     }
   };
 
   const handleSubmit = async () => {
-    if (!formPath.trim() || !formName.trim()) {
+    if (!values.path.trim() || !values.name.trim()) {
       setError('Path and name are required');
       return;
     }
     setError('');
-    await onSubmit(formPath, formName, formOnlyLocalChecks);
+    await onSubmit(values);
   };
 
   const containerClass = variant === 'standalone'
@@ -76,8 +72,8 @@ export function FolderForm({
           <div className="flex gap-1.5">
             <input
               type="text"
-              value={formPath}
-              onChange={(e) => setFormPath(e.target.value)}
+              value={values.path}
+              onChange={(e) => set('path', e.target.value)}
               placeholder="e.g., /Users/YourName/Projects"
               className={`flex-1 px-2 py-1.5 ${inputBgClass} border border-dark-border rounded text-text-primary text-xs font-mono placeholder-text-muted focus:outline-none focus:border-accent-blue/50`}
             />
@@ -98,24 +94,34 @@ export function FolderForm({
           </label>
           <input
             type="text"
-            value={formName}
-            onChange={(e) => setFormName(e.target.value)}
+            value={values.name}
+            onChange={(e) => set('name', e.target.value)}
             placeholder="e.g., My Projects"
             className={`w-full px-2 py-1.5 ${inputBgClass} border border-dark-border rounded text-text-primary text-xs placeholder-text-muted focus:outline-none focus:border-accent-blue/50`}
           />
         </div>
 
-        <div className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            id="onlyLocalChecks"
-            checked={formOnlyLocalChecks}
-            onChange={(e) => setFormOnlyLocalChecks(e.target.checked)}
-            className="w-3.5 h-3.5 bg-dark-bg border border-dark-border rounded accent-accent-blue focus:outline-none focus:ring-1 focus:ring-accent-blue/50"
+        <div className="space-y-1.5">
+          <Checkbox
+            id="detectUninitialized"
+            checked={values.detectUninitialized}
+            onChange={(checked) => set('detectUninitialized', checked)}
+            label="Only code projects"
           />
-          <label htmlFor="onlyLocalChecks" className="text-text-primary text-xs cursor-pointer">
-            Only local checks (skip remote fetch/push/pull checks)
-          </label>
+          <p className="text-text-muted text-[11px] leading-4 pl-5">
+            Reports sub-folders without a git repository as Uninitialized.
+          </p>
+
+          <Checkbox
+            id="onlyLocalChecks"
+            checked={values.onlyLocalChecks}
+            onChange={(checked) => set('onlyLocalChecks', checked)}
+            label="Only local checks"
+          />
+          <p className="text-text-muted text-[11px] leading-4 pl-5">
+            Skips remote fetch and push/pull checks for faster, offline-friendly
+            scans.
+          </p>
         </div>
 
         <div className="flex gap-1.5 justify-end pt-0.5">
@@ -135,6 +141,31 @@ export function FolderForm({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+interface CheckboxProps {
+  id: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  label: string;
+}
+
+/** The form's per-setting switch, so both settings render identically. */
+function Checkbox({ id, checked, onChange, label }: CheckboxProps) {
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        type="checkbox"
+        id={id}
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="w-3.5 h-3.5 bg-dark-bg border border-dark-border rounded accent-accent-blue focus:outline-none focus:ring-1 focus:ring-accent-blue/50"
+      />
+      <label htmlFor={id} className="text-text-primary text-xs cursor-pointer">
+        {label}
+      </label>
     </div>
   );
 }
