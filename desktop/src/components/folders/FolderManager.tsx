@@ -27,7 +27,10 @@ export default function FolderManager({ folders, onRefresh }: FolderManagerProps
       await onRefresh();
       resetForm();
     } catch (err) {
-      setError(errorMsg);
+      // Tauri commands reject with the core's message. It explains *why* the
+      // folder was refused (an overlap with another monitored folder, say),
+      // which the generic fallback cannot.
+      setError(typeof err === 'string' && err.trim() ? err : errorMsg);
       console.error(err);
     } finally {
       setIsLoading(false);

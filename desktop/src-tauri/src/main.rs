@@ -35,7 +35,6 @@ fn main() {
             commands::folder::update_monitored_folder,
             commands::folder::delete_monitored_folder,
             commands::scan::scan_folder,
-            commands::scan::cancel_scan,
             commands::scan::pull_repo,
             commands::scan::clean_repo,
             commands::settings::get_app_settings,

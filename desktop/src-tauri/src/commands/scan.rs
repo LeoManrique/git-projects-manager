@@ -49,25 +49,5 @@ pub async fn scan_folder(
     state: State<'_, AppState>,
 ) -> Result<ScanResult, String> {
     let scanner = state.scanner.clone();
-    blocking(move || {
-        let scanner = scanner.read();
-        Ok(scanner.scan_folder(&PathBuf::from(path), only_local_checks))
-    })
-    .await
-}
-
-#[tauri::command]
-pub async fn cancel_scan(state: State<'_, AppState>) -> Result<(), String> {
-    let scanner_lock = state.scanner.clone();
-    blocking(move || {
-        scanner_lock.read().cancel();
-
-        // Create new scanner for next scan. This blocks until every in-flight
-        // scan has released its read guard, which is why it must not run on a
-        // runtime worker.
-        *scanner_lock.write() = gpm_core::domain::scanner::Scanner::new();
-
-        Ok(())
-    })
-    .await
+    blocking(move || Ok(scanner.scan_folder(&PathBuf::from(path), only_local_checks))).await
 }

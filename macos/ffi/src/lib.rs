@@ -471,20 +471,6 @@ impl GpmCore {
 // never block the caller; the heavy lifting is offloaded to blocking threads.
 #[uniffi::export(async_runtime = "tokio")]
 impl GpmCore {
-    /// Cancel the in-flight scan (if any) and install a fresh scanner.
-    ///
-    /// Async because installing the replacement waits for running scans to
-    /// release the scanner; that wait must not block the caller's thread.
-    pub async fn cancel_scan(&self) {
-        let scanner_lock = Arc::clone(&self.state.scanner);
-        let _ = tokio::task::spawn_blocking(move || {
-            scanner_lock.read().cancel();
-            let mut scanner = scanner_lock.write();
-            *scanner = domain::scanner::Scanner::new();
-        })
-        .await;
-    }
-
     /// Scan one monitored folder for git repositories and their status.
     ///
     /// # Errors
@@ -493,7 +479,6 @@ impl GpmCore {
     pub async fn scan_folder(&self, path: String, only_local_checks: bool) -> FfiResult<ScanResult> {
         let scanner = Arc::clone(&self.state.scanner);
         let result = tokio::task::spawn_blocking(move || {
-            let scanner = scanner.read();
             scanner.scan_folder(std::path::Path::new(&path), only_local_checks)
         })
         .await

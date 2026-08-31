@@ -6,8 +6,7 @@ mod uninitialized;
 use crate::domain::{PublishState, RepoStatus, ScanResult};
 use rayon::prelude::*;
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, LazyLock};
+use std::sync::LazyLock;
 use std::time::Instant;
 
 use finder::RepositoryFinder;
@@ -34,27 +33,21 @@ static SCAN_POOL: LazyLock<Option<rayon::ThreadPool>> = LazyLock::new(|| {
 });
 
 /// Main scanner that orchestrates repository finding and status checking
-pub struct Scanner {
-    cancel_flag: Arc<AtomicBool>,
-}
-
-impl Default for Scanner {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+///
+/// Cancellation is deliberately absent. An earlier `cancel()` flag was polled
+/// only by the directory walk, so it stopped the cheap half of a scan and left
+/// every `git fetch` running, and it produced a `ScanResult` indistinguishable
+/// from a complete one — which the frontends then stored as authoritative.
+/// Supporting cancel properly means polling in the status loop and marking the
+/// result partial; until that exists, offering the entry point is a promise the
+/// scanner cannot keep.
+#[derive(Default)]
+pub struct Scanner;
 
 impl Scanner {
     #[must_use]
     pub fn new() -> Self {
-        Self {
-            cancel_flag: Arc::new(AtomicBool::new(false)),
-        }
-    }
-
-    /// Signal the scanner to cancel ongoing operations
-    pub fn cancel(&self) {
-        self.cancel_flag.store(true, Ordering::Relaxed);
+        Self
     }
 
     /// Scan a folder for git repositories and check their status
@@ -63,8 +56,7 @@ impl Scanner {
         let start_time = Instant::now();
 
         // Find all git repositories
-        let finder = RepositoryFinder::new(Arc::clone(&self.cancel_flag));
-        let repositories = finder.find_repositories(path);
+        let repositories = RepositoryFinder::find_repositories(path);
 
         // Find uninitialized project folders
         let uninitialized_folders = UninitializedDetector::find(&repositories);

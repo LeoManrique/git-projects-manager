@@ -104,15 +104,23 @@ memory** — never persisted. Every launch starts fresh and rescans.
 - **Fields**: absolute path (free text + native directory picker), display name,
   "Only local checks (skip remote fetch/push/pull checks)" toggle (default off).
 - **Validation**: path and name must be non-empty after trimming — error
-  "Path and name are required". No existence or duplicate checks. Values are stored
-  as entered.
+  "Path and name are required". The core additionally rejects a path that
+  **overlaps** an already-monitored folder — the same directory, one inside the
+  other, or one containing the other — because a repository under both would be
+  scanned twice in the same pass, running two `git fetch` processes inside one
+  `.git`. The message names the conflicting folder ("This folder is inside
+  "Dev" (/Users/leo/Dev), which is already monitored…"). Editing a folder
+  without moving it is never reported against itself. No existence check;
+  values are otherwise stored as entered.
 - **Add** appends to the end of the list. **Edit** mutates in place (position kept);
   unknown id errors "Folder not found". **Delete** is immediate, no confirmation —
   it only stops monitoring; nothing on disk is touched. Only one folder is editable
   at a time; switching targets silently discards unsaved edits.
 - During any mutation all mutating controls disable; the submit label indicates
-  progress ("Add…"/"Save…"). Failures show a generic banner ("Failed to add folder",
-  "Failed to update folder", "Failed to delete folder"); details go to the log.
+  progress ("Add…"/"Save…"). Failures show the reason reported by the core, so a
+  rejected path explains itself; a generic banner ("Failed to add folder",
+  "Failed to update folder", "Failed to delete folder") covers errors that carry
+  no message. Details also go to the log.
 - After every successful mutation the folder list is re-fetched and all views update.
 - Empty state: "No folders configured yet." / main view: "No folders configured.
   Add a folder to get started."

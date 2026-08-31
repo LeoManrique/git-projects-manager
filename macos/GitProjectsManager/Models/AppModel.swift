@@ -231,7 +231,12 @@ final class AppModel {
                 )
             }
         } catch {
-            NSLog("folder save failed: \(Self.message(error))")
+            // The core's message explains *why* the folder was refused (an
+            // overlap with another monitored folder, say); the generic
+            // fallback covers errors that carry no message of their own.
+            let reason = Self.message(error)
+            NSLog("folder save failed: \(reason)")
+            if !reason.isEmpty { return reason }
             switch target {
             case .add: return "Failed to add folder"
             case .edit: return "Failed to update folder"

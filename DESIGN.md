@@ -19,8 +19,11 @@ folders and surfaces repository status at a glance.
 
 - **Monitor folders**: user registers folders; every scan discovers all git
   repos beneath them (smart exclusions: node_modules, target, caches, hidden
-  dirs). Per-folder "only local checks" skips network round-trips, and the scan
-  toolbar says so, since skipped checks would otherwise read as clean results.
+  dirs — though a folder that is itself a repo is never hidden by its name).
+  Folders may not overlap: one inside another would scan shared repos twice at
+  once, so the second is refused with the conflict named. Per-folder "only local
+  checks" skips network round-trips, and the scan toolbar says so, since skipped
+  checks would otherwise read as clean results.
 - **Categorize repos**: Uncommitted Changes (yellow), Unpushed (orange),
   Unpulled (purple), Unpublished (blue — no remote, never pushed to a host),
   Remote Not Found (pink — a remote is configured but the host reports it is

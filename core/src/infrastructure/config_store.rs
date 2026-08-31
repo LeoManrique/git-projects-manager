@@ -44,22 +44,41 @@ impl ConfigManager {
     }
 
     /// # Errors
-    /// Returns an error if the config cannot be loaded or saved back to disk.
+    /// Returns an error if the path overlaps a folder that is already
+    /// monitored, or if the config cannot be loaded or saved back to disk.
     pub fn add_folder(&self, path: String, name: String, only_local_checks: bool) -> Result<MonitoredFolder> {
         let mut config = self.load()?;
+        Self::reject_overlap(&config, &path, None)?;
         let folder = MonitoredFolder::new(path, name, only_local_checks);
         config.folders.push(folder.clone());
         self.save(&config)?;
         Ok(folder)
     }
 
+    /// Refuse a path that would make two monitored folders scan the same
+    /// repositories concurrently (see `FolderOverlap`).
+    fn reject_overlap(config: &Config, path: &str, skip_id: Option<&str>) -> Result<()> {
+        // Resolved to a message before returning so the borrow of `config` ends
+        // here, leaving the caller free to mutate it.
+        let conflict = config
+            .overlapping_folder(path, skip_id)
+            .map(|(existing, overlap)| overlap.message(existing));
+
+        match conflict {
+            Some(message) => Err(anyhow::anyhow!(message)),
+            None => Ok(()),
+        }
+    }
+
     /// # Errors
-    /// Returns an error if no folder has the given `id`, or if the config
-    /// cannot be loaded or saved.
+    /// Returns an error if no folder has the given `id`, if the new path
+    /// overlaps another monitored folder, or if the config cannot be loaded or
+    /// saved.
     // `id` stays owned: pub API consumed with owned Strings by the desktop crate.
     #[allow(clippy::needless_pass_by_value)]
     pub fn update_folder(&self, id: String, path: String, name: String, only_local_checks: bool) -> Result<()> {
         let mut config = self.load()?;
+        Self::reject_overlap(&config, &path, Some(&id))?;
 
         if let Some(folder) = config.folders.iter_mut().find(|f| f.id == id) {
             folder.path = path;

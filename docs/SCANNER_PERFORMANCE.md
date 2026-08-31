@@ -3,10 +3,12 @@
 Why scans were slow, why results were inconsistent between runs, and where I/O
 and network work can still be removed. Kanban is out of scope.
 
-**Status: complete.** Tiers 1 and 2 are implemented, and the three product
-decisions in §6 have been taken and built. `DESIGN.md`, `FRONTEND.md` and
-`TECHNICAL.md` describe the behavior as it is now; this document keeps the
-reasoning, the measurements, and the corrections.
+**Status: closed.** Tiers 1 and 2 are implemented, the three product decisions
+in §6 have been taken and built, and the correctness guards in §4 are done.
+Nothing performance-related remains that measurement justifies — §4.4 records
+what was checked and left alone. `DESIGN.md`, `FRONTEND.md` and `TECHNICAL.md`
+describe the behavior as it is now; this document keeps the reasoning, the
+measurements, and the corrections.
 
 Measure with `just bench-scan <path> [local]`, which prints three timed runs
 plus every bucket count — so a change can be shown to be faster *and* to still
@@ -130,6 +132,12 @@ predecessor. Two mitigations came out of it, both in
 - `process.rs` unit tests — a fast command, a killed one, and 300 KB of output
   (the deadlock case).
 
+The §4.0 guards added 11 more: `repo_folder_names.rs` (a repo named after each
+excluded directory, a real build output still pruned, a vendored `lib` still
+hidden) and the `folder.rs` overlap unit tests, including the sibling-prefix
+case (`/a/development` is not inside `/a/dev`) that a string comparison would
+get wrong.
+
 ---
 
 ## 3. Corrections to this audit's own claims
@@ -167,6 +175,14 @@ were found while implementing Tier 2.
 - **Re-reading settings per clean costs single-digit milliseconds.** §4.8 framed
   60 reads and parses of `settings.json` as a problem; it is a small file and
   the parse is ~50 µs. Not worth caching.
+- **Submodules cannot be misreported as uninitialized folders.** §8 claimed a
+  `.git`-file repo is "neither detected as a repo nor pruned, so its contents get
+  walked *and* can be misreported as uninitialized". The second half is
+  impossible: `should_check_directory` skips any path where
+  `path.starts_with(repo)`, and a submodule is by definition inside its
+  superproject. The claim only holds for a *linked worktree*, which lives
+  outside the repo it belongs to. Measured here: 5 submodules, 0 worktrees, and
+  the submodules cost ~72 of ~16,400 walked directories.
 - **The stale-shallow-graft risk is theoretical.** The review reasoned from
   libgit2's source that grafts load once at open. No failing case could be
   constructed: the merge base between a branch and its own upstream is recent,
@@ -182,11 +198,33 @@ active; and `finder.rs` does prune, just not at repo roots.
 
 ---
 
-## 4. Still open
+## 4. Correctness guards (done) and what was left alone
 
-Every item that was blocked on a decision has now been resolved by §6, and the
-performance work that survived those decisions is implemented. What is left is
-one known behavior gap plus the minor items in §8.
+The remaining work was never about speed. Each item below was measured against
+the real tree first; three were fixed because the failure mode is silence, and
+the rest were left alone because measurement said they were not worth it.
+
+### 4.0 Fixed
+
+| Guard | Why | Where |
+|---|---|---|
+| A repo is no longer hidden by its own folder name | The excluded-name prune ran before the repo check, so a repo named `build`, `dist`, `packages`, `public`, `bin`, `gen` or `out` produced no entry and no error. A fixture of seven such repos found **none** of them against the old code | [finder.rs](../core/src/domain/scanner/finder.rs) |
+| Overlapping monitored folders are rejected | Adding `~/Dev` and `~/Dev/LeoManrique` scanned shared repos twice in one pass, with two `git fetch` processes racing in one `.git`. Compared by path component after `canonicalize`, so `/a/bc` is not "inside" `/a/b` | [folder.rs](../core/src/domain/folder.rs), [config_store.rs](../core/src/infrastructure/config_store.rs) |
+| `cancel_scan` removed | See below | [scanner.rs](../core/src/domain/scanner.rs) |
+
+`cancel_scan` was exposed through both frontends' API layers with zero callers,
+and all three of its problems were fatal: the flag was polled only in the
+directory walk, so it stopped the cheap half of a scan and left every `git fetch`
+running; `cancel_scan` took `scanner.write()`, which blocks until the running
+scan releases its read lock, so cancel waited for the scan it was cancelling; and
+a cancelled walk produced a `ScanResult` indistinguishable from a complete one,
+which the frontends stored as authoritative. Deleting it also made `Scanner`
+stateless, so `AppState` holds an `Arc<Scanner>` instead of `Arc<RwLock<Scanner>>`.
+A cancel UI needs polling in the status loop and a partial-result marker first.
+
+Both frontends now surface the core's own error message from the folder form
+instead of a generic "Failed to add folder", since the overlap rejection is only
+useful if it can say what it collided with.
 
 ### 4.1 A pruned tracking ref still reads as Clean
 
@@ -202,7 +240,8 @@ unknown would also flag every genuinely upstream-less branch. Fixing it properly
 means falling back to comparing against `refs/remotes/<remote>/<branch>` by name,
 or reporting "upstream branch is gone" as its own state. Pre-existing, verified
 identical in the old code, and covered by a test so the behavior is deliberate
-rather than accidental.
+rather than accidental. **Zero occurrences** in this tree when checked, so it
+stays open on judgment rather than evidence.
 
 ### 4.2 Remaining walk waste (independent of §6 Q1)
 
@@ -228,6 +267,18 @@ Both from the adversarial review, both verified, both deliberately not "fixed":
   (`extensions.partialclone`, `extensions.refstorage`), so they land in
   `errors`. Pre-existing — the old code also opened a `Repository` — and zero
   exposure today, but one `git clone --filter=blob:none` changes that.
+
+### 4.4 Checked and deliberately not done
+
+Each of these was in an earlier "still open" list and was dropped after being
+measured against `~/Dev`:
+
+| Item | Measurement | Verdict |
+|---|---|---|
+| `is_git_repo` allocation + `stat` per directory | 25 ms of a 240 ms walk | The alternative — detecting the repo from the `.git` entry the walk already yields — makes nested exclusion depend on readdir order |
+| O(n) prefix scans per entry in `finder.rs` / `uninitialized.rs` | Invisible at 76 repos | A sorted `Vec` + binary search only pays off at a much larger tree |
+| Worktrees and submodules invisible (`.git` is a **file**) | 5 submodules, 0 worktrees; **~72 of ~16,400** directories walked | Not showing a submodule as its own project is arguably correct. See the correction in §3 |
+| Repo folder named `build`, `dist`, … | 0 today | **Fixed anyway** (§4.0) — the failure is silent, so waiting for a first occurrence means never noticing it |
 
 ---
 
@@ -320,28 +371,15 @@ Recorded so they don't get re-investigated:
 
 ## 8. Minor items, still open
 
-- **Worktrees and submodules are invisible.** `is_git_repo` requires `.git` to be
-  a **directory**, but linked worktrees and submodules have a `.git` **file**.
-  They are neither detected as repos nor pruned, so their contents get walked
-  *and* can be misreported as uninitialized folders.
-- **The excluded-name check runs before the repo check** in `finder.rs`. A repo
-  whose own folder is named `build`, `dist`, `out`, `bin`, `public`, `packages`
-  or `gen` is invisible. Latent on this tree today, but a trap.
+- **Linked worktrees are invisible.** `is_git_repo` requires `.git` to be a
+  **directory**, but a linked worktree has a `.git` **file**. It is neither
+  detected as a repo nor pruned, so it is walked and can be reported as an
+  uninitialized folder. (Submodules share the `.git`-file shape but not the
+  consequence — see §3.) Zero worktrees in this tree.
 - **`RemoteNotFound` can't fire for repos with no upstream branch.**
   `check_remote_status` returns early, so `reachability` stays `None` and the
   promotion can never trigger. Saves work, but doesn't match the documented
   feature.
-- **Cancellation is wired but unused, and wouldn't work.** `cancel_scan` has zero
-  call sites. The flag is polled only in the finder, never in the status loop, so
-  it would cut the walk but not the fetches. `cancel_scan` also takes
-  `scanner.write()`, which blocks until the running scan releases its read lock —
-  cancel waits for the scan it is cancelling. And a cancelled walk produces a
-  `ScanResult` indistinguishable from a complete one, which the frontends store as
-  authoritative. All three need fixing before any cancel UI ships.
-- **Overlapping monitored folders aren't rejected.** `add_folder` doesn't validate,
-  so adding both `/Users/leo/Dev` and `/Users/leo/Dev/LeoManrique` would scan
-  shared repos twice, concurrently, with two `git fetch` processes racing in the
-  same `.git`.
 - **Triangular workflows measure "unpushed" against the wrong remote.** Both the
   old and new code compare against `@{upstream}`, never `@{push}`. Pre-existing.
 - **`PathText` forces ~7 synchronous layouts per row.** A binary search calling

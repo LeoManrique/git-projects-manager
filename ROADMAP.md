@@ -103,11 +103,24 @@
       report no unpushed/unpulled work only because they never asked — that is
       "did not check", which the Unknown section deliberately does not claim
 
+- [x] Scanner correctness guards, closing `docs/SCANNER_PERFORMANCE.md`: a repo
+      is no longer hidden by its own folder name (the excluded-name prune ran
+      before the repo check, so seven repos named `build`, `dist`, `packages`, …
+      were found **zero** times by the old code); overlapping monitored folders
+      are rejected instead of scanning shared repos twice with two `git fetch`
+      processes racing in one `.git`; and the unusable `cancel_scan` is deleted
+      — it was exposed through both frontends with no callers, cut only the walk
+      and not the fetches, deadlocked against the scan it cancelled, and returned
+      a partial result the frontends stored as complete. Both folder forms now
+      show the core's reason instead of a generic failure. 11 new tests
+
 ## Pending
 - [ ] Re-run the multi-agent adversarial code review of the migration (first
       attempt aborted on session usage limits; a manual review pass was done instead)
 - [ ] macOS app releases: signing identity + notarization (currently ad-hoc
       signed; installer strips quarantine)
 - [ ] Retire the Tauri app on macOS once the native app has parity confidence
-- [ ] Consider: scan-cancel UI, per-repo push action, folder reordering
+- [ ] Consider: per-repo push action, folder reordering, and a scan-cancel UI —
+      which needs the flag polled in the status loop (not just the walk) and a
+      partial-result marker, since the old entry point had neither
 - [ ] Update stale `desktop/docs/*` (SETUP paths, QUICK_START npm→pnpm)

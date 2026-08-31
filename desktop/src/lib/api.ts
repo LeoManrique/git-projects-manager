@@ -37,10 +37,6 @@ export const api = {
     return await invoke('scan_folder', { path, onlyLocalChecks });
   },
 
-  async cancelScan(): Promise<void> {
-    await invoke('cancel_scan');
-  },
-
   // Git operations
   async pullRepo(path: string): Promise<string> {
     return await invoke('pull_repo', { path });

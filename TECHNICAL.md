@@ -96,6 +96,17 @@ width, matching Apple's 824/1024 icon grid).
 - `Scanner` (core) walks each monitored folder (walkdir, ~60 excluded dir
   names, hidden dirs skipped), detects repos by `.git/`, checks status in
   parallel with rayon, and detects uninitialized sibling directories.
+- **Walk order**: `.git` and hidden directories are pruned first, then the
+  directory is tested for `.git/`, and only a non-repo is pruned by an excluded
+  name. Testing last made a repo the user named `build`, `dist`, `packages`,
+  `public`, `bin`, `gen` or `out` invisible — pruned on its name with no entry
+  and no error. The `NESTED_EXCLUDED_DIRS` rule still wins inside a repo even
+  for a repo: `<repo>/lib` is vendored by definition, which is what it hides.
+- Monitored folders may not overlap; `ConfigManager` rejects an add or edit
+  whose path equals, contains, or sits inside another folder's. Compared by
+  path component (so `/a/bc` is not inside `/a/b`) after `canonicalize` when
+  both exist. Two overlapping folders would scan shared repos concurrently,
+  racing two `git fetch` processes in one `.git`.
 - **One libgit2 handle per repo** (`RepoInspector`): branch, dirty state,
   remote presence and ahead/behind all come from a single `Repository::open`.
   Only `fetch`, `pull` and `clean` still spawn `git`. The four local
@@ -193,9 +204,12 @@ width, matching Apple's 824/1024 icon grid).
   `RepositoryFinder`'s `follow_links(false)`. Following symlinks let a link back
   to an ancestor report the same folder once per level until the OS refused the
   chain.
-- Cancellation: `Arc<AtomicBool>` polled during directory walk only; a
-  cancelled `Scanner` is replaced with a fresh instance. No UI currently
-  exposes cancel.
+- No cancellation. `Scanner` is a stateless unit struct shared by every scan.
+  The removed flag was polled only by the directory walk, so it stopped the
+  cheap half and left every `git fetch` running, and it returned a `ScanResult`
+  indistinguishable from a complete one that the frontends stored as
+  authoritative. A cancel UI needs polling in the status loop and a partial-result
+  marker first.
 - Unborn repos (no commits) detected via typed `git2::ErrorCode::UnbornBranch`.
 
 ## Quality gates
