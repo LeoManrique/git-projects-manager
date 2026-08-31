@@ -1,7 +1,11 @@
-use anyhow::Result;
+use crate::infrastructure::process::output_with_timeout;
+use anyhow::{Context, Result};
 use git2::{Repository, Status, StatusOptions};
-use std::path::Path;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::{LazyLock, Mutex};
+use std::time::{Duration, Instant};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -63,6 +67,141 @@ fn git_command() -> Command {
     cmd
 }
 
+/// How long a single `git fetch` may run before it is killed.
+///
+/// The `-c` knobs below bound a *stalled transfer*, but not a TCP connect to a
+/// black-holed route: libcurl's default connect timeout is 300 s. A killed
+/// fetch classifies as [`RemoteReachability::Unreachable`] — never `NotFound` —
+/// so the failure mode is "we could not check", not a repo wrongly flagged.
+const FETCH_TIMEOUT: Duration = Duration::from_secs(20);
+
+/// How long a *successful* fetch is trusted before the next scan re-fetches the
+/// same repo.
+///
+/// Fetching stays on the scan path — ahead/behind counts are meant to be
+/// current — but scans come in bursts that ask the same question twice: the
+/// rescan fired right after a pull or clean, a window-focus rescan landing on
+/// the heels of the startup scan, a Scan All moments after either. Those repeat
+/// the whole network round-trip for a state that cannot have changed. The
+/// window is deliberately short, so a scan the user asks for after doing
+/// anything real is always a fresh one.
+///
+/// Only successes are recorded: a failed fetch must be retried immediately, not
+/// cached.
+const FETCH_DEBOUNCE: Duration = Duration::from_secs(30);
+
+/// When each repo was last fetched successfully. Process-wide, because a
+/// `Scanner` is replaced on cancel and every scan builds a fresh one.
+static LAST_FETCH: LazyLock<Mutex<HashMap<PathBuf, Instant>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Whether `repo_path` was fetched recently enough to skip.
+fn fetched_recently(repo_path: &Path) -> bool {
+    let map = LAST_FETCH
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    map.get(repo_path)
+        .is_some_and(|at| at.elapsed() < FETCH_DEBOUNCE)
+}
+
+fn record_fetch(repo_path: &Path) {
+    let mut map = LAST_FETCH
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    // Bounded by "repos fetched in the last window" rather than every repo ever
+    // seen, so a deleted or unmonitored folder does not linger.
+    map.retain(|_, at| at.elapsed() < FETCH_DEBOUNCE);
+    map.insert(repo_path.to_path_buf(), Instant::now());
+}
+
+/// One opened repository, reused for every local check the scanner runs.
+///
+/// Replaces four `git` subprocesses per repo (`remote`, `rev-parse @{upstream}`
+/// and two `log <range> --oneline`) plus a second `Repository::open`. Measured
+/// over 70 repos: the subprocesses cost 2.86 s of CPU, the libgit2 equivalents
+/// 19 ms. Both `git log` calls ran a full revwalk and formatted output that was
+/// then discarded — only its emptiness was ever read.
+pub struct RepoInspector {
+    repo: Repository,
+}
+
+impl RepoInspector {
+    /// # Errors
+    /// Returns an error if the path is not a repository libgit2 can open.
+    pub fn open(repo_path: &Path) -> Result<Self> {
+        Ok(Self {
+            repo: Repository::open(repo_path)?,
+        })
+    }
+
+    /// Short name of the checked-out branch, or `"HEAD"` when detached.
+    ///
+    /// # Errors
+    /// Returns git2's `UnbornBranch` for an initialized repo with no commits —
+    /// the caller distinguishes it via [`GitOperations::is_unborn_branch_error`].
+    pub fn current_branch(&self) -> Result<String> {
+        let head = self.repo.head()?;
+        Ok(head.shorthand().unwrap_or("HEAD").to_string())
+    }
+
+    /// # Errors
+    /// Returns an error if the working-tree status cannot be read.
+    pub fn has_pending_changes(&self) -> Result<bool> {
+        let mut opts = StatusOptions::new();
+        opts.include_untracked(true);
+
+        let statuses = self.repo.statuses(Some(&mut opts))?;
+        Ok(statuses.iter().any(|e| e.status() != Status::CURRENT))
+    }
+
+    /// True if the repository has at least one remote configured. A repo with
+    /// no remote has never been published to a host (see `ScanResult.unpublished`).
+    ///
+    /// # Errors
+    /// Returns an error if the repository config cannot be read — never
+    /// silently `false`, which would badge a published repo as Unpublished.
+    pub fn has_remote(&self) -> Result<bool> {
+        Ok(!self.repo.remotes()?.is_empty())
+    }
+
+    /// Full refname of HEAD's upstream (`refs/remotes/origin/main`), or `None`
+    /// when there is no branch, no configured upstream, or the tracking ref no
+    /// longer resolves.
+    ///
+    /// The resolve check is what `git rev-parse @{upstream}` did, and it must
+    /// stay: without it a pruned tracking ref would still be "has upstream",
+    /// and the scanner would fetch repos it used to skip.
+    #[must_use]
+    pub fn upstream_ref(&self) -> Option<String> {
+        let head = self.repo.head().ok()?;
+        let name = head.name().ok()?;
+        let upstream = self.repo.branch_upstream_name(name).ok()?;
+        let upstream = upstream.as_str().ok()?.to_string();
+        self.repo.refname_to_id(&upstream).ok()?;
+        Some(upstream)
+    }
+
+    /// `(has_unpushed, has_unpulled)` for HEAD against `upstream_ref`.
+    ///
+    /// Must be called *after* the fetch: libgit2 re-reads refs from disk (loose
+    /// and packed alike), so one handle observes what an external `git fetch`
+    /// just wrote — verified empirically before this was written.
+    ///
+    /// # Errors
+    /// Returns an error if HEAD or the upstream ref cannot be resolved, rather
+    /// than reporting "no commits either way" for a check that did not happen.
+    pub fn ahead_behind(&self, upstream_ref: &str) -> Result<(bool, bool)> {
+        let local = self
+            .repo
+            .head()?
+            .target()
+            .context("HEAD does not point at a commit")?;
+        let upstream = self.repo.refname_to_id(upstream_ref)?;
+        let (ahead, behind) = self.repo.graph_ahead_behind(local, upstream)?;
+        Ok((ahead > 0, behind > 0))
+    }
+}
+
 pub struct GitOperations;
 
 impl GitOperations {
@@ -79,97 +218,21 @@ impl GitOperations {
             .is_some_and(|g| g.code() == git2::ErrorCode::UnbornBranch)
     }
 
-    /// # Errors
-    /// Returns an error if the repository cannot be opened or HEAD cannot be read.
-    pub fn get_current_branch(repo_path: &Path) -> Result<String> {
-        let repo = Repository::open(repo_path)?;
-        let head = repo.head()?;
-
-        if let Ok(name) = head.shorthand() {
-            Ok(name.to_string())
-        } else {
-            Ok("HEAD".to_string())
-        }
-    }
-
-    /// # Errors
-    /// Returns an error if the repository cannot be opened or its status cannot be read.
-    pub fn has_pending_changes(repo_path: &Path) -> Result<bool> {
-        let repo = Repository::open(repo_path)?;
-        let mut opts = StatusOptions::new();
-        opts.include_untracked(true);
-
-        let statuses = repo.statuses(Some(&mut opts))?;
-
-        for entry in statuses.iter() {
-            let status = entry.status();
-            if status != Status::CURRENT {
-                return Ok(true);
-            }
-        }
-
-        Ok(false)
-    }
-
-    /// # Errors
-    /// Returns an error if the `git log` command cannot be executed or exits
-    /// with a failure status.
-    pub fn has_unpushed_commits(repo_path: &Path) -> Result<bool> {
-        // Using git command for simplicity as git2 branch tracking is complex
-        let output = git_command()
-            .arg("log")
-            .arg("@{upstream}..HEAD")
-            .arg("--oneline")
-            .current_dir(repo_path)
-            .output()?;
-
-        commits_in_range(&output, "@{upstream}..HEAD")
-    }
-
-    /// True if the repository has at least one remote configured. A repo with
-    /// no remote has never been published to a host (see `ScanResult.unpublished`).
-    ///
-    /// # Errors
-    /// Returns an error if the `git remote` command cannot be executed or
-    /// exits with a failure status.
-    pub fn has_remote(repo_path: &Path) -> Result<bool> {
-        let output = git_command()
-            .arg("remote")
-            .current_dir(repo_path)
-            .output()?;
-
-        // An empty stdout means "no remotes" only if git actually succeeded.
-        // On failure (dubious ownership, an unreadable config) stdout is also
-        // empty, and returning `false` there produced an "Unpublished" badge
-        // for a repo that is published.
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!("git remote failed: {}", stderr.trim());
-        }
-
-        Ok(!String::from_utf8_lossy(&output.stdout).trim().is_empty())
-    }
-
-    /// # Errors
-    /// Returns an error if the `git rev-parse` command cannot be executed.
-    pub fn has_upstream_branch(repo_path: &Path) -> Result<bool> {
-        let output = git_command()
-            .arg("rev-parse")
-            .arg("--abbrev-ref")
-            .arg("--symbolic-full-name")
-            .arg("@{upstream}")
-            .current_dir(repo_path)
-            .output()?;
-
-        Ok(output.status.success())
-    }
-
     /// Fetch from the remote, reporting whether it is reachable, gone, or
     /// merely unreachable (see [`RemoteReachability`]).
     ///
     /// # Errors
-    /// Returns an error if the `git fetch` command cannot be spawned.
+    /// Returns an error if the `git fetch` command cannot be spawned, or if it
+    /// exceeded [`FETCH_TIMEOUT`] and was killed.
     pub fn fetch(repo_path: &Path) -> Result<RemoteReachability> {
+        // Recently fetched: the tracking refs on disk are at most
+        // `FETCH_DEBOUNCE` old, and ahead/behind is still computed from them, so
+        // the counts stay current — only the round-trip is skipped. Reported as
+        // `Reachable` because that is what the skipped fetch established.
+        if fetched_recently(repo_path) {
+            return Ok(RemoteReachability::Reachable);
+        }
+
         let mut cmd = git_command();
         cmd.args([
             // A scan runs this once per repo. `--auto` maintenance would fork a
@@ -201,24 +264,47 @@ impl GitOperations {
             cmd.env("GIT_SSH_COMMAND", "ssh -oBatchMode=yes -oConnectTimeout=10");
         }
 
-        let output = cmd.output()?;
+        let output = output_with_timeout(&mut cmd, FETCH_TIMEOUT)?;
 
         let stderr = String::from_utf8_lossy(&output.stderr);
-        Ok(classify_fetch(output.status.success(), &stderr))
+        let reachability = classify_fetch(output.status.success(), &stderr);
+        if reachability == RemoteReachability::Reachable {
+            record_fetch(repo_path);
+        }
+        Ok(reachability)
     }
 
+    /// `(has_unpushed, has_unpulled)` via `git rev-list`, the fallback for when
+    /// libgit2's in-process graph walk cannot answer.
+    ///
+    /// libgit2 has real gaps the CLI does not: it ignores `refs/replace/*`
+    /// entirely, and its commit-graph reader bypasses the shallow/graft
+    /// boundary that git itself refuses to combine with a commit-graph. Those
+    /// surface as an error from `graph_ahead_behind`, and an error used to mean
+    /// the repo silently landed in Clean. One subprocess, only for the repos
+    /// that already failed, turns "wrong" back into "slower".
+    ///
     /// # Errors
-    /// Returns an error if the `git log` command cannot be executed or exits
-    /// with a failure status.
-    pub fn has_unpulled_commits(repo_path: &Path) -> Result<bool> {
+    /// Returns an error if `git rev-list` cannot be executed, exits with a
+    /// failure status, or prints something other than two counts.
+    pub fn ahead_behind_via_cli(repo_path: &Path) -> Result<(bool, bool)> {
         let output = git_command()
-            .arg("log")
-            .arg("HEAD..@{upstream}")
-            .arg("--oneline")
+            .args(["rev-list", "--left-right", "--count", "@{upstream}...HEAD"])
             .current_dir(repo_path)
             .output()?;
 
-        commits_in_range(&output, "HEAD..@{upstream}")
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("git rev-list failed: {}", stderr.trim());
+        }
+
+        // "<behind>\t<ahead>": commits reachable from the upstream but not
+        // HEAD, then the reverse.
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let mut counts = stdout.split_whitespace();
+        let behind: u32 = counts.next().context("no behind count")?.parse()?;
+        let ahead: u32 = counts.next().context("no ahead count")?.parse()?;
+        Ok((ahead > 0, behind > 0))
     }
 
     /// # Errors
@@ -317,21 +403,6 @@ impl GitOperations {
 
         Ok((files_removed, directories_removed))
     }
-}
-
-/// Interpret the output of a `git log <range> --oneline` used purely as an
-/// emptiness test.
-///
-/// A non-zero exit also produces empty stdout — the upstream ref was pruned by
-/// the fetch that just ran, the branch was renamed on the remote, HEAD is
-/// detached — so reading stdout alone reported "no commits in range" as fact
-/// and dropped the repo into the Clean bucket.
-fn commits_in_range(output: &std::process::Output, range: &str) -> Result<bool> {
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("git log {range} failed: {}", stderr.trim());
-    }
-    Ok(!output.stdout.is_empty())
 }
 
 /// Returns true if `path` matches any of the given glob patterns.

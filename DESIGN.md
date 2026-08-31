@@ -19,15 +19,21 @@ folders and surfaces repository status at a glance.
 
 - **Monitor folders**: user registers folders; every scan discovers all git
   repos beneath them (smart exclusions: node_modules, target, caches, hidden
-  dirs). Per-folder "only local checks" skips network round-trips.
+  dirs). Per-folder "only local checks" skips network round-trips, and the scan
+  toolbar says so, since skipped checks would otherwise read as clean results.
 - **Categorize repos**: Uncommitted Changes (yellow), Unpushed (orange),
   Unpulled (purple), Unpublished (blue — no remote, never pushed to a host),
   Remote Not Found (pink — a remote is configured but the host reports it is
-  gone), Clean (green), Uninitialized (gray — directories with files but no
-  git), Errors (red). Unpublished and Remote Not Found are overlays: the repo
+  gone), Unknown Remote State (gray — the remote comparison was attempted and
+  failed, so the repo is *not* silently reported as clean), Clean (green),
+  Uninitialized (gray — directories with files but no git), Errors (red).
+  Unpublished, Remote Not Found and Unknown Remote State are overlays: the repo
   also shows in its primary status section (e.g. Clean *and* Remote Not Found).
   Remote Not Found never fires on uncertainty (offline, auth, non-GitHub, no
-  `gh`) — it needs `git fetch` to say "not found" and `gh` to confirm.
+  `gh`) — it needs `git fetch` to say "not found", `gh` to be signed in, and
+  `gh` to confirm. The sign-in check matters because GitHub reports a private
+  repo you cannot see as missing rather than forbidden, so an expired login
+  would otherwise read as "every private repo was deleted".
 - **Act on repos**: open in default terminal/editor/`lms-github`, reveal in
   Finder, copy path, fetch & pull (single or all unpulled), clean git-ignored
   files with exclude patterns (single or all clean).

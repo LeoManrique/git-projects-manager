@@ -10,6 +10,12 @@ export interface RepoStatus {
   hasChanges?: boolean;
   hasUnpushed?: boolean;
   hasUnpulled?: boolean;
+  /**
+   * The remote comparison was attempted and failed, so `hasUnpushed` and
+   * `hasUnpulled` are unknown rather than false. Always false for folders with
+   * `onlyLocalChecks` — there the scan never asked, which is not a failure.
+   */
+  remoteStateUnknown: boolean;
   /** Publish state relative to the remote host. */
   publishState: PublishState;
   hasError: boolean;
@@ -26,6 +32,8 @@ export interface ScanResult {
   unpublished: RepoStatus[];
   /** Remote configured but gone on the host. Overlay: overlaps other buckets. */
   remoteNotFound: RepoStatus[];
+  /** Remote comparison attempted and failed. Overlay: overlaps other buckets. */
+  remoteStateUnknown: RepoStatus[];
   clean: RepoStatus[];
   errors: RepoStatus[];
   uninitialized: RepoStatus[];

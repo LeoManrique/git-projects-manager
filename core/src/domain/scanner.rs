@@ -133,6 +133,7 @@ impl Scanner {
             with_unpulled: vec![],
             unpublished: vec![],
             remote_not_found: vec![],
+            remote_state_unknown: vec![],
             clean: vec![],
             errors: vec![],
             uninitialized: uninitialized_folders,
@@ -150,6 +151,14 @@ impl Scanner {
                     PublishState::Unpublished => result.unpublished.push(status.clone()),
                     PublishState::RemoteNotFound => result.remote_not_found.push(status.clone()),
                     PublishState::Published => {}
+                }
+
+                // A third overlay, on the same terms: the repo still lands in an
+                // exclusive bucket below (almost always Clean, since an unknown
+                // count cannot place it anywhere else), and this says the bucket
+                // is not the whole story.
+                if status.remote_state_unknown {
+                    result.remote_state_unknown.push(status.clone());
                 }
             }
 

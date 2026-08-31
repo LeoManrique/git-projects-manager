@@ -1,9 +1,9 @@
-use crate::infrastructure::github_cli::{self, RepoExistence};
+use crate::infrastructure::github_cli::{self, GhAuthStatus, RepoExistence};
 use crate::infrastructure::remote_check_store::{RemoteCheckEntry, RemoteCheckStore};
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// How long a `gh` remote-existence verdict is trusted before we re-confirm.
@@ -20,19 +20,36 @@ pub(crate) struct RemoteCheckCtx {
     now: i64,
     ttl_secs: i64,
     dirty: AtomicBool,
+    /// Whether `gh` is authenticated, resolved at most once per scan and only
+    /// if some repo actually reaches the promotion path.
+    authenticated: OnceLock<bool>,
 }
 
 impl RemoteCheckCtx {
     pub(crate) fn load(ttl_secs: i64) -> Self {
         let store = RemoteCheckStore::new();
-        let cache = Mutex::new(store.load());
+        let (map, pruned) = store.load_pruned();
         Self {
-            cache,
+            cache: Mutex::new(map),
             store,
             now: now_epoch_secs(),
             ttl_secs,
-            dirty: AtomicBool::new(false),
+            // Dropping dead entries is itself a change worth writing back;
+            // otherwise a cache that never gains a verdict never gets cleaned.
+            dirty: AtomicBool::new(pruned),
+            authenticated: OnceLock::new(),
         }
+    }
+
+    /// Whether `gh` can actually distinguish "deleted" from "not visible to
+    /// you". GitHub answers **404, not 403**, for a private repository you are
+    /// not authenticated for — and `git fetch` says "not found" for the same
+    /// reason. So the two "independent" confirmations agree wrongly the moment
+    /// credentials expire, and every private repo is flagged deleted at once.
+    fn gh_authenticated(&self) -> bool {
+        *self
+            .authenticated
+            .get_or_init(|| matches!(github_cli::check_auth(), GhAuthStatus::Ok { .. }))
     }
 
     /// Whether the repo's remote is confirmed gone. Called only after `git
@@ -40,6 +57,12 @@ impl RemoteCheckCtx {
     /// confirmation, debounced by the persisted cache. Anything `gh` cannot
     /// judge (offline, non-GitHub, unauthenticated) is treated as *not* gone.
     pub(crate) fn is_remote_gone(&self, repo_path: &Path) -> bool {
+        // Checked before the cache, not after: a verdict recorded while
+        // unauthenticated is exactly the one we must not trust.
+        if !self.gh_authenticated() {
+            return false;
+        }
+
         let key = repo_path.display().to_string();
 
         // Fresh cached verdict — skip the `gh` round-trip. The guard is dropped

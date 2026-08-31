@@ -46,7 +46,7 @@ impl UninitializedDetector {
         for entry in entries.flatten() {
             let path = entry.path();
 
-            if !Self::should_check_directory(&path, git_repos, checked_dirs) {
+            if !Self::should_check_directory(&entry, &path, git_repos, checked_dirs) {
                 continue;
             }
 
@@ -57,12 +57,12 @@ impl UninitializedDetector {
 
     /// Determine if a directory should be checked for uninitialized projects
     fn should_check_directory(
+        entry: &std::fs::DirEntry,
         path: &Path,
         git_repos: &[PathBuf],
         checked_dirs: &HashSet<PathBuf>,
     ) -> bool {
-        // Only consider directories
-        if !path.is_dir() {
+        if !Self::is_real_dir(entry) {
             return false;
         }
 
@@ -107,6 +107,7 @@ impl UninitializedDetector {
                 has_changes: None,
                 has_unpushed: None,
                 has_unpulled: None,
+                remote_state_unknown: false,
                 // Not a git repo; value is unused (uninitialized entries never
                 // enter the publish-state overlays), but the field is required.
                 publish_state: PublishState::Unpublished,
@@ -132,7 +133,7 @@ impl UninitializedDetector {
         for entry in entries.flatten() {
             let path = entry.path();
 
-            if !path.is_dir() {
+            if !Self::is_real_dir(&entry) {
                 continue;
             }
 
@@ -152,13 +153,30 @@ impl UninitializedDetector {
         }
     }
 
+    /// A directory that is not a symlink to one.
+    ///
+    /// `DirEntry::file_type` reads the type the directory listing already
+    /// carries, so this costs no syscall, and — unlike `Path::is_dir` — it does
+    /// not follow symlinks. That matters twice over:
+    ///
+    /// * The recursion below has no depth limit and `checked_dirs` keys on the
+    ///   literal path, so a symlink back to an ancestor produced a fresh key at
+    ///   every level. Not a hang — the OS stops resolving the chain at its own
+    ///   limit — but the same project folder was reported once per level (16
+    ///   times, measured).
+    /// * It matches `RepositoryFinder`, which walks with `follow_links(false)`.
+    ///   Before this, a symlinked tree's folders were reported as uninitialized
+    ///   projects while the repos inside it stayed invisible.
+    fn is_real_dir(entry: &std::fs::DirEntry) -> bool {
+        entry.file_type().is_ok_and(|t| t.is_dir())
+    }
+
     /// Check if a directory contains any files (not just subdirectories)
     fn directory_has_files(dir: &Path) -> bool {
-        std::fs::read_dir(dir)
-            .is_ok_and(|entries| {
-                entries
-                    .flatten()
-                    .any(|entry| entry.path().is_file())
-            })
+        std::fs::read_dir(dir).is_ok_and(|entries| {
+            entries
+                .flatten()
+                .any(|entry| entry.file_type().is_ok_and(|t| t.is_file()))
+        })
     }
 }

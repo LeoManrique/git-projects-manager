@@ -78,17 +78,32 @@
       apps report the first failure reason, `spawn_blocking` for the Tauri
       commands. New `just bench-scan` + `core/tests/clean_paths.rs`
 
-## Pending
+- [x] Scanner Tier 2 (`docs/SCANNER_PERFORMANCE.md`): one libgit2 handle per repo
+      replaces the four local `git` subprocesses (2.86s of CPU → 19ms over 70
+      repos; local-only scan **0.66s → 0.46s**, online unchanged because it is
+      fetch-bound); wall-clock timeout + kill on `fetch`/`gh`; `RemoteNotFound`
+      gated on one lazy `check_auth()` per scan (GitHub 404s private repos you
+      cannot see, so both "independent" confirmations agreed wrongly once
+      credentials expired); remote-check cache persists by locked
+      read-merge-write and prunes dead paths; `gh` resolved once and exec'd with
+      argv instead of a login shell per call; the uninitialized walk no longer
+      follows symlinks (the same folder was reported 16 times through a cycle).
+      An adversarial review of the libgit2 swap added a post-fetch re-open and a
+      `git rev-list` fallback so a libgit2 gap costs a subprocess instead of
+      silently reading as Clean. 14 new tests, all offline
 
-- [ ] Scanner Tier 2 (`docs/SCANNER_PERFORMANCE.md` §4): replace the four local
-      `git` subprocesses with one libgit2 handle per repo; wall-clock timeout +
-      kill on `fetch`/`gh`; gate `RemoteNotFound` on one `check_auth()` per scan;
-      share one `RemoteCheckCtx` across concurrent folder scans; fold the
-      uninitialized walk into the main one; prune the remote-check cache
-- [ ] Scanner decisions needed (`docs/SCANNER_PERFORMANCE.md` §6): whether nested
-      repos are supported (unblocks a 1.01s → 0.05s walk), whether ahead/behind
-      may be "as of last fetch" (unblocks taking `fetch` off the scan path), and
-      how an unverifiable repo should render
+- [x] Scanner Tier 3, from the three product decisions:
+      **nested repos stay supported** (no walk pruning); **fetch stays on every
+      scan** but a successful one is debounced per repo for 30s, so the bursts
+      (post-action rescan, focus rescan after startup) reuse it — a repeat scan
+      of 76 repos goes **3.4s → 1.0s**; and a repo whose remote comparison was
+      *attempted and failed* now lands in a new **Unknown Remote State** overlay
+      instead of falling through to Clean. Paired with it, a **"Local checks
+      only" chip** beside Scan All in both apps, since `onlyLocalChecks` folders
+      report no unpushed/unpulled work only because they never asked — that is
+      "did not check", which the Unknown section deliberately does not claim
+
+## Pending
 - [ ] Re-run the multi-agent adversarial code review of the migration (first
       attempt aborted on session usage limits; a manual review pass was done instead)
 - [ ] macOS app releases: signing identity + notarization (currently ad-hoc

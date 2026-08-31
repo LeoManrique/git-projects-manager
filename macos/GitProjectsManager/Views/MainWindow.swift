@@ -49,11 +49,31 @@ struct DetailView: View {
                     refreshBoardButton
                 }
             } else {
+                if let notice = localChecksNotice {
+                    ToolbarItem(placement: .secondaryAction) {
+                        LocalChecksChip(notice: notice)
+                    }
+                }
                 ToolbarItem(placement: .primaryAction) {
                     scanAllButton
                 }
             }
         }
+    }
+
+    /// Which of the folders in view skip the network, so "no unpushed commits"
+    /// is never read as a finding when it was never checked (FRONTEND.md §5.4).
+    private var localChecksNotice: String? {
+        let inView: [MonitoredFolder]
+        if case .folder(let id) = model.selection, let folder = model.folder(withId: id) {
+            inView = [folder]
+        } else {
+            inView = model.folders
+        }
+        let localOnly = inView.filter(\.onlyLocalChecks).count
+        guard localOnly > 0 else { return nil }
+        guard localOnly < inView.count else { return "Local checks only" }
+        return "\(localOnly) of \(inView.count) folders: local checks only"
     }
 
     private var scanAllButton: some View {
@@ -97,6 +117,19 @@ struct DetailView: View {
 
 /// Toolbar chip showing the kanban sync status; its menu hosts the
 /// sign-in/out shortcuts (full account management lives in Settings).
+/// Toolbar indicator for folders configured with "Only local checks", so that
+/// "no unpushed commits" is never read as a finding when the scan never asked
+/// (FRONTEND.md §5.4).
+struct LocalChecksChip: View {
+    let notice: String
+
+    var body: some View {
+        Label(notice, systemImage: "wifi.slash")
+            .foregroundStyle(.secondary)
+            .help("Fetch, unpushed and unpulled checks are skipped for these folders. Turn off \"Only local checks\" in the folder's settings to include them.")
+    }
+}
+
 struct SyncStatusChip: View {
     @Environment(AppModel.self) private var model
 

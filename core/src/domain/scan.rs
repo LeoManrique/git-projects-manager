@@ -26,6 +26,15 @@ pub struct RepoStatus {
     pub has_changes: Option<bool>,
     pub has_unpushed: Option<bool>,
     pub has_unpulled: Option<bool>,
+    /// The remote comparison was attempted and failed, so `has_unpushed` and
+    /// `has_unpulled` are unknown rather than false.
+    ///
+    /// Distinct from "not attempted": under `only_local_checks` the scan never
+    /// asks about the remote, and that is a setting working as intended, not a
+    /// failure — this stays `false` there. Without the distinction both cases
+    /// are `None`, and `None` falls through to the Clean bucket, so a repo with
+    /// unpushed work reported as clean was indistinguishable from a real one.
+    pub remote_state_unknown: bool,
     /// Publish state relative to the remote host (see [`PublishState`]).
     pub publish_state: PublishState,
     pub has_error: bool,
@@ -47,6 +56,12 @@ pub struct ScanResult {
     /// Repos whose configured remote no longer exists on the host. *Overlay*
     /// category, like `unpublished` — the repo also appears in its primary bucket.
     pub remote_not_found: Vec<RepoStatus>,
+    /// Repos whose remote comparison was attempted and failed. *Overlay*
+    /// category: the repo keeps its primary bucket (usually Clean, since an
+    /// unknown count cannot put it anywhere else) and carries this on top,
+    /// which is the whole point — the bucket alone was asserting something the
+    /// scan never established. Empty for `only_local_checks` folders.
+    pub remote_state_unknown: Vec<RepoStatus>,
     pub clean: Vec<RepoStatus>,
     pub errors: Vec<RepoStatus>,
     pub uninitialized: Vec<RepoStatus>,

@@ -33,6 +33,7 @@ RepoStatus {
   hasChanges: bool?      // uncommitted changes (untracked included); nil = unknown
   hasUnpushed: bool?     // local commits ahead of upstream; nil = unknown/skipped
   hasUnpulled: bool?     // upstream commits not local; nil = unknown/skipped
+  remoteStateUnknown: bool  // the comparison was attempted and failed
   publishState: enum     // "published" | "unpublished" | "remoteNotFound"
   hasError: bool
   errorMessage: string?
@@ -40,26 +41,36 @@ RepoStatus {
 
 ScanResult {
   scannedPath, totalRepositories, executionTime (seconds, float),
-  withChanges[], withUnpushed[], withUnpulled[], unpublished[], remoteNotFound[], clean[], errors[], uninitialized[]
+  withChanges[], withUnpushed[], withUnpulled[], unpublished[], remoteNotFound[],
+  remoteStateUnknown[], clean[], errors[], uninitialized[]
 }
 ```
 
 - The backend categorizes; frontends never re-derive categories from the flags.
   A repo may appear in several category arrays (e.g. changed *and* unpushed).
-- `publishState` drives two mutually-exclusive **overlays** — a repo in either
-  *also* appears in its primary status bucket (e.g. a no-remote repo with edits
-  is in both `withChanges` and `unpublished`). Errored and uninitialized entries
-  are never included in an overlay.
+- There are three **overlay** categories — a repo in one *also* appears in its
+  primary status bucket (e.g. a no-remote repo with edits is in both
+  `withChanges` and `unpublished`). Errored and uninitialized entries are never
+  included in an overlay. `publishState` drives the first two, which are
+  mutually exclusive; `remoteStateUnknown` is independent of both.
   - `unpublished` = **no remote configured** (never pushed to a host).
   - `remoteNotFound` = a remote **is** configured but the host reports it is gone.
-    Requires an online scan: `git fetch` must return "not found" **and** `gh`
-    must confirm it. Anything uncertain (offline, auth failure, non-GitHub
-    remote, no `gh`, or `onlyLocalChecks`) stays `published` — never a false
-    positive. Confirmations are debounced (once per 24h per repo).
+    Requires an online scan: `git fetch` must return "not found", `gh` must be
+    signed in, **and** `gh` must confirm it. Anything uncertain (offline, auth
+    failure, non-GitHub remote, no `gh`, or `onlyLocalChecks`) stays `published`
+    — never a false positive. Confirmations are debounced (once per 24h per repo).
 - `uninitialized` = directories that contain files but are not git repositories,
-  found as siblings of discovered repos.
+  found as siblings of discovered repos. Symlinked directories are skipped, the
+  same way the repo walk skips them, so a link never produces a duplicate entry.
+  - `remoteStateUnknown` = the unpushed/unpulled comparison **was attempted and
+    failed**, so those counts are unknown rather than false. Without it such a
+    repo fell through to `clean`, which asserted "nothing to push" about a check
+    that never succeeded. Always empty for `onlyLocalChecks` folders — there the
+    scan deliberately never asks, which is not a failure.
 - `onlyLocalChecks = true` ⇒ scanner skips `git fetch` and unpushed/unpulled checks
   for every repo in that folder (fast, offline-safe); those fields come back nil.
+  Because "no unpushed commits" then means "never asked", the UI must say so —
+  see the indicator in §5.4.
 
 ## 2. Persistence contract (shared between apps)
 
@@ -126,6 +137,16 @@ previous result silently.
    **20 seconds** since the last scan of any kind, and skipped while a scan is
    already in flight (so it never supersedes one the user is watching).
 
+Every scan still fetches — ahead/behind counts are meant to be current — but the
+core skips the round-trip for any repo it fetched successfully in the last
+**30 seconds**, reusing the tracking refs from that fetch. Scans arrive in
+bursts (the rescan after a pull or clean, a focus rescan landing on the heels of
+the startup scan) that repeat the same network work for a state that cannot have
+changed; a repeat scan inside the window measures **3.4 s → 1.0 s** over 76
+repos. The window is short enough that any scan following real work is a fresh
+one. A *failed* fetch is never debounced, so an unreachable remote is retried on
+the next scan.
+
 ### 5.2 Supersession (concurrency rule)
 
 Full scans carry a version. When a scan completes but a newer full scan started
@@ -152,7 +173,7 @@ Navigation is a sidebar + detail split, the same in both apps:
   visible without opening a folder. A folder with no visible sections shows
   "No repositories found" ("No matching repositories" while a search filters
   everything out).
-- **Per-folder detail** — all eight sections, fixed order, empty sections
+- **Per-folder detail** — all nine sections, fixed order, empty sections
   hidden, plus a footer `"Completed in {executionTime, 2 decimals}s"`:
 
   | Section | Color | Row actions |
@@ -162,6 +183,7 @@ Navigation is a sidebar + detail split, the same in both apps:
   | Unpulled Commits | purple | open actions; Fetch & Pull; section bulk "Fetch & Pull All (n)" |
   | Unpublished | blue | open actions only (no remote, so no Fetch & Pull); overlay — same repos also appear above |
   | Remote Not Found | pink | open actions only (remote is gone, so no Fetch & Pull); overlay — same repos also appear above |
+  | Unknown Remote State | gray | open actions; Fetch & Pull; overlay — same repos also appear above |
   | Uninitialized | gray (muted rows) | open actions only |
   | Errors | red | open actions; Fetch & Pull visible but disabled; row shows errorMessage |
   | Clean | green (muted rows) | open actions; Fetch & Pull; Clean Ignored Files; section bulk "Clean All (n)" |
@@ -183,12 +205,25 @@ Error rows add the errorMessage on a second line. Section headers show
 `TITLE (filtered count)` in the category color, with a leading category dot
 in the same column as the row dots.
 
-### 5.4 Search semantics
+### 5.4 Search semantics and the local-checks indicator
 
 Case-insensitive substring match of the trimmed query against the repo **name**
 (last path segment) **or full path**. Filters section contents and section counts;
 sections filtered to zero disappear. Header badges and totals stay unfiltered.
 **Bulk actions operate on the filtered list.** Folders themselves are never hidden.
+
+A chip sits beside the Scan All control whenever the folders in view include any
+with `onlyLocalChecks`. It reads **"Local checks only"** when every folder in
+view is local-only, or **"{n} of {m} folders: local checks only"** when only some
+are; it is absent otherwise. Scope follows the selection — the selected folder in
+the detail view, all folders in the overview. Its tooltip names what is skipped
+(fetch, unpushed and unpulled) and where to change it.
+
+Without it, a local-only folder reports no unpushed and no unpulled commits for
+every repo simply because it never asked, which on screen is indistinguishable
+from genuinely being up to date. This is also what keeps the Unknown Remote
+State section honest: that section means "we asked and failed", and the chip
+covers the separate case of "we never asked".
 
 ### 5.5 Repo actions
 

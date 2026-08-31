@@ -1,7 +1,20 @@
 use super::remote_check::RemoteCheckCtx;
 use crate::domain::{PublishState, RepoStatus};
-use crate::infrastructure::git::{GitOperations, RemoteReachability};
+use crate::infrastructure::git::{GitOperations, RemoteReachability, RepoInspector};
 use std::path::Path;
+
+/// Outcome of the remote half of a status check.
+///
+/// The default is "we did not ask" — no upstream, or `only_local_checks` — which
+/// is deliberately *not* the same as `unknown`.
+#[derive(Default)]
+struct RemoteStatus {
+    has_unpushed: Option<bool>,
+    has_unpulled: Option<bool>,
+    reachability: Option<RemoteReachability>,
+    /// We asked and could not get an answer.
+    unknown: bool,
+}
 
 /// Responsible for checking the status of a single git repository
 pub struct StatusChecker;
@@ -18,12 +31,31 @@ impl StatusChecker {
     ) -> RepoStatus {
         let path_str = path.display().to_string();
 
+        // One handle for every local check on this repo. If it cannot even be
+        // opened there is nothing to report but the failure.
+        let repo = match RepoInspector::open(path) {
+            Ok(r) => r,
+            Err(e) => {
+                return RepoStatus {
+                    path: path_str,
+                    branch: None,
+                    has_changes: None,
+                    has_unpushed: None,
+                    has_unpulled: None,
+                    remote_state_unknown: false,
+                    publish_state: PublishState::Published,
+                    has_error: true,
+                    error_message: Some(format!("Failed to open repository: {e}")),
+                };
+            }
+        };
+
         // Whether the repo was ever published (has a remote). Purely local, so
         // it runs even when only_local_checks skips network round-trips.
-        let has_remote = GitOperations::has_remote(path).ok();
+        let has_remote = repo.has_remote().ok();
 
         // Get branch - handle UnbornBranch (no commits yet) specially
-        let (branch, is_unborn) = match GitOperations::get_current_branch(path) {
+        let (branch, is_unborn) = match repo.current_branch() {
             Ok(b) => (Some(b), false),
             Err(e) => {
                 // UnbornBranch means repo is initialized but has no commits yet
@@ -36,6 +68,7 @@ impl StatusChecker {
                         has_changes: None,
                         has_unpushed: None,
                         has_unpulled: None,
+                        remote_state_unknown: false,
                         publish_state: Self::base_publish_state(has_remote),
                         has_error: true,
                         error_message: Some(format!("Failed to get branch: {e}")),
@@ -45,7 +78,7 @@ impl StatusChecker {
         };
 
         // Check for pending changes (works for both normal and unborn repos)
-        let has_changes = match GitOperations::has_pending_changes(path) {
+        let has_changes = match repo.has_pending_changes() {
             Ok(c) => Some(c),
             Err(e) => {
                 return RepoStatus {
@@ -54,6 +87,7 @@ impl StatusChecker {
                     has_changes: None,
                     has_unpushed: None,
                     has_unpulled: None,
+                    remote_state_unknown: false,
                     publish_state: Self::base_publish_state(has_remote),
                     has_error: true,
                     error_message: Some(format!("Failed to check changes: {e}")),
@@ -69,11 +103,13 @@ impl StatusChecker {
         };
 
         // Check for unpushed/unpulled commits (skip if only_local_checks is enabled)
-        let (has_unpushed, has_unpulled, reachability) = if only_local_checks {
-            (None, None, None)
+        let remote = if only_local_checks {
+            // Not attempted, so not unknown — the folder is configured this way.
+            RemoteStatus::default()
         } else {
-            Self::check_remote_status(path)
+            Self::check_remote_status(path, &repo)
         };
+        let RemoteStatus { has_unpushed, has_unpulled, reachability, unknown } = remote;
 
         let publish_state =
             Self::determine_publish_state(path, has_remote, reachability, remote_ctx);
@@ -84,6 +120,7 @@ impl StatusChecker {
             has_changes,
             has_unpushed: has_unpushed_for_unborn.or(has_unpushed),
             has_unpulled,
+            remote_state_unknown: unknown,
             publish_state,
             has_error: false,
             error_message: None,
@@ -124,19 +161,51 @@ impl StatusChecker {
     /// Check unpushed/unpulled status against remote, returning the fetch's
     /// reachability so the caller can detect a deleted remote. Only repos with
     /// an upstream branch are probed (others yield `None` on every field).
-    fn check_remote_status(
-        path: &Path,
-    ) -> (Option<bool>, Option<bool>, Option<RemoteReachability>) {
-        if !GitOperations::has_upstream_branch(path).unwrap_or(false) {
-            return (None, None, None);
-        }
+    fn check_remote_status(path: &Path, repo: &RepoInspector) -> RemoteStatus {
+        let Some(upstream) = repo.upstream_ref() else {
+            // No upstream to compare against. Nothing failed — there is simply
+            // no question to answer — so this is not "unknown".
+            return RemoteStatus::default();
+        };
 
         // Fetch from remote to get latest state (and classify reachability).
         let reachability = GitOperations::fetch(path).ok();
 
-        let unpushed = GitOperations::has_unpushed_commits(path).ok();
-        let unpulled = GitOperations::has_unpulled_commits(path).ok();
+        // Re-opened rather than reused. Refs and objects *are* re-read per
+        // lookup (verified), but a few things load once when the repository is
+        // opened — notably the shallow-clone boundary in `.git/shallow`, which
+        // the fetch above can rewrite. Defensive rather than a fixed bug: no
+        // failing case could be constructed, because the merge base between a
+        // branch and its own upstream is recent and a shallow clone has no deep
+        // local history to walk past. Kept because an open costs ~60 µs against
+        // a failure mode that is a silent miscategorization.
+        let reopened = RepoInspector::open(path);
+        let repo = reopened.as_ref().unwrap_or(repo);
 
-        (unpushed, unpulled, reachability)
+        // Deliberately after the fetch: the tracking ref it just advanced is
+        // exactly what `ahead_behind` reads.
+        let counts = repo
+            .ahead_behind(&upstream)
+            // libgit2 cannot answer for every repo (replace refs, a
+            // commit-graph over a shallow boundary, a non-UTF-8 refname). Ask
+            // git itself rather than reporting "no commits either way", which
+            // reads as Clean.
+            .or_else(|_| GitOperations::ahead_behind_via_cli(path));
+
+        match counts {
+            Ok((unpushed, unpulled)) => RemoteStatus {
+                has_unpushed: Some(unpushed),
+                has_unpulled: Some(unpulled),
+                reachability,
+                unknown: false,
+            },
+            // Both git and libgit2 declined to answer. Say so instead of
+            // letting two `None`s read as "nothing to push or pull".
+            Err(_) => RemoteStatus {
+                reachability,
+                unknown: true,
+                ..RemoteStatus::default()
+            },
+        }
     }
 }

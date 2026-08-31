@@ -7,6 +7,7 @@ import AccountSettings from './components/settings/AccountSettings';
 import { KanbanBoard } from './components/kanban';
 import { Sidebar, Selection } from './components/navigation';
 import { api } from './lib/api';
+import { localOnlyNotice } from './lib/repoUtils';
 import { MonitoredFolder, TerminalApp, EditorApp } from './types';
 import { useScanner } from './hooks/useScanner';
 import { FolderIcon, AppsIcon, CloseIcon, CleanIcon, UserIcon, RefreshIcon, SearchIcon } from './components/icons';
@@ -217,6 +218,9 @@ function App() {
     selection.view === 'folder' ? folders.find(f => f.id === selection.folderId) : undefined;
   const title =
     selection.view === 'kanban' ? 'Kanban' : selectedFolder ? selectedFolder.name : 'All Folders';
+  // Which of the folders in view skip the network, so "no unpushed commits"
+  // is never read as a finding when it was never checked (FRONTEND.md §5.4).
+  const localChecksNotice = localOnlyNotice(selectedFolder ? [selectedFolder] : folders);
 
   return (
     <div className="h-screen flex bg-dark-bg text-text-primary overflow-hidden">
@@ -253,6 +257,14 @@ function App() {
                   className="w-full pl-7 pr-2 py-1 bg-dark-bg border border-dark-border rounded-md text-text-primary text-xs placeholder-text-muted focus:outline-none focus:border-accent-blue/50"
                 />
               </div>
+              {localChecksNotice && (
+                <span
+                  title="Fetch, unpushed and unpulled checks are skipped for these folders. Turn off “Only local checks” in the folder’s settings to include them."
+                  className="flex-shrink-0 px-2 py-1 rounded-md bg-dark-bg border border-dark-border text-text-muted text-[11px] whitespace-nowrap cursor-default"
+                >
+                  {localChecksNotice}
+                </span>
+              )}
               <button
                 onClick={scanner.scanAll}
                 disabled={folders.length === 0}

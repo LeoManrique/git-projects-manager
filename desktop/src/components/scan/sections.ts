@@ -3,10 +3,11 @@ import { filterRepos } from '../../lib/repoUtils';
 import { ColorVariant } from './colorStyles';
 
 /**
- * The eight fixed repo categories (FRONTEND.md §5.3), mirroring the macOS
+ * The nine fixed repo categories (FRONTEND.md §5.3), mirroring the macOS
  * app's RepoCategory: display order (Clean last), colors, badge labels, and
- * which row / bulk actions each section offers. Unpublished and Remote Not
- * Found are overlays — a repo in either also appears in its primary section.
+ * which row / bulk actions each section offers. Unpublished, Remote Not Found
+ * and Unknown Remote State are overlays — a repo in any of them also appears in
+ * its primary section.
  */
 export interface SectionSpec {
   key: string;
@@ -77,6 +78,16 @@ export const SECTIONS: SectionSpec[] = [
     color: 'pink',
     showPull: false,
     repos: (r) => r.remoteNotFound,
+  },
+  {
+    ...defaults,
+    key: 'remoteStateUnknown',
+    title: 'Unknown Remote State',
+    badgeLabel: 'unknown',
+    color: 'gray',
+    // Pull is still offered: the comparison failed, but pulling is exactly how
+    // a user would resolve it, and `git pull` reports its own errors.
+    repos: (r) => r.remoteStateUnknown,
   },
   {
     ...defaults,

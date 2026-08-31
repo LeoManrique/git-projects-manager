@@ -13,13 +13,13 @@ Monorepo layout:
 - [`desktop/`](./desktop) — the Tauri app (React + Rust) for **Windows and Linux**.
 - [`macos/`](./macos) — the **native SwiftUI app for macOS 26+**, bridged to
   `gpm-core` via UniFFI. Full feature parity with the Tauri app.
-
-Both apps include the GitHub-backed kanban board with optional cloud sync.
 - [`server/`](./server) — the optional sync server (axum + SQLite). Stores per-user
   kanban state, authenticated via Google OAuth.
 - [`scripts/`](./scripts) — release/install scripts for the apps (macOS releases ship
   the native SwiftUI app; Linux/Windows the Tauri app) and the deploy script for the
   sync server.
+
+Both apps include the GitHub-backed kanban board with optional cloud sync.
 
 Frontend behavior for both apps is specified in [FRONTEND.md](./FRONTEND.md) — the
 single source of truth. Architecture details live in [TECHNICAL.md](./TECHNICAL.md).
@@ -41,4 +41,5 @@ just dev           # Tauri app (dev)
 just dev-macos     # native macOS app (Debug build + launch)
 just clippy        # pedantic lint across all Rust crates
 just test          # Rust tests
+just bench-scan ~/Dev   # time three scans of a folder, with bucket counts
 ```

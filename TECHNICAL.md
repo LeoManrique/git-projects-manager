@@ -95,9 +95,22 @@ width, matching Apple's 824/1024 icon grid).
 
 - `Scanner` (core) walks each monitored folder (walkdir, ~60 excluded dir
   names, hidden dirs skipped), detects repos by `.git/`, checks status in
-  parallel with rayon (git2 for branch/dirty; `git` CLI for
-  upstream/fetch/ahead/behind/remote-presence), and detects uninitialized
-  sibling directories.
+  parallel with rayon, and detects uninitialized sibling directories.
+- **One libgit2 handle per repo** (`RepoInspector`): branch, dirty state,
+  remote presence and ahead/behind all come from a single `Repository::open`.
+  Only `fetch`, `pull` and `clean` still spawn `git`. The four local
+  subprocesses this replaced cost 2.86 s of CPU across 70 repos against 19 ms
+  for the libgit2 equivalents — both `git log <range> --oneline` calls ran a
+  full revwalk and formatted output that was discarded, since only its
+  emptiness was read.
+- **Fetch/ahead-behind ordering**: `upstream_ref()` (which requires the tracking
+  ref to *resolve*, as `git rev-parse @{upstream}` did) decides whether to
+  fetch; `ahead_behind()` runs after it. The handle is re-opened in between —
+  libgit2 re-reads refs and objects per lookup, but loads the shallow-clone
+  boundary once at open time. If `graph_ahead_behind` errors (replace refs, a
+  commit-graph over a shallow boundary, a non-UTF-8 refname), one
+  `git rev-list --left-right --count` answers instead, so a libgit2 gap costs a
+  subprocess rather than silently reporting the repo as Clean.
 - **Scan thread pool**: status checks run on a dedicated rayon pool
   (`4 × CPUs`, clamped to 8–32) rather than the global one. Almost all of a
   check's wall time is a `git fetch` blocked on DNS/TLS, so a CPU-sized pool
@@ -113,30 +126,59 @@ width, matching Apple's 824/1024 icon grid).
   `ConnectTimeout`/`BatchMode` (bounds a stalled transfer; libcurl's default
   connect timeout is 300 s). `pull` no longer pre-fetches — `git pull` is
   fetch + merge, so the extra call was a discarded network round-trip.
-- Commands whose result is a boolean (`git remote`, the two `git log` range
-  checks) fail loudly on a non-zero exit instead of reading empty stdout as
-  "no remotes" / "no commits" — that turned a transient failure into a wrong
-  answer presented as fact.
+- **Fetch debounce**: a successful fetch is recorded per repo in a process-wide
+  map, and a fetch within 30 s of it is skipped (reported `Reachable`, since that
+  is what the skipped fetch established). Ahead/behind is still computed from the
+  tracking refs, so counts stay current to within the window — only the round
+  trip goes. Scans arrive in bursts (post-action rescan, focus rescan after
+  startup) that repeat identical network work; a repeat scan measures
+  **3.4 s → 1.0 s** over 76 repos. Failures are never recorded, so an unreachable
+  remote is retried immediately.
+- **Wall-clock timeouts** (`infrastructure::process`): `git fetch` is killed
+  after 20 s and `gh` after 15 s (60 s for `repo list`). git's own knobs bound a
+  *stalled transfer* but not a TCP connect to a black-holed route, and `gh` has
+  no equivalent knob. The helper drains stdout and stderr on their own threads —
+  `try_wait` never reads the pipes, so a child filling the 64 KiB pipe buffer
+  would deadlock against the loop timing it out. A killed fetch classifies as
+  `Unreachable`, never `NotFound`.
 - `onlyLocalChecks` per folder skips fetch + ahead/behind; the `git remote`
   presence check is local, so publish state is still resolved (but never
   `RemoteNotFound`, which needs a fetch).
-- **Publish-state overlays**: a `PublishState` enum (`Published` / `Unpublished`
-  / `RemoteNotFound`) on each `RepoStatus` is the single source of truth;
-  `categorize_results` derives two overlay vecs from it — `unpublished`
-  (no remote) and `remote_not_found` (remote gone) — *in addition to* the repo's
-  exclusive bucket (changes/unpushed/unpulled/clean). Errored/uninitialized
-  entries are excluded; the exclusive buckets stay mutually exclusive.
+- **Overlay categories**: three vecs sit *in addition to* the repo's exclusive
+  bucket (changes/unpushed/unpulled/clean). A `PublishState` enum (`Published` /
+  `Unpublished` / `RemoteNotFound`) drives the first two — `unpublished` (no
+  remote) and `remote_not_found` (remote gone). The third, `remote_state_unknown`,
+  comes from a `bool` on `RepoStatus` and is independent of publish state.
+  Errored/uninitialized entries are excluded from all three; the exclusive
+  buckets stay mutually exclusive.
+- **`remote_state_unknown`** separates "asked and failed" from "did not ask".
+  Both were previously `None`, and `None` falls through to Clean — so a repo
+  whose comparison failed was asserted to have nothing to push. It is set only
+  when both the libgit2 walk *and* the `git rev-list` fallback fail, and is
+  always `false` under `only_local_checks`, where not asking is the configured
+  behavior rather than a failure.
 - **Remote-gone detection** (online scans only): the fetch already run for
   upstream repos is classified `Reachable`/`NotFound`/`Unreachable`. A definitive
   `NotFound` is confirmed with `gh repo view` (run in the repo dir) before a repo
   is promoted to `RemoteNotFound`; any uncertainty (offline, auth, non-GitHub,
-  no `gh`) stays `Published` — no false positives. `gh` runs through `$SHELL -lc`,
-  so a `gh` missing from the login `PATH` makes the *shell* print "command not
-  found"; `classify_repo_view` matches that explicitly and returns `Unknown`,
-  and only GitHub's own wording ("could not resolve to a repository",
-  "repository not found") counts as `NotFound`. The `gh` confirmation is
-  debounced by `remote_checks_v1.json` (per-repo `{checked_at, exists}`,
-  re-checked at most once per 24h).
+  no `gh`) stays `Published` — no false positives. Only GitHub's own wording
+  ("could not resolve to a repository", "repository not found") counts as
+  `NotFound`; a shell's "command not found" explicitly does not.
+  - **Gated on `gh` being authenticated**, resolved once per scan and lazily.
+    GitHub answers 404, not 403, for a private repo you cannot see, and `git
+    fetch` says "not found" for the same reason — so both confirmations agree
+    wrongly the moment credentials expire. Checked *before* the cache, since a
+    verdict recorded while unauthenticated is the one not to trust.
+  - Debounced by `remote_checks_v1.json` (per-repo `{checked_at, exists}`,
+    re-checked at most once per 24 h). Persisted by a locked read-merge-write
+    (newest `checked_at` wins) because both apps and every folder scan write the
+    same file — `write_atomic` prevents corruption, not lost updates. Entries
+    whose path no longer exists are pruned on load and on save.
+- **`gh` invocation**: the binary is located once per process through a login
+  shell (a GUI app inherits no PATH), which also captures `GH_TOKEN`,
+  `GITHUB_TOKEN`, `GH_HOST` and `GH_CONFIG_DIR`; every later call execs it
+  directly with argv. Re-sourcing the login profile per call cost ~52 ms and
+  made behavior depend on how the app was launched.
 - **Ordering**: statuses are sorted case-insensitively by absolute path before
   categorizing, with a case-sensitive tie-break so the comparator is a total
   order (without it, paths differing only in case fall back to readdir order,
@@ -146,6 +188,11 @@ width, matching Apple's 824/1024 icon grid).
   path that fails to delete no longer aborts the repo. An already-gone path is
   treated as success (a build or watcher can remove it between the dry run and
   the delete); real failures are collected and the error names every one.
+- **Uninitialized detection** walks siblings of discovered repos with
+  `DirEntry::file_type` (no syscall, does not follow symlinks), matching
+  `RepositoryFinder`'s `follow_links(false)`. Following symlinks let a link back
+  to an ancestor report the same folder once per level until the OS refused the
+  chain.
 - Cancellation: `Arc<AtomicBool>` polled during directory walk only; a
   cancelled `Scanner` is replaced with a fresh instance. No UI currently
   exposes cancel.
@@ -155,8 +202,11 @@ width, matching Apple's 824/1024 icon grid).
 
 - `just clippy` — clippy pedantic, zero warnings across `core`,
   `desktop/src-tauri`, `macos/ffi` (CLAUDE.md requirement).
-- `just test` — core tests (glob matcher, fetch/`gh` reachability classifiers,
-  unpublished-overlay + repo-ordering + clean-path integration tests, …).
+- `just test` — core tests: glob matcher, fetch/`gh` reachability classifiers,
+  subprocess-timeout unit tests, and integration tests for the unpublished
+  overlay, repo ordering, clean paths, symlinked uninitialized folders, and
+  ahead/behind (a local bare repo stands in for the remote, so the whole suite
+  is offline).
 - Frontend: `pnpm build` (tsc strict + vite), eslint.
 - `just bench-scan <path> [local]` — times three `scan_folder` runs and prints
   every bucket count, so a scanner change can be shown to be faster *and* to

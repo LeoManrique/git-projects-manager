@@ -1,4 +1,4 @@
-import { RepoStatus, ScanResult } from '../types';
+import { MonitoredFolder, RepoStatus, ScanResult } from '../types';
 
 /** Last path segment of a repo path, used as its display name. */
 export function repoName(path: string): string {
@@ -28,4 +28,19 @@ export function attentionCount(result: ScanResult | undefined): number {
     result.withUnpulled.length +
     result.errors.length
   );
+}
+
+/**
+ * Label for the "only local checks" indicator, or `null` when every folder in
+ * view is scanned online (FRONTEND.md §5.4).
+ *
+ * Without it, a local-only folder reports no unpushed or unpulled commits for
+ * every repo simply because it never asked — indistinguishable, on screen, from
+ * genuinely being up to date.
+ */
+export function localOnlyNotice(folders: MonitoredFolder[]): string | null {
+  const localOnly = folders.filter((f) => f.onlyLocalChecks).length;
+  if (localOnly === 0) return null;
+  if (localOnly === folders.length) return 'Local checks only';
+  return `${localOnly} of ${folders.length} folders: local checks only`;
 }
