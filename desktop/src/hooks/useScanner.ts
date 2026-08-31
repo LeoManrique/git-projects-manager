@@ -6,6 +6,15 @@ import { repoName } from '../lib/repoUtils';
 // Minimum interval between focus-triggered rescans (FRONTEND.md §5.1)
 const FOCUS_SCAN_MIN_INTERVAL_MS = 20_000;
 
+/** True when `repoPath` is `folderPath` or sits underneath it. */
+function isInside(repoPath: string, folderPath: string): boolean {
+  const base = folderPath.replace(/[/\\]+$/, '');
+  if (repoPath === base) return true;
+  if (!repoPath.startsWith(base)) return false;
+  const separator = repoPath[base.length];
+  return separator === '/' || separator === '\\';
+}
+
 export interface UseScannerReturn {
   results: Record<string, ScanResult>;
   scanningFolders: Set<string>;
@@ -28,7 +37,7 @@ export interface UseScannerReturn {
  * Owns all scan state and repo operations (FRONTEND.md §5): full / per-folder
  * scans with supersession, auto-scan on startup, the throttled focus rescan
  * (a full scan, so it shows the normal indicators), and the pull / clean
- * actions with their automatic full rescan.
+ * actions with their automatic rescan of the affected folders.
  */
 export function useScanner(folders: MonitoredFolder[]): UseScannerReturn {
   const [results, setResults] = useState<Record<string, ScanResult>>({});
@@ -44,68 +53,58 @@ export function useScanner(folders: MonitoredFolder[]): UseScannerReturn {
   const lastScanTimeRef = useRef(0);
   const hasInitialScanRef = useRef(false);
 
-  const performScan = useCallback(async (foldersToScan: MonitoredFolder[]) => {
-    const scans = foldersToScan.map(async (folder) => {
-      try {
-        const result = await api.scanFolder(folder.path, folder.onlyLocalChecks);
-        return { id: folder.id, result };
-      } catch (err) {
-        // Folder keeps its previous result silently (FRONTEND.md §5.1).
-        console.error(`Scan failed for ${folder.path}:`, err);
-        return { id: folder.id, result: null };
-      }
-    });
-    const settled = await Promise.all(scans);
-    const newResults: Record<string, ScanResult> = {};
-    for (const { id, result } of settled) {
-      if (result) newResults[id] = result;
-    }
-    return newResults;
-  }, []);
-
   /**
-   * On-demand scan with UI indicators. Full scans bump the version; a scan
-   * whose version is stale on completion discards its results (§5.2).
+   * Scan with UI indicators. Full scans bump the version; a folder whose
+   * version is stale on completion discards its result (§5.2).
+   *
+   * `clearError` is false for the rescans that follow a pull/clean, so the
+   * action's own message survives the scan it triggers. Per §5.6 the error
+   * surface clears when the next *on-demand* scan starts.
    */
   const scan = useCallback(
-    async (foldersToScan: MonitoredFolder[], isFullScan: boolean) => {
+    async (foldersToScan: MonitoredFolder[], isFullScan: boolean, clearError = true) => {
       if (foldersToScan.length === 0) return;
       let version = scanVersionRef.current;
       if (isFullScan) {
         version = ++scanVersionRef.current;
         setIsFullScanning(true);
       }
-      setError('');
+      if (clearError) setError('');
       setScanningFolders((prev) => {
         const next = new Set(prev);
         for (const folder of foldersToScan) next.add(folder.id);
         return next;
       });
 
-      try {
-        const newResults = await performScan(foldersToScan);
-        lastScanTimeRef.current = Date.now();
+      // Each folder merges into the results map as it completes (§5.1) rather
+      // than the whole batch landing at once behind the slowest folder.
+      await Promise.all(
+        foldersToScan.map(async (folder) => {
+          const result = await api
+            .scanFolder(folder.path, folder.onlyLocalChecks)
+            .catch((err: unknown) => {
+              // Folder keeps its previous result silently (§5.1).
+              console.error(`Scan failed for ${folder.path}:`, err);
+              return null;
+            });
 
-        // Superseded by a newer full scan: discard; the newer scan owns the
-        // in-progress indicators and will clear them when it completes.
-        if (version !== scanVersionRef.current) return;
+          // Superseded by a newer full scan: discard, and leave the indicators
+          // to the scan that owns them now (§5.2).
+          if (version !== scanVersionRef.current) return;
 
-        setResults((prev) => ({ ...prev, ...newResults }));
-      } catch (err) {
-        console.error(err);
-        if (version === scanVersionRef.current) setError('Failed to scan folder(s)');
-      } finally {
-        if (version === scanVersionRef.current) {
+          if (result) setResults((prev) => ({ ...prev, [folder.id]: result }));
           setScanningFolders((prev) => {
             const next = new Set(prev);
-            for (const folder of foldersToScan) next.delete(folder.id);
+            next.delete(folder.id);
             return next;
           });
-          if (isFullScan) setIsFullScanning(false);
-        }
-      }
+        })
+      );
+
+      lastScanTimeRef.current = Date.now();
+      if (isFullScan && version === scanVersionRef.current) setIsFullScanning(false);
     },
-    [performScan]
+    []
   );
 
   const scanAll = useCallback(() => {
@@ -117,6 +116,29 @@ export function useScanner(folders: MonitoredFolder[]): UseScannerReturn {
       void scan([folder], false);
     },
     [scan]
+  );
+
+  /**
+   * The monitored folders that actually contain the given repos. Pulling or
+   * cleaning a repo cannot change any other folder's state, so rescanning all
+   * of them was one full network scan per action. Falls back to every folder
+   * when a repo can't be attributed, so a miss is never a missed refresh.
+   */
+  const foldersForRepos = useCallback(
+    (repoPaths: string[]) => {
+      const affected = new Map<string, MonitoredFolder>();
+      for (const repoPath of repoPaths) {
+        // Longest match wins, so nested monitored folders attribute correctly.
+        let best: MonitoredFolder | undefined;
+        for (const folder of folders) {
+          if (!isInside(repoPath, folder.path)) continue;
+          if (!best || folder.path.length > best.path.length) best = folder;
+        }
+        if (best) affected.set(best.id, best);
+      }
+      return affected.size > 0 ? [...affected.values()] : folders;
+    },
+    [folders]
   );
 
   // Auto-scan all folders the first time the list becomes non-empty (§3).
@@ -161,14 +183,14 @@ export function useScanner(folders: MonitoredFolder[]): UseScannerReturn {
       withRepoFlag(setPullingRepos, [repoPath], true);
       try {
         await api.pullRepo(repoPath);
-        void scan(folders, true);
+        void scan(foldersForRepos([repoPath]), false, false);
       } catch (err) {
         setError(`Failed to pull ${repoPath}: ${err}`);
       } finally {
         withRepoFlag(setPullingRepos, [repoPath], false);
       }
     },
-    [scan, folders]
+    [scan, foldersForRepos]
   );
 
   const clean = useCallback(
@@ -179,14 +201,14 @@ export function useScanner(folders: MonitoredFolder[]): UseScannerReturn {
         if (result.filesRemoved.length + result.directoriesRemoved.length === 0) {
           setError(`No ignored files to clean in ${repoName(repoPath)}`);
         }
-        void scan(folders, true);
+        void scan(foldersForRepos([repoPath]), false, false);
       } catch (err) {
         setError(`Failed to clean ${repoPath}: ${err}`);
       } finally {
         withRepoFlag(setCleaningRepos, [repoPath], false);
       }
     },
-    [scan, folders]
+    [scan, foldersForRepos]
   );
 
   const pullAll = useCallback(
@@ -199,15 +221,19 @@ export function useScanner(folders: MonitoredFolder[]): UseScannerReturn {
         const outcomes = await Promise.all(
           paths.map((path) => api.pullRepo(path).then(() => null, (err) => err))
         );
-        const failed = outcomes.filter((err) => err !== null).length;
-        if (failed > 0) setError(`Failed to pull ${failed} repo(s)`);
-        void scan(folders, true);
+        const failures = outcomes.filter((err) => err !== null);
+        // The first reason is included: a bare count told the user nothing
+        // about which repo failed or why.
+        if (failures.length > 0) {
+          setError(`Failed to pull ${failures.length} repo(s): ${failures[0]}`);
+        }
+        void scan(foldersForRepos(paths), false, false);
       } finally {
         withRepoFlag(setPullingRepos, paths, false);
         setIsBulkPulling(false);
       }
     },
-    [scan, folders]
+    [scan, foldersForRepos]
   );
 
   const cleanAll = useCallback(
@@ -220,15 +246,17 @@ export function useScanner(folders: MonitoredFolder[]): UseScannerReturn {
         const outcomes = await Promise.all(
           paths.map((path) => api.cleanRepo(path).then(() => null, (err) => err))
         );
-        const failed = outcomes.filter((err) => err !== null).length;
-        if (failed > 0) setError(`Failed to clean ${failed} repo(s)`);
-        void scan(folders, true);
+        const failures = outcomes.filter((err) => err !== null);
+        if (failures.length > 0) {
+          setError(`Failed to clean ${failures.length} repo(s): ${failures[0]}`);
+        }
+        void scan(foldersForRepos(paths), false, false);
       } finally {
         withRepoFlag(setCleaningRepos, paths, false);
         setIsBulkCleaning(false);
       }
     },
-    [scan, folders]
+    [scan, foldersForRepos]
   );
 
   return {

@@ -98,6 +98,25 @@ width, matching Apple's 824/1024 icon grid).
   parallel with rayon (git2 for branch/dirty; `git` CLI for
   upstream/fetch/ahead/behind/remote-presence), and detects uninitialized
   sibling directories.
+- **Scan thread pool**: status checks run on a dedicated rayon pool
+  (`4 × CPUs`, clamped to 8–32) rather than the global one. Almost all of a
+  check's wall time is a `git fetch` blocked on DNS/TLS, so a CPU-sized pool
+  serializes the fetches into `repos / CPUs` waves. Kept off the global pool so
+  no other rayon user inherits a thread count sized for blocking I/O.
+- **`git` invocation invariants** (`git_command()`): `core.quotePath=false` (git
+  otherwise C-quotes non-ASCII paths, which broke the `git clean` parser),
+  `LC_ALL=C` (output we match on stays English), `GIT_TERMINAL_PROMPT=0` (a
+  credential prompt would block on `Command::output()` forever).
+- **Fetch flags**: `gc.auto=0` + `maintenance.auto=false` (no per-repo background
+  repack fork), `--no-tags --no-recurse-submodules` (nothing in a scan result
+  uses them), `http.lowSpeedLimit=1000` + `http.lowSpeedTime=20` and an SSH
+  `ConnectTimeout`/`BatchMode` (bounds a stalled transfer; libcurl's default
+  connect timeout is 300 s). `pull` no longer pre-fetches — `git pull` is
+  fetch + merge, so the extra call was a discarded network round-trip.
+- Commands whose result is a boolean (`git remote`, the two `git log` range
+  checks) fail loudly on a non-zero exit instead of reading empty stdout as
+  "no remotes" / "no commits" — that turned a transient failure into a wrong
+  answer presented as fact.
 - `onlyLocalChecks` per folder skips fetch + ahead/behind; the `git remote`
   presence check is local, so publish state is still resolved (but never
   `RemoteNotFound`, which needs a fetch).
@@ -111,12 +130,22 @@ width, matching Apple's 824/1024 icon grid).
   upstream repos is classified `Reachable`/`NotFound`/`Unreachable`. A definitive
   `NotFound` is confirmed with `gh repo view` (run in the repo dir) before a repo
   is promoted to `RemoteNotFound`; any uncertainty (offline, auth, non-GitHub,
-  no `gh`) stays `Published` — no false positives. The `gh` confirmation is
+  no `gh`) stays `Published` — no false positives. `gh` runs through `$SHELL -lc`,
+  so a `gh` missing from the login `PATH` makes the *shell* print "command not
+  found"; `classify_repo_view` matches that explicitly and returns `Unknown`,
+  and only GitHub's own wording ("could not resolve to a repository",
+  "repository not found") counts as `NotFound`. The `gh` confirmation is
   debounced by `remote_checks_v1.json` (per-repo `{checked_at, exists}`,
   re-checked at most once per 24h).
 - **Ordering**: statuses are sorted case-insensitively by absolute path before
-  categorizing, so every `ScanResult` bucket is stable A–Z (grouped by parent
-  dir). Sorting once in the core keeps both frontends identical.
+  categorizing, with a case-sensitive tie-break so the comparator is a total
+  order (without it, paths differing only in case fall back to readdir order,
+  which varies between runs). Every `ScanResult` bucket is a stable A–Z grouped
+  by parent dir; sorting once in the core keeps both frontends identical.
+- **Clean** (`git clean -fdXn` dry run, filtered in Rust, survivors deleted): a
+  path that fails to delete no longer aborts the repo. An already-gone path is
+  treated as success (a build or watcher can remove it between the dry run and
+  the delete); real failures are collected and the error names every one.
 - Cancellation: `Arc<AtomicBool>` polled during directory walk only; a
   cancelled `Scanner` is replaced with a fresh instance. No UI currently
   exposes cancel.
@@ -127,8 +156,11 @@ width, matching Apple's 824/1024 icon grid).
 - `just clippy` — clippy pedantic, zero warnings across `core`,
   `desktop/src-tauri`, `macos/ffi` (CLAUDE.md requirement).
 - `just test` — core tests (glob matcher, fetch/`gh` reachability classifiers,
-  unpublished-overlay + repo-ordering integration tests, …).
+  unpublished-overlay + repo-ordering + clean-path integration tests, …).
 - Frontend: `pnpm build` (tsc strict + vite), eslint.
+- `just bench-scan <path> [local]` — times three `scan_folder` runs and prints
+  every bucket count, so a scanner change can be shown to be faster *and* to
+  still find the same repos.
 
 ## Versions & releases
 

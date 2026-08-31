@@ -7,13 +7,31 @@ use crate::domain::{PublishState, RepoStatus, ScanResult};
 use rayon::prelude::*;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 use std::time::Instant;
 
 use finder::RepositoryFinder;
 use remote_check::{RemoteCheckCtx, REMOTE_CHECK_TTL_SECS};
 use status_checker::StatusChecker;
 use uninitialized::UninitializedDetector;
+
+/// Thread pool the per-repo status checks run on.
+///
+/// Rayon's global pool has one thread per logical CPU, which is the right size
+/// for CPU-bound work. A status check is the opposite: nearly all of its wall
+/// time is a `git fetch` blocked on DNS and TLS, so a CPU-sized pool turns N
+/// repos into N/cpus serialized network round-trips. Oversubscribing lets them
+/// overlap. Kept separate from the global pool so no other rayon user inherits
+/// a thread count sized for blocking I/O.
+static SCAN_POOL: LazyLock<Option<rayon::ThreadPool>> = LazyLock::new(|| {
+    let cpus = std::thread::available_parallelism().map_or(8, std::num::NonZeroUsize::get);
+    rayon::ThreadPoolBuilder::new()
+        .num_threads((cpus * 4).clamp(8, 32))
+        .thread_name(|i| format!("gpm-scan-{i}"))
+        .build()
+        .map_err(|e| tracing::warn!(?e, "falling back to the global rayon pool"))
+        .ok()
+});
 
 /// Main scanner that orchestrates repository finding and status checking
 pub struct Scanner {
@@ -57,12 +75,18 @@ impl Scanner {
             (!only_local_checks).then(|| RemoteCheckCtx::load(REMOTE_CHECK_TTL_SECS));
 
         // Check status of all repositories in parallel
-        let statuses: Vec<RepoStatus> = repositories
-            .par_iter()
-            .map(|repo_path| {
-                StatusChecker::check(repo_path, only_local_checks, remote_ctx.as_ref())
-            })
-            .collect();
+        let check_all = || {
+            repositories
+                .par_iter()
+                .map(|repo_path| {
+                    StatusChecker::check(repo_path, only_local_checks, remote_ctx.as_ref())
+                })
+                .collect::<Vec<RepoStatus>>()
+        };
+        let statuses = match SCAN_POOL.as_ref() {
+            Some(pool) => pool.install(check_all),
+            None => check_all(),
+        };
 
         if let Some(ctx) = &remote_ctx {
             ctx.persist();
@@ -74,8 +98,16 @@ impl Scanner {
 
     /// Case-insensitive ordering of repos by absolute path, shared by every
     /// category so the frontends render a stable A–Z list.
+    ///
+    /// The case-sensitive tie-break makes this a total order. Without it two
+    /// paths differing only in case compare equal and the stable sort falls
+    /// back to readdir order, which is filesystem-dependent and can differ
+    /// between two scans of the same tree.
     fn by_path_ci(a: &RepoStatus, b: &RepoStatus) -> std::cmp::Ordering {
-        a.path.to_lowercase().cmp(&b.path.to_lowercase())
+        a.path
+            .to_lowercase()
+            .cmp(&b.path.to_lowercase())
+            .then_with(|| a.path.cmp(&b.path))
     }
 
     /// Categorize repository statuses into different groups.

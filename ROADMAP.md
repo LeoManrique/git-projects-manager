@@ -65,8 +65,30 @@
 - [x] macOS app icon: Icon Composer `AppIcon.icon` (glyph-only layer, system
       draws tile/fill/mask) replaces the padded `.icns` that rendered small
 
+- [x] Scanner performance & reliability pass (`docs/SCANNER_PERFORMANCE.md`):
+      online scan of 76 repos **4.7s → 2.3s** via a dedicated oversubscribed
+      scan thread pool (the old CPU-sized rayon pool serialized the fetches);
+      fetch hardened (`gc.auto=0`, `--no-tags`, HTTP/SSH stall timeouts); `pull`
+      no longer double-fetches; pull/clean rescan only the affected folders.
+      Correctness: `git clean` handles non-ASCII paths (`core.quotePath=false`)
+      and no longer aborts a whole repo on one unremovable path; a `gh` missing
+      from `PATH` no longer reads as "repository deleted"; failed `git remote` /
+      `git log` no longer return a confident wrong answer. Frontends: Tauri
+      streams per-folder results and finally shows bulk action messages, both
+      apps report the first failure reason, `spawn_blocking` for the Tauri
+      commands. New `just bench-scan` + `core/tests/clean_paths.rs`
+
 ## Pending
 
+- [ ] Scanner Tier 2 (`docs/SCANNER_PERFORMANCE.md` §4): replace the four local
+      `git` subprocesses with one libgit2 handle per repo; wall-clock timeout +
+      kill on `fetch`/`gh`; gate `RemoteNotFound` on one `check_auth()` per scan;
+      share one `RemoteCheckCtx` across concurrent folder scans; fold the
+      uninitialized walk into the main one; prune the remote-check cache
+- [ ] Scanner decisions needed (`docs/SCANNER_PERFORMANCE.md` §6): whether nested
+      repos are supported (unblocks a 1.01s → 0.05s walk), whether ahead/behind
+      may be "as of last fetch" (unblocks taking `fetch` off the scan path), and
+      how an unverifiable repo should render
 - [ ] Re-run the multi-agent adversarial code review of the migration (first
       attempt aborted on session usage limits; a manual review pass was done instead)
 - [ ] macOS app releases: signing identity + notarization (currently ad-hoc

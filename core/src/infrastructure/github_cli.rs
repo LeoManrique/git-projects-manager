@@ -85,7 +85,7 @@ pub enum RepoExistence {
 
 /// Classify the result of `gh repo view`. Kept pure (no I/O) for unit tests.
 ///
-/// Only an explicit "not found" / unresolvable-repository message counts as
+/// Only an explicit unresolvable-repository message counts as
 /// [`RepoExistence::NotFound`]; every other failure (auth, network, non-GitHub
 /// remote) is [`RepoExistence::Unknown`] so a transient error never masquerades
 /// as a deleted remote.
@@ -95,7 +95,16 @@ pub fn classify_repo_view(success: bool, combined: &str) -> RepoExistence {
         return RepoExistence::Exists;
     }
     let s = combined.to_lowercase();
-    if s.contains("could not resolve to a repository") || s.contains("not found") {
+
+    // The shell, not GitHub, when `gh` is absent from PATH: "command not found:
+    // gh". That matched the bare "not found" test this replaces, so a missing
+    // CLI flagged every repo as deleted — and the verdict was then cached for a
+    // day. `check_auth` has always guarded this; this call site never did.
+    if s.contains("command not found") || s.contains("not found: gh") {
+        return RepoExistence::Unknown;
+    }
+
+    if s.contains("could not resolve to a repository") || s.contains("repository not found") {
         RepoExistence::NotFound
     } else {
         RepoExistence::Unknown
@@ -209,6 +218,31 @@ mod tests {
         assert_eq!(
             classify_repo_view(false, "error connecting to api.github.com"),
             RepoExistence::Unknown
+        );
+    }
+
+    #[test]
+    fn repo_view_missing_gh_binary_is_unknown() {
+        // The shell's own error, not GitHub's — must never read as "deleted".
+        assert_eq!(
+            classify_repo_view(false, "zsh:1: command not found: gh"),
+            RepoExistence::Unknown
+        );
+        assert_eq!(
+            classify_repo_view(false, "/bin/sh: 1: gh: not found"),
+            RepoExistence::Unknown
+        );
+        assert_eq!(
+            classify_repo_view(false, "bash: line 1: gh: command not found"),
+            RepoExistence::Unknown
+        );
+    }
+
+    #[test]
+    fn repo_view_rest_not_found_means_not_found() {
+        assert_eq!(
+            classify_repo_view(false, "HTTP 404: Repository not found (https://api.github.com/repos/o/r)"),
+            RepoExistence::NotFound
         );
     }
 }

@@ -113,19 +113,28 @@ final class AppModel {
 
     // MARK: - Scanning (FRONTEND.md §5)
 
-    /// Full scan of all folders, with global + per-folder progress indicators.
-    /// Drives Scan All, the startup auto-scan, the post-pull/clean rescan, and
-    /// the window-focus rescan (§5.1) — all surface the same in-progress state.
-    func scanAll() async {
-        let targets = folders
+    /// Scan the given folders concurrently, merging each result as it lands
+    /// (§5.1). The single implementation behind every scan mode.
+    ///
+    /// - `isFullScan` bumps the supersession version and drives the global
+    ///   indicator.
+    /// - `clearError` is false for the rescans that follow a pull or clean, so
+    ///   the action's own message survives the scan it triggers; per §5.6 the
+    ///   error surface clears when the next *on-demand* scan starts.
+    private func scan(
+        folders targets: [MonitoredFolder],
+        isFullScan: Bool,
+        clearError: Bool
+    ) async {
         guard !targets.isEmpty else { return }
 
-        scanVersion += 1
+        if isFullScan {
+            scanVersion += 1
+            isFullScanning = true
+        }
         let version = scanVersion
         lastScanStartedAt = Date()
-
-        isFullScanning = true
-        errorMessage = nil
+        if clearError { errorMessage = nil }
         scanningFolders.formUnion(targets.map(\.id))
 
         await withTaskGroup(of: (String, ScanResult?).self) { group in
@@ -139,7 +148,9 @@ final class AppModel {
                 }
             }
             for await (folderId, result) in group {
-                // Supersession: a newer full scan owns the UI now (§5.2).
+                // Supersession: a newer full scan owns the UI now, including
+                // this folder's spinner — which is why the guard comes before
+                // the removal below and not after it (§5.2).
                 guard scanVersion == version else { continue }
                 if let result { results[folderId] = result }
                 scanningFolders.remove(folderId)
@@ -148,26 +159,42 @@ final class AppModel {
 
         guard scanVersion == version else { return }
         scanningFolders.subtract(targets.map(\.id))
-        isFullScanning = false
+        if isFullScan { isFullScanning = false }
+    }
+
+    /// Full scan of all folders, with global + per-folder progress indicators.
+    /// Drives Scan All, the startup auto-scan and the window-focus rescan.
+    func scanAll() async {
+        await scan(folders: folders, isFullScan: true, clearError: true)
     }
 
     /// Scan a single folder (per-folder Scan control). On-demand, so it
     /// clears the shared error surface (§5.6).
     func scan(folder: MonitoredFolder) async {
-        let version = scanVersion
-        lastScanStartedAt = Date()
-        errorMessage = nil
-        scanningFolders.insert(folder.id)
+        await scan(folders: [folder], isFullScan: false, clearError: true)
+    }
 
-        let result = try? await core.scanFolder(
-            path: folder.path,
-            onlyLocalChecks: folder.onlyLocalChecks
-        )
+    /// The monitored folders that actually contain the given repos. Pulling or
+    /// cleaning a repo cannot change any other folder's state, so rescanning
+    /// all of them was one full network scan per action. Falls back to every
+    /// folder when a repo can't be attributed, so a miss is never a missed
+    /// refresh.
+    private func foldersForRepos(_ repoPaths: [String]) -> [MonitoredFolder] {
+        var affected: [String: MonitoredFolder] = [:]
+        for repoPath in repoPaths {
+            // Longest match wins, so nested monitored folders attribute right.
+            let best = folders
+                .filter { Self.isInside(repoPath, $0.path) }
+                .max { $0.path.count < $1.path.count }
+            if let best { affected[best.id] = best }
+        }
+        return affected.isEmpty ? folders : Array(affected.values)
+    }
 
-        scanningFolders.remove(folder.id)
-        // Discarded if a full scan started while we were running (§5.2).
-        guard scanVersion == version else { return }
-        if let result { results[folder.id] = result }
+    private nonisolated static func isInside(_ repoPath: String, _ folderPath: String) -> Bool {
+        var base = folderPath
+        while base.hasSuffix("/") { base.removeLast() }
+        return repoPath == base || repoPath.hasPrefix(base + "/")
     }
 
     /// Window regained focus: rescan all folders with the normal scan
@@ -237,7 +264,7 @@ final class AppModel {
         do {
             _ = try await core.pullRepo(path: repoPath)
             pullingRepos.remove(repoPath)
-            await scanAll()
+            await rescan(after: [repoPath])
         } catch {
             pullingRepos.remove(repoPath)
             errorMessage = "Failed to pull \(repoPath): \(Self.message(error))"
@@ -249,15 +276,22 @@ final class AppModel {
         do {
             let result = try await core.cleanRepo(path: repoPath)
             cleaningRepos.remove(repoPath)
-            let removedNothing = result.filesRemoved.isEmpty && result.directoriesRemoved.isEmpty
-            await scanAll()
-            if removedNothing {
+            // Set before the rescan, not after: the message used to appear only
+            // once the rescan finished, then outlive it until the next scan.
+            if result.filesRemoved.isEmpty && result.directoriesRemoved.isEmpty {
                 errorMessage = "No ignored files to clean in \(Self.repoName(repoPath))"
             }
+            await rescan(after: [repoPath])
         } catch {
             cleaningRepos.remove(repoPath)
             errorMessage = "Failed to clean \(repoPath): \(Self.message(error))"
         }
+    }
+
+    /// The rescan that follows a repo action: only the folders those repos live
+    /// in, and never clearing the message the action just set.
+    private func rescan(after repoPaths: [String]) async {
+        await scan(folders: foldersForRepos(repoPaths), isFullScan: false, clearError: false)
     }
 
     func pullAll(_ repos: [RepoStatus]) async {
@@ -266,22 +300,16 @@ final class AppModel {
         let paths = repos.map(\.path)
         pullingRepos.formUnion(paths)
 
-        var failures = 0
-        await withTaskGroup(of: Bool.self) { group in
-            for path in paths {
-                group.addTask { [core] in
-                    (try? await core.pullRepo(path: path)) != nil
-                }
-            }
-            for await succeeded in group where !succeeded {
-                failures += 1
-            }
+        let failures = await runOnEach(paths) { [core] path in
+            _ = try await core.pullRepo(path: path)
         }
 
         pullingRepos.subtract(paths)
         isBulkPulling = false
-        await scanAll()
-        if failures > 0 { errorMessage = "Failed to pull \(failures) repo(s)" }
+        if let first = failures.first {
+            errorMessage = "Failed to pull \(failures.count) repo(s): \(first)"
+        }
+        await rescan(after: paths)
     }
 
     func cleanAll(_ repos: [RepoStatus]) async {
@@ -290,22 +318,42 @@ final class AppModel {
         let paths = repos.map(\.path)
         cleaningRepos.formUnion(paths)
 
-        var failures = 0
-        await withTaskGroup(of: Bool.self) { group in
-            for path in paths {
-                group.addTask { [core] in
-                    (try? await core.cleanRepo(path: path)) != nil
-                }
-            }
-            for await succeeded in group where !succeeded {
-                failures += 1
-            }
+        let failures = await runOnEach(paths) { [core] path in
+            _ = try await core.cleanRepo(path: path)
         }
 
         cleaningRepos.subtract(paths)
         isBulkCleaning = false
-        await scanAll()
-        if failures > 0 { errorMessage = "Failed to clean \(failures) repo(s)" }
+        if let first = failures.first {
+            errorMessage = "Failed to clean \(failures.count) repo(s): \(first)"
+        }
+        await rescan(after: paths)
+    }
+
+    /// Run `operation` on every path concurrently and collect the failures as
+    /// `"{repo}: {reason}"`. The reason used to be discarded by a `try?`, so a
+    /// bulk action could only ever report a count.
+    private nonisolated func runOnEach(
+        _ paths: [String],
+        _ operation: @escaping @Sendable (String) async throws -> Void
+    ) async -> [String] {
+        await withTaskGroup(of: String?.self) { group in
+            for path in paths {
+                group.addTask {
+                    do {
+                        try await operation(path)
+                        return nil
+                    } catch {
+                        return "\(Self.repoName(path)): \(Self.message(error))"
+                    }
+                }
+            }
+            var failures: [String] = []
+            for await failure in group {
+                if let failure { failures.append(failure) }
+            }
+            return failures
+        }
     }
 
     // MARK: - Open actions (FRONTEND.md §5.5)

@@ -114,9 +114,12 @@ All modes call the core scan once per target folder, **concurrently**; each fold
 result merges into the results map on completion. A folder whose scan fails keeps its
 previous result silently.
 
-1. **Full scan** — Scan All button, the startup auto-scan, and the automatic rescan
-   after any pull/clean action. Shows global + per-folder progress.
-2. **Per-folder scan** — per-folder Scan control; per-folder progress only.
+1. **Full scan** — Scan All button and the startup auto-scan. Shows global +
+   per-folder progress.
+2. **Per-folder scan** — the per-folder Scan control, and the automatic rescan
+   after a pull/clean (scoped to the folders the affected repos live in, since
+   an action on one repo cannot change another folder's state). Per-folder
+   progress only.
 3. **Focus rescan** — when the app window regains focus (after the initial scan,
    folders exist): rescan all folders as a full scan, so it shows the **same
    global + per-folder progress** as Scan All. Throttled to at most once per
@@ -127,8 +130,10 @@ previous result silently.
 
 Full scans carry a version. When a scan completes but a newer full scan started
 meanwhile, its results are **discarded**, not merged. Per-folder scans are likewise
-discarded if a full scan started after them. There is no user-facing cancel; the
-core's cancellation API exists but is unused.
+discarded if a full scan started after them. A superseded scan also leaves the
+progress indicators alone — the newer scan owns them and will clear them — so a
+late finisher can never wipe a spinner the running scan is still showing. There
+is no user-facing cancel; the core's cancellation API exists but is unused.
 
 ### 5.3 Results display
 
@@ -196,18 +201,22 @@ Per-repo actions (context/row menu):
 | Open in LMS Github | always | runs `lms-github <path>` via login shell |
 | Show in Finder | macOS only | reveals the repo directory in Finder (the Tauri app has no reveal action yet) |
 | Copy Path | always | copies the repo's absolute path to the clipboard |
-| Fetch & Pull | not for Uninitialized; disabled for Changed/Errors | `git fetch` + `git pull`; success → full rescan; failure → "Failed to pull {path}: {err}" |
-| Clean Ignored Files | Clean section only | `git clean -fdX` dry-run filtered by exclude patterns (§6.2), survivors deleted; 0 removed → "No ignored files to clean in {name}"; always full rescan after |
+| Fetch & Pull | not for Uninitialized; disabled for Changed/Errors | `git pull` (which fetches); success → rescan of that repo's folder; failure → "Failed to pull {path}: {err}" |
+| Clean Ignored Files | Clean section only | `git clean -fdX` dry-run filtered by exclude patterns (§6.2), survivors deleted; 0 removed → "No ignored files to clean in {name}"; rescan of that repo's folder after |
 
 Bulk **Fetch & Pull All** / **Clean All** run per-repo operations in parallel; if k
-fail, report "Failed to pull/clean {k} repo(s)"; full rescan afterwards. In-flight
-repos show a per-row spinner; bulk controls disable while running.
+fail, report `"Failed to pull/clean {k} repo(s): {first failure}"` — the first
+reason is included, since a bare count says neither which repo nor why. The
+folders holding the affected repos are rescanned afterwards. In-flight repos show
+a per-row spinner; bulk controls disable while running.
 
 ### 5.6 Error surfacing
 
-One shared, non-dismissible error area shows the most recent scan/action failure;
-it clears when the next on-demand scan starts. Per-folder scan failures during a
-multi-folder pass are silent (previous data kept).
+One shared, non-dismissible error area shows the most recent scan/action failure.
+An action sets its message **before** triggering its rescan, and that rescan does
+not clear it — the message clears when the next *on-demand* scan starts (Scan All
+or a per-folder Scan). Per-folder scan failures during a multi-folder pass are
+silent (previous data kept).
 
 ## 6. Settings
 

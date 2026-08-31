@@ -71,6 +71,10 @@ test:
     cd core && cargo test
     cd macos/ffi && cargo test
 
+# Time three scans of a folder, with bucket counts (add "local" to skip the network)
+bench-scan path mode="":
+    cd core && cargo run --release --example timescan -- "{{path}}" {{mode}}
+
 # Clippy pedantic across all Rust crates (CLAUDE.md requirement)
 clippy:
     cd core && cargo clippy --all-targets -- -W clippy::pedantic
