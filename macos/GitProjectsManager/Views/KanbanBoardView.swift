@@ -141,17 +141,33 @@ struct KanbanColumnView: View {
 }
 
 /// One repo card: name + archived badge, owner + private lock, relative
-/// pushed time. Draggable by nameWithOwner; actions on hover/right-click.
+/// pushed time, and the notes row when the card has notes, edited in place.
+/// Draggable by nameWithOwner except while its notes are being edited;
+/// actions on hover/right-click.
 struct KanbanCardView: View {
     @Environment(AppModel.self) private var model
     let entry: KanbanEntry
 
     @State private var isHovering = false
     @State private var confirmDelete = false
+    /// The notes the editor opened with; nil while not editing. The save
+    /// compares against this rather than the card, because a focus refresh
+    /// can land a remote edit on the card while the editor is open, and an
+    /// untouched draft must not overwrite that.
+    @State private var notesOpenedWith: String?
+    @State private var notesDraft = ""
+    @State private var notesDiscarded = false
+    @FocusState private var isNotesFocused: Bool
+
+    private var isEditingNotes: Bool { notesOpenedWith != nil }
 
     private var canDelete: Bool {
         guard let user = model.kanban.authedGhUser else { return false }
         return user.lowercased() == entry.repo.owner.login.lowercased()
+    }
+
+    private var notesActionTitle: String {
+        entry.card.notes == nil ? "Add Notes…" : "Edit Notes…"
     }
 
     var body: some View {
@@ -198,6 +214,8 @@ struct KanbanCardView: View {
                         .lineLimit(1)
                 }
             }
+
+            notesRow
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -207,7 +225,9 @@ struct KanbanCardView: View {
                 .strokeBorder(.separator, lineWidth: 1)
         )
         .shadow(color: .black.opacity(isHovering ? 0.12 : 0.05), radius: isHovering ? 3 : 1, y: 1)
-        .draggable(entry.repo.nameWithOwner)
+        // Off while editing. Flipping it rebuilds the card below this line;
+        // the editor's state lives on this view and survives.
+        .draggableIf(!isEditingNotes, entry.repo.nameWithOwner)
         .onHover { isHovering = $0 }
         .contextMenu { cardActions }
         .help(entry.repo.description ?? entry.repo.nameWithOwner)
@@ -226,10 +246,74 @@ struct KanbanCardView: View {
                 """
             )
         }
+        // Focus leaving the editor, by a click elsewhere or by Return or
+        // Escape in `notesRow`, is the one way out of it. This sits on the
+        // card, which outlives the editor, so it survives the rebuild that
+        // closing causes.
+        .onChange(of: isNotesFocused) { _, focused in
+            if !focused { finishEditingNotes(save: !notesDiscarded) }
+        }
+    }
+
+    /// Third row: the editor while editing, the notes when there are any,
+    /// nothing otherwise, so a card without notes keeps its height.
+    @ViewBuilder
+    private var notesRow: some View {
+        if isEditingNotes {
+            TextField("Add notes…", text: $notesDraft, axis: .vertical)
+                .lineLimit(1...5)
+                .textFieldStyle(.plain)
+                .font(.caption)
+                .focused($isNotesFocused)
+                // `.plain` draws no bezel. The fill is padded outward so the
+                // text stays where the notes row shows it.
+                .background(RoundedRectangle(cornerRadius: 5).fill(.quinary).padding(-4))
+                // A focus request made synchronously as the field appears is
+                // dropped; the async hop of `task` lands after it is installed.
+                .task { isNotesFocused = true }
+                // Return and Escape just drop focus, Escape marking the
+                // draft as discarded first; the card's focus handler closes.
+                .onSubmit { isNotesFocused = false }
+                .onExitCommand {
+                    notesDiscarded = true
+                    isNotesFocused = false
+                }
+        } else if let notes = entry.card.notes {
+            Text(notes)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                // High priority so the click reaches the text before the
+                // card's drag handling can claim it.
+                .highPriorityGesture(TapGesture().onEnded { startEditingNotes() })
+        }
+    }
+
+    private func startEditingNotes() {
+        // Choosing the menu item while the editor is open keeps the draft.
+        guard !isEditingNotes else { return }
+        let current = entry.card.notes ?? ""
+        notesDraft = current
+        notesDiscarded = false
+        notesOpenedWith = current
+    }
+
+    /// Reached when the editor's focus drops. Saves unless Escape marked the
+    /// draft as discarded, and only a draft that differs from what the
+    /// editor opened with. Harmless when the editor is already closed.
+    private func finishEditingNotes(save: Bool) {
+        guard let openedWith = notesOpenedWith else { return }
+        notesOpenedWith = nil
+        guard save, notesDraft != openedWith else { return }
+        model.kanban.setNotes(entry.repo.nameWithOwner, notesDraft)
     }
 
     @ViewBuilder
     private var cardActions: some View {
+        Button(notesActionTitle, action: startEditingNotes)
         Button("View on GitHub") { model.kanban.openOnGitHub(entry.repo) }
         if canDelete {
             Divider()

@@ -1,6 +1,13 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { api } from '../lib/api';
-import { GhAuthStatus, GhRepo, KanbanCardView, KanbanState, SyncStatus } from '../types';
+import {
+  GhAuthStatus,
+  GhRepo,
+  KanbanCard,
+  KanbanCardView,
+  KanbanState,
+  SyncStatus,
+} from '../types';
 import { KANBAN_COLUMNS, ColumnId } from '../config/kanbanColumns';
 
 const REFRESH_DEBOUNCE_MS = 1500;
@@ -16,7 +23,23 @@ interface UseKanbanReturn {
   refresh: () => Promise<void>;
   recheckAuth: () => Promise<void>;
   moveCard: (nameWithOwner: string, toColumn: ColumnId) => Promise<void>;
+  /** Replaces the card's notes with the editor's text; blank text clears them. */
+  updateNotes: (nameWithOwner: string, text: string) => Promise<void>;
   deleteRepo: (nameWithOwner: string) => Promise<void>;
+}
+
+/**
+ * The rule core applies before storing notes, so the optimistic card already
+ * looks like the one core returns: trimmed, and absent when nothing is left.
+ */
+function normalizeNotes(text: string): string | undefined {
+  const trimmed = text.trim();
+  return trimmed === '' ? undefined : trimmed;
+}
+
+/** The column the board shows a card in: unknown and legacy ids render as Backlog. */
+function displayedColumn(card: KanbanCard): ColumnId {
+  return KANBAN_COLUMNS.some((col) => col.id === card.column) ? card.column : 'backlog';
 }
 
 export function useKanban(): UseKanbanReturn {
@@ -122,8 +145,7 @@ export function useKanban(): UseKanbanReturn {
     Object.values(state.cards).forEach((card) => {
       const repo = repoByKey.get(card.nameWithOwner);
       if (!repo) return; // store sync drops these, but guard anyway
-      const columnId = result[card.column] ? card.column : 'backlog';
-      result[columnId].push({ card, repo });
+      result[displayedColumn(card)].push({ card, repo });
     });
 
     KANBAN_COLUMNS.forEach((col) => {
@@ -153,29 +175,66 @@ export function useKanban(): UseKanbanReturn {
     }
   }, []);
 
-  const moveCard = useCallback(async (nameWithOwner: string, toColumn: ColumnId) => {
-    // Optimistic local update so dragging feels instant.
-    setState((prev) => {
-      if (!prev) return prev;
-      const existing = prev.cards[nameWithOwner];
-      if (!existing) return prev;
-      return {
-        ...prev,
-        cards: {
-          ...prev.cards,
-          [nameWithOwner]: { ...existing, column: toColumn, updatedAt: Date.now() },
-        },
-      };
-    });
-    try {
-      const newState = await api.moveKanbanCard(nameWithOwner, toColumn);
-      setState(newState);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-      // Refetch authoritative state on failure.
-      doRefresh();
-    }
-  }, [doRefresh]);
+  // One edit of one card. The board shows `patch` at once so the edit feels
+  // instant; core then writes the store (bumping updatedAt for real), syncs
+  // the card in the background when signed in, and the state it returns
+  // replaces the optimistic one. A failure refetches authoritative state.
+  const mutateCard = useCallback(
+    async (
+      nameWithOwner: string,
+      patch: Partial<Pick<KanbanCard, 'column' | 'notes'>>,
+      request: () => Promise<KanbanState>
+    ) => {
+      setError(null);
+      setState((prev) => {
+        if (!prev) return prev;
+        const existing = prev.cards[nameWithOwner];
+        if (!existing) return prev;
+        return {
+          ...prev,
+          cards: {
+            ...prev.cards,
+            [nameWithOwner]: { ...existing, ...patch, updatedAt: Date.now() },
+          },
+        };
+      });
+      try {
+        setState(await request());
+      } catch (err) {
+        // Refetch first: doRefresh clears the error on its way in, and this
+        // one has to outlive it.
+        await doRefresh();
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [doRefresh]
+  );
+
+  const moveCard = useCallback(
+    async (nameWithOwner: string, toColumn: ColumnId) => {
+      const current = state?.cards[nameWithOwner];
+      // Dropping a card on the column it already shows in is not a move.
+      if (!current || displayedColumn(current) === toColumn) return;
+      await mutateCard(nameWithOwner, { column: toColumn }, () =>
+        api.moveKanbanCard(nameWithOwner, toColumn)
+      );
+    },
+    [state, mutateCard]
+  );
+
+  const updateNotes = useCallback(
+    async (nameWithOwner: string, text: string) => {
+      const notes = normalizeNotes(text);
+      const current = state?.cards[nameWithOwner];
+      // Saving the same text (a blur after a look) is not an edit: no store
+      // write, no updatedAt bump, no sync.
+      if (!current || current.notes === notes) return;
+      await mutateCard(nameWithOwner, { notes }, () =>
+        api.updateKanbanNotes(nameWithOwner, notes ?? null)
+      );
+    },
+    [state, mutateCard]
+  );
 
   return {
     columns,
@@ -187,6 +246,7 @@ export function useKanban(): UseKanbanReturn {
     refresh: doRefresh,
     recheckAuth,
     moveCard,
+    updateNotes,
     deleteRepo,
   };
 }

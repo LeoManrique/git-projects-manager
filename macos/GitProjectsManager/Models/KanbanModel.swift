@@ -143,29 +143,68 @@ final class KanbanModel {
     /// Optimistic column move; the store write and background one-card sync
     /// happen in core. Failure refetches authoritative state.
     func move(_ nameWithOwner: String, to column: KanbanColumn) {
+        edit(nameWithOwner) { card in
+            // Compare DISPLAYED columns (legacy ids render as Backlog), so
+            // dropping a card where it already appears stays a no-op.
+            guard (KanbanColumn(rawValue: card.column) ?? .backlog) != column else { return false }
+            card.column = column.rawValue
+            return true
+        } request: { [core] in
+            try await core.moveKanbanCard(nameWithOwner: nameWithOwner, toColumn: column.rawValue)
+        }
+    }
+
+    /// Optimistic notes edit from the editor's text. The text is normalized
+    /// the way core stores it (trimmed, blank becomes none) so the board never
+    /// shows a shape core would then correct; saving the same text is not an
+    /// edit and touches nothing.
+    func setNotes(_ nameWithOwner: String, _ text: String) {
+        let notes = Self.normalizeNotes(text)
+        edit(nameWithOwner) { card in
+            guard card.notes != notes else { return false }
+            card.notes = notes
+            return true
+        } request: { [core] in
+            try await core.updateKanbanNotes(nameWithOwner: nameWithOwner, notes: notes)
+        }
+    }
+
+    /// One edit of one card. `change` rewrites the displayed card and reports
+    /// whether it differed; an unchanged card is left alone (no store write,
+    /// no `updatedAt` bump, no sync). A changed card shows at once with a
+    /// provisional `updatedAt`, then `request` has core write the store and
+    /// sync the card in the background, and the state core returns replaces
+    /// the optimistic one. Failure refetches authoritative state.
+    private func edit(
+        _ nameWithOwner: String,
+        change: (inout KanbanCard) -> Bool,
+        request: @escaping @MainActor () async throws -> KanbanState
+    ) {
         guard var updated = state,
               var card = updated.cards[nameWithOwner],
-              // Compare DISPLAYED columns (legacy ids render as Backlog), so
-              // dropping a card where it already appears stays a no-op.
-              (KanbanColumn(rawValue: card.column) ?? .backlog) != column
+              change(&card)
         else { return }
 
-        card.column = column.rawValue
+        errorMessage = nil
         card.updatedAt = Int64(Date().timeIntervalSince1970 * 1000)
         updated.cards[nameWithOwner] = card
         state = updated
 
         Task {
             do {
-                state = try await core.moveKanbanCard(
-                    nameWithOwner: nameWithOwner,
-                    toColumn: column.rawValue
-                )
+                state = try await request()
             } catch {
-                errorMessage = AppModel.message(error)
+                // Refetch first: refresh() clears the message on its way in,
+                // and this one has to outlive it.
                 await refresh()
+                errorMessage = AppModel.message(error)
             }
         }
+    }
+
+    private static func normalizeNotes(_ text: String) -> String? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     /// Permanently delete the repository on GitHub and rebuild the board.

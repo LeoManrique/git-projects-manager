@@ -32,6 +32,19 @@ pub async fn move_kanban_card(
         .map_err(|e| e.to_string())
 }
 
+/// Replace a card's notes. Core trims them and stores blank text as none,
+/// then syncs the card in the background when signed in, like a move.
+#[tauri::command]
+pub async fn update_kanban_notes(
+    state: State<'_, AppState>,
+    name_with_owner: String,
+    notes: Option<String>,
+) -> Result<KanbanState, String> {
+    kanban::set_notes(state.inner(), &name_with_owner, notes)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub async fn delete_github_repo(
     state: State<'_, AppState>,

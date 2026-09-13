@@ -18,6 +18,7 @@ export function KanbanBoard() {
     refresh,
     recheckAuth,
     moveCard,
+    updateNotes,
     deleteRepo,
   } = useKanban();
   const authedUser = auth?.status === 'ok' ? auth.user : null;
@@ -29,15 +30,7 @@ export function KanbanBoard() {
   const handleDrop = (toColumn: ColumnId) => {
     const nwo = draggingItemRef.current;
     draggingItemRef.current = null;
-    if (!nwo) return;
-
-    const currentColumn = (Object.entries(columns).find(([, cards]) =>
-      cards.some((c) => c.card.nameWithOwner === nwo)
-    )?.[0]) as ColumnId | undefined;
-
-    if (currentColumn && currentColumn !== toColumn) {
-      moveCard(nwo, toColumn);
-    }
+    if (nwo) moveCard(nwo, toColumn);
   };
 
   if (isLoading) {
@@ -82,6 +75,7 @@ export function KanbanBoard() {
             onDragStart={(nwo) => (draggingItemRef.current = nwo)}
             onDragEnd={() => (draggingItemRef.current = null)}
             onDrop={() => handleDrop(column.id)}
+            onUpdateNotes={updateNotes}
             onDeleteRepo={deleteRepo}
           />
         ))}

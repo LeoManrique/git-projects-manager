@@ -130,6 +130,10 @@ export const api = {
     return await invoke('move_kanban_card', { nameWithOwner, toColumn });
   },
 
+  async updateKanbanNotes(nameWithOwner: string, notes: string | null): Promise<KanbanState> {
+    return await invoke('update_kanban_notes', { nameWithOwner, notes });
+  },
+
   async deleteGithubRepo(nameWithOwner: string): Promise<KanbanRefresh> {
     return await invoke('delete_github_repo', { nameWithOwner });
   },

@@ -11,6 +11,7 @@ interface KanbanColumnProps {
   onDragStart: (nameWithOwner: string) => void;
   onDragEnd: () => void;
   onDrop: () => void;
+  onUpdateNotes: (nameWithOwner: string, text: string) => void;
   onDeleteRepo: (nameWithOwner: string) => void;
 }
 
@@ -21,6 +22,7 @@ export function KanbanColumn({
   onDragStart,
   onDragEnd,
   onDrop,
+  onUpdateNotes,
   onDeleteRepo,
 }: KanbanColumnProps) {
   const [isOver, setIsOver] = useState(false);
@@ -82,6 +84,7 @@ export function KanbanColumn({
               authedUser={authedUser}
               onDragStart={onDragStart}
               onDragEnd={onDragEnd}
+              onUpdateNotes={onUpdateNotes}
               onDeleteRepo={onDeleteRepo}
             />
           ))

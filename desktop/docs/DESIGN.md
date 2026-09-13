@@ -53,24 +53,7 @@ src-tauri/src/                 # Rust backend
 
 ## Kanban Board
 
-Priority-based project tracking beyond git state.
-
-| Column | Color |
-|--------|-------|
-| Backlog | Gray |
-| Active - Low Prio. | Blue |
-| Active - Mid Prio. | Yellow |
-| Active - High Prio. | Red |
-| Review | Yellow |
-| Done | Green |
-
-**Features**:
-- Drag-and-drop between columns
-- Notes on cards (Ctrl+Enter to save, Escape to cancel)
-- Stale detection for removed repositories
-- Orphaned cards display in Backlog
-
-**Persistence**: `kanban.json` alongside `config.json`
+The GitHub-backed board (columns, card notes, cloud sync) is specified in the root [FRONTEND.md](../../FRONTEND.md) §7; this app renders it in its dark palette. State lives in `kanban_v2.json` alongside `config.json`, shared with the macOS app.
 
 ### Tauri Drag-Drop Note
 

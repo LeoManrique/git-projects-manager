@@ -134,6 +134,17 @@
       `aws-lc-rs` and the OS trust store for the Google JWKS fetch and token
       checks) and into `just test` / `just clippy`, with its first unit tests
 
+- [x] Per-card **notes** on the kanban board, back in both apps and synced
+      (dropped in the move to GitHub-backed cards): optional `notes` on the
+      card, left out of `kanban_v2.json` when empty so the file stays v2; a
+      store/service `set_notes` sharing the move's mutate-then-sync path;
+      the server column added by a guarded `ALTER TABLE` and replaced whole
+      on upsert; a Tauri command and a UniFFI export; and an inline quick
+      editor on the card in both apps (*Add/Edit Notes…* menu entry, blur
+      saves, Escape cancels, no drag while editing, untouched drafts never
+      overwrite a synced edit). The v1 notes were exported to a text file for
+      manual re-entry rather than imported. Core, merge and server tests
+
 ## Pending
 - [ ] Re-run the multi-agent adversarial code review of the migration (first
       attempt aborted on session usage limits; a manual review pass was done instead)

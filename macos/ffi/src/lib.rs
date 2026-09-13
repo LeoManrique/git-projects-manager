@@ -219,6 +219,8 @@ impl From<github_cli::GhAuthStatus> for GhAuthStatus {
 pub struct KanbanCard {
     pub name_with_owner: String,
     pub column: String,
+    /// `String?` on the Swift side; `None` when the card has no notes.
+    pub notes: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -228,6 +230,7 @@ impl From<domain::kanban::KanbanCard> for KanbanCard {
         Self {
             name_with_owner: c.name_with_owner,
             column: c.column,
+            notes: c.notes,
             created_at: c.created_at,
             updated_at: c.updated_at,
         }
@@ -580,6 +583,21 @@ impl GpmCore {
         to_column: String,
     ) -> FfiResult<KanbanState> {
         Ok(services::kanban::move_card(&self.state, &name_with_owner, &to_column).await?.into())
+    }
+
+    /// Replace a card's notes. Core trims them and stores blank text as
+    /// none; a one-card cloud sync runs in the background when signed in.
+    ///
+    /// # Errors
+    /// Errs when the kanban store cannot be read or written.
+    // UniFFI exports take owned values; the signature is the FFI contract.
+    #[allow(clippy::needless_pass_by_value)]
+    pub async fn update_kanban_notes(
+        &self,
+        name_with_owner: String,
+        notes: Option<String>,
+    ) -> FfiResult<KanbanState> {
+        Ok(services::kanban::set_notes(&self.state, &name_with_owner, notes).await?.into())
     }
 
     /// Permanently delete a repository on GitHub, then rebuild the board.

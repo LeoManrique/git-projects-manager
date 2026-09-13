@@ -338,13 +338,33 @@ A sidebar view organizing the user's **GitHub repositories** as cards.
   `nameWithOwner` within a column.
 - **Card**: repo name (+ `ARCHIVED` chip), owner login, lock glyph when
   private, relative pushed time in named form ("yesterday", "2 weeks ago");
-  tooltip shows the description.
+  a third row with the card's notes when it has any (secondary color, small
+  text, clamped to 3 lines, line breaks kept), nothing otherwise, so cards
+  without notes keep their height; tooltip shows the description.
+- **Notes** — free text per card, edited in place. Clicking the notes text
+  opens the editor, and so does the *Add Notes…* / *Edit Notes…* card
+  action, the only entry point for a card without notes. The editor
+  replaces the notes row, focused with its text selected (typing replaces
+  it; an arrow key or a click places the caret), placeholder "Add notes…",
+  and grows with the text up to about 5 lines, then scrolls. Losing focus
+  saves; Escape restores the previous text. The
+  saved text is trimmed, and an empty result clears the notes (the row
+  disappears). Saving unchanged text is not an edit: nothing is written,
+  `updatedAt` is not bumped, nothing syncs. The comparison is against the
+  text the editor opened with, so a refresh that lands a remote edit under an
+  open editor is not overwritten by an untouched draft. A card in edit mode
+  cannot be dragged. Otherwise a save behaves like a move: optimistic,
+  `updatedAt` bump, one-card background sync when signed in, refetch on
+  failure. Notes travel with the card through cloud sync, whole card, so a
+  move on one device and a notes edit on another resolve to the newer card.
+  The save key differs per platform (§9).
 - **Drag & drop** moves a card between columns (optimistic update; the store
   write bumps `updatedAt`; a one-card background sync runs when signed in;
   on failure the board refetches authoritative state). Dropping on the same
   column is a no-op; the target column highlights in its accent color.
 - **Card actions** — hover ellipsis menu in both apps; macOS additionally
-  offers the native right-click context menu: *View on GitHub*; *Delete
+  offers the native right-click context menu: *Add Notes…* (no notes yet)
+  or *Edit Notes…* (see **Notes**); *View on GitHub*; *Delete
   Repository…* — destructive, confirm dialog, offered only when the gh
   account owns the repo; runs `gh repo delete` then performs a full refresh
   (including cloud sync when signed in).
@@ -370,7 +390,8 @@ A sidebar view organizing the user's **GitHub repositories** as cards.
 - No scan-cancel UI, no folder reordering, no light theme in the Tauri app, no
   keyboard shortcuts in the Tauri app beyond native input behavior.
 - No kanban card reordering within a column, no custom columns, no manual card
-  creation (the GitHub repo list is the single source of cards).
+  creation (the GitHub repo list is the single source of cards). Card notes
+  are not searchable: search matches `owner/name` only.
 - Dead code from the web app (RadioGroup/SelectList) is not part of this spec and
   must not be ported.
 
@@ -385,7 +406,7 @@ A sidebar view organizing the user's **GitHub repositories** as cards.
 | Repo actions | Hover kebab dropdown (also on right-click) | Native context menu (right-click) + hover affordance |
 | Search | Content-header text input (hidden on the kanban view) | `.searchable` toolbar field (also filters kanban) |
 | Directory picker | Tauri dialog plugin | `NSOpenPanel` / SwiftUI fileImporter |
-| Kanban (§7) | Sidebar item; HTML5 drag & drop; header row hosts sync chip + Refresh | Sidebar item; native drag & drop; toolbar hosts sync chip + Refresh |
+| Kanban (§7) | Sidebar item; HTML5 drag & drop; header row hosts sync chip + Refresh; notes save on Cmd/Ctrl+Enter (Enter adds a line) | Sidebar item; native drag & drop; toolbar hosts sync chip + Refresh; notes save on Return, Option+Return adds a line |
 | Account (§6.3) | Settings modal panel + sync chip menu | Settings scene Account tab + sync chip menu |
 
 Behavioral rules in §§1–8 are identical across platforms; only presentation differs.

@@ -14,6 +14,8 @@ export interface GhRepo {
 export interface KanbanCard {
   nameWithOwner: string;
   column: ColumnId;
+  /** Free text kept on the card. The JSON omits the key when there is none. */
+  notes?: string;
   createdAt: number;
   updatedAt: number;
 }

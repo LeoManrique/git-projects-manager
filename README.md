@@ -19,7 +19,8 @@ Monorepo layout:
   the native SwiftUI app; Linux/Windows the Tauri app) and the deploy script for the
   sync server.
 
-Both apps include the GitHub-backed kanban board with optional cloud sync.
+Both apps include the GitHub-backed kanban board, with per-card notes and optional
+cloud sync.
 
 Frontend behavior for both apps is specified in [FRONTEND.md](./FRONTEND.md) — the
 single source of truth. Architecture details live in [TECHNICAL.md](./TECHNICAL.md).

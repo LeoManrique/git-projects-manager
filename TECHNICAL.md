@@ -34,7 +34,9 @@ server/          axum + SQLite sync server (kanban state; Google OAuth)
 Pretty JSON, camelCase, written atomically (temp file + rename). Both apps
 read/write the same files: `config.json` (folders), `settings.json`,
 `kanban_v2.json`, `repos_cache_v1.json`, `remote_checks_v1.json` (gh
-remote-existence debounce). Sync session in the OS
+remote-existence debounce). A kanban card's `notes` is optional and left out
+of the JSON when empty, so `kanban_v2.json` keeps version 2 and a file
+written before notes existed still loads. Sync session in the OS
 keychain (`keyring` with `apple-native`/`windows-native`/`sync-secret-service`
 features; file fallback `session.json`, 0600). Kanban read-modify-write
 cycles are serialized in-process; across processes files are last-writer-wins

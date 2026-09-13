@@ -47,8 +47,9 @@ folders and surfaces repository status at a glance.
   focus rescan shows the same progress as a manual scan (20s throttle). On
   demand means one control, which scans whatever the current view shows.
 - **Kanban board** (both apps): the user's GitHub repos as cards in five
-  fixed columns (auto-populated via the `gh` CLI, drag to organize), with
-  optional Google-sign-in cloud sync (see `server/`).
+  fixed columns (auto-populated via the `gh` CLI, drag to organize), each
+  card carrying free-text notes edited in place, with optional
+  Google-sign-in cloud sync (see `server/`).
 
 Authoritative behavior spec: [FRONTEND.md](./FRONTEND.md).
 

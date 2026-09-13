@@ -51,6 +51,7 @@ fn main() {
             commands::kanban::refresh_kanban,
             commands::kanban::load_kanban_local,
             commands::kanban::move_kanban_card,
+            commands::kanban::update_kanban_notes,
             commands::kanban::delete_github_repo,
             commands::kanban::open_url,
             commands::auth::sign_in_with_google,

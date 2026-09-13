@@ -1,7 +1,7 @@
 # Plan: bring back per-card notes on the Kanban board
 
-Status: in progress. Slices 1 to 3 are done (core model, store, service,
-server, tests). Next: slice 4, the Tauri plumbing.
+Status: implemented end to end in both apps, docs included. What remains is
+the manual test script at the bottom; delete this file once it passes.
 
 ## Background
 
@@ -61,7 +61,7 @@ the export file.
 
 ```
 card UI (edit, save)
-  -> hook / view model: optimistic state, then call core
+  -> hook / view model: normalize, skip when unchanged, optimistic state, then call core
   -> Tauri command `update_kanban_notes` | UniFFI `update_kanban_notes`
   -> services::kanban::set_notes
        -> KanbanManager::update_notes (locked read-modify-write, bumps updatedAt)
@@ -121,90 +121,156 @@ framework, only `CREATE TABLE IF NOT EXISTS` at startup.
 - The server is part of `just clippy` and `just test`. It is a binary crate,
   so its tests sit next to the code and share `src/test_support.rs`.
 
-### 5. Tauri command: `desktop/src-tauri/`
+### 5. Tauri command: `desktop/src-tauri/` (done)
 
 - `src/commands/kanban.rs`: `#[tauri::command] pub async fn update_kanban_notes(state, name_with_owner: String, notes: Option<String>) -> Result<KanbanState, String>`
   mirroring `move_kanban_card`.
-- `src/main.rs`: register it in `generate_handler!` after `move_kanban_card`.
+- `src/main.rs`: registered in `generate_handler!` after `move_kanban_card`.
 
-### 6. Desktop TypeScript: `desktop/src/`
+### 6. Desktop TypeScript: `desktop/src/` (done)
 
-- `types/kanban.ts`: add `notes?: string` to `KanbanCard` (optional, since
-  the JSON omits it when empty).
+- `types/kanban.ts`: `notes?: string` on `KanbanCard` (optional, since the
+  JSON omits it when empty).
 - `lib/api.ts`: `updateKanbanNotes(nameWithOwner: string, notes: string | null): Promise<KanbanState>`
   invoking `update_kanban_notes` with `{ nameWithOwner, notes }`.
-- `hooks/useKanban.ts`: add `updateNotes` to `UseKanbanReturn` and implement
-  it like `moveCard`: optimistic `setState` writing `notes` and `updatedAt`,
-  then `api.updateKanbanNotes`, `setState(newState)`, and on error `setError`
-  plus `doRefresh()`. Undefined instead of null in the optimistic state when
-  clearing, so the shape matches what core returns.
-- `components/kanban/KanbanBoard.tsx` and `KanbanColumn.tsx`: thread an
-  `onUpdateNotes(nameWithOwner, notes)` prop down to the card, the same way
-  `onDeleteRepo` is threaded.
+- `hooks/useKanban.ts`: `updateNotes(nameWithOwner, text)` takes the
+  editor's raw text and applies the store's rule itself (`normalizeNotes`:
+  trim, blank becomes undefined), so the optimistic card already has the
+  shape core returns. Saving unchanged text returns early: no store write,
+  no `updatedAt` bump, no sync. `moveCard` owns the matching check for
+  moves (`displayedColumn`, legacy ids as Backlog), so
+  `KanbanBoard.handleDrop` only hands over the dragged name. Both share a
+  private `mutateCard(nameWithOwner, patch, request)`: clear the error,
+  optimistic `setState` merging the patch with a provisional `updatedAt`,
+  then `setState(await request())`; on failure `await doRefresh()` first and
+  `setError` after, because the refresh clears the error on its way in (the
+  old order lost every move error).
+- `components/kanban/KanbanBoard.tsx` and `KanbanColumn.tsx` thread an
+  `onUpdateNotes(nameWithOwner, text)` prop down to the card the same way
+  `onDeleteRepo` is threaded; `KanbanCard.tsx` declares the prop and uses it
+  in the next slice.
 
-### 7. Desktop card UI: `desktop/src/components/kanban/KanbanCard.tsx`
+### 7. Desktop card UI: `desktop/src/components/kanban/KanbanCard.tsx` (done)
 
-- State: `isEditing` and `draft`.
-- Root `div`: `draggable={!menu.isOpen && !isEditing}`; drop the `cursor-grab`
-  classes while editing.
-- Notes row after the owner row: when not editing and notes exist, a `button`
-  with `text-left text-[11px] text-text-muted line-clamp-3 whitespace-pre-wrap break-words`
-  that enters edit mode. When editing, a `textarea` with `autoFocus`,
-  `fieldSizing: 'content'`, `max-h` around 5 lines, `resize-none`,
-  `onMouseDown={(e) => e.stopPropagation()}` so a drag never starts from it,
-  `onBlur` saves, `onKeyDown` handles Cmd/Ctrl+Enter and Escape.
-- Save path: trim, compare with `card.notes ?? ''`, call `onUpdateNotes` only
-  when changed, pass `null` for empty.
-- Dropdown menu: add *Add Notes…* / *Edit Notes…* above *View on GitHub*. It
-  closes the menu and enters edit mode.
-- There is no shared textarea component in `ui/`. The editor stays local to
-  the card unless a second use appears.
+- State: `notesOpenedWith: string | null` (the text the editor opened with,
+  null while not editing; `isEditingNotes` is derived from it) and
+  `notesDraft`. One value both says "editing" and carries the untouched-draft
+  reference, so they cannot disagree.
+- Root `div`: `draggable={!menu.isOpen && !isEditingNotes}`; the
+  `cursor-grab` classes are dropped while editing.
+- Notes row after the owner row, inside the same `px-3 pb-2` wrapper as the
+  owner row so a card without notes keeps its height. When not editing and
+  notes exist: a `button` (whole row, `cursor-text`) wrapping a
+  `span.line-clamp-3.whitespace-pre-wrap.wrap-break-word` (the Tailwind 4
+  name; `break-words` is legacy). When editing: a local `NotesEditor`
+  component in a `-mx-1.5 -mb-1` wrapper, so the editor's own padding pulls
+  its box outward and the text stays where the row showed it.
+- `NotesEditor`: `field-sizing: content` plus `max-h-[calc(5lh_+_0.5rem)]`
+  and `overflow-y-auto` for the growth (WebView2, Safari 26.2+ and WebKitGTK
+  2.52+ support it; an older Linux WebKit ignores it and shows the `rows={3}`
+  box instead, so there is no JS resize code). A mount `useLayoutEffect`
+  focuses the field and selects its text, which is what a macOS field does
+  when it becomes first responder, so both editors open the same way.
+  Losing focus is the single exit: Cmd/Ctrl+Enter and Escape call `blur()`
+  on the field, Escape setting a discard ref first, and the one `onBlur`
+  handler reports `onClose(save)`. Both keys are ignored mid-composition,
+  when they belong to the input method. No `onMouseDown` stopPropagation:
+  the card is not draggable while editing anyway, and swallowing mousedown
+  would keep another card's open menu from closing. The notes row is a
+  `div`, not a `button`: the app's global button press effect (an unlayered
+  `transform: scale(0.98)` no utility can override) would shrink the text
+  on click.
+- Save path: `finishEditingNotes(save)` calls
+  `onUpdateNotes(card.nameWithOwner, notesDraft)` only when `save` and the
+  draft differs from `notesOpenedWith`, then clears `notesOpenedWith`.
+  Trimming, clearing on blank, and skipping a save that matches the card are
+  the hook's job, so the card stays a dumb editor.
+- Untouched draft: the comparison against `notesOpenedWith` (not the card)
+  is what keeps a focus refresh that lands remote notes under an open editor
+  from being overwritten by a plain blur.
+- Dropdown menu: *Add Notes…* / *Edit Notes…* above *View on GitHub*, wired
+  to the same `startEditingNotes`, which closes the menu first.
+- There is no shared textarea component in `ui/`. `NotesEditor` stays in the
+  card's file unless a second use appears.
 
-### 8. UniFFI bridge: `macos/ffi/src/lib.rs`
+### 8. UniFFI bridge: `macos/ffi/src/lib.rs` (done)
 
-- `KanbanCard` record: add `pub notes: Option<String>` and map it in the
+- `KanbanCard` record: `pub notes: Option<String>`, mapped in the
   `From<domain::kanban::KanbanCard>` impl. UniFFI turns it into `String?`.
-- Add `pub async fn update_kanban_notes(&self, name_with_owner: String, notes: Option<String>) -> FfiResult<KanbanState>`
+- `pub async fn update_kanban_notes(&self, name_with_owner: String, notes: Option<String>) -> FfiResult<KanbanState>`
   next to `move_kanban_card`, with the same `needless_pass_by_value` allow.
-- Regenerate the Swift bindings with `just macos-project`.
+- The Swift bindings are regenerated by `just macos-project`
+  (`macos/generated` is gitignored, so run it after pulling this change).
 
 ### 9. macOS app: `macos/GitProjectsManager/`
 
-- `Models/KanbanModel.swift`: `func setNotes(_ nameWithOwner: String, _ notes: String?)`
-  mirroring `move(_:to:)`: normalize (trim, empty becomes nil), no-op when
-  unchanged, optimistic `state` mutation with `updatedAt`, then
-  `core.updateKanbanNotes`, on error `errorMessage` and `refresh()`.
-- `Views/KanbanBoardView.swift`, `KanbanCardView`:
-  - `@State isEditingNotes`, `@State draft`, `@FocusState isNotesFocused`.
-  - Notes row under the owner row: `Text(notes)` with `.lineLimit(3)`,
-    secondary color, `.onTapGesture` enters edit mode. While editing,
-    `TextField("Add notes…", text: $draft, axis: .vertical)` with
-    `.lineLimit(1...5)`, `.textFieldStyle(.plain)`, focused on appear,
-    `.onSubmit` saves (Return), `.onExitCommand` cancels (Escape), and
-    `.onChange(of: isNotesFocused)` saves when focus leaves.
-  - `.draggable` cannot be switched off by a value. Add a small
-    `draggableIf(_ enabled: Bool, _ payload: String)` view extension in
-    `Views/` that applies `.draggable` only when enabled, and use it with
-    `!isEditingNotes`.
-  - `cardActions` gains *Add Notes…* / *Edit Notes…*. Both the hover `Menu`
-    and `.contextMenu` reuse it, so both entry points come for free.
+- `Models/KanbanModel.swift` (done): `func setNotes(_ nameWithOwner: String, _ text: String)`
+  takes the editor's raw text, like the Tauri hook: `normalizeNotes` (trim,
+  blank becomes nil), no-op when unchanged. `move(_:to:)` and `setNotes` share
+  a private `edit(_:change:request:)`: `change` rewrites the displayed card
+  and reports whether it differed, a changed card clears `errorMessage` and
+  gets a provisional `updatedAt`, then `request` calls core and its state
+  replaces the optimistic one; on failure `refresh()` runs first and the
+  message is set after, because `refresh()` clears it on its way in. The
+  view calls `model.kanban.setNotes(nameWithOwner, draft)` on save.
+- `Views/KanbanBoardView.swift`, `KanbanCardView` (done):
+  - `@State notesOpenedWith: String?` (nil while not editing;
+    `isEditingNotes` is derived), `@State notesDraft`,
+    `@FocusState isNotesFocused`. Same shape as the Tauri card.
+  - `notesRow` under the owner row: `Text(notes)` with `.lineLimit(3)`,
+    secondary color, full-width `contentShape`, and a
+    `.highPriorityGesture(TapGesture())` rather than `.onTapGesture`, so the
+    click reaches the text before the card's drag handling can claim it
+    (a plain `.gesture` is scheduled after existing ones). While editing,
+    `TextField("Add notes…", text: $notesDraft, axis: .vertical)` with
+    `.lineLimit(1...5)`, `.textFieldStyle(.plain)` (no bezel, so a `.quinary`
+    fill padded outward by 4 pt marks edit mode without moving the text),
+    the same single exit as the Tauri card: `.onSubmit` (Return;
+    Option+Return inserts a line break) sets `isNotesFocused = false`, and
+    `.onExitCommand` (Escape) sets `notesDiscarded = true` first and then
+    does the same. Neither saves by itself, so the order in which AppKit
+    delivers the key and the focus change cannot matter.
+  - Focus is requested from `.task { isNotesFocused = true }`, not
+    `.onAppear`: a synchronous request made as the field appears with its
+    branch is dropped; the async hop lands after the field is installed.
+    The field selects its text on focus, native macOS behavior, which the
+    Tauri editor copies.
+  - `.onChange(of: isNotesFocused)` sits on the card container, after
+    `.alert`, because a handler on the field is torn down with it. It calls
+    `finishEditingNotes(save: !notesDiscarded)`, which clears
+    `notesOpenedWith` first and returns when it was already nil.
+  - Untouched draft: `finishEditingNotes` calls `setNotes` only when saving
+    and the draft differs from `notesOpenedWith`, the same guard as the
+    Tauri card. `startEditingNotes` returns early while the editor is open
+    (the hover menu and the context menu stay reachable then), so choosing
+    *Edit Notes…* mid-edit keeps the draft instead of resetting it; the
+    Tauri card has the same guard.
+  - `.draggable` has no off switch (checked against the macOS 26 SDK:
+    `DragConfiguration` carries no enable flag, and `.disabled` would also
+    kill the field). `Views/DraggableIf.swift` adds
+    `draggableIf<Payload: Transferable>(_ enabled: Bool, _ payload: Payload)`
+    as a `@ViewBuilder` `if`, applied with `!isEditingNotes` where
+    `.draggable` was. Flipping it rebuilds the subtree; the card's own
+    `@State` and `@FocusState` sit above it and survive.
+  - `cardActions` gains *Add Notes…* / *Edit Notes…* (`notesActionTitle`)
+    above *View on GitHub*. Both the hover `Menu` and `.contextMenu` reuse
+    it, so both entry points come for free.
   - Search in `KanbanModel.board(matching:)` stays on `owner/name` only.
 
-### 10. Docs
+### 10. Docs (done)
 
-- `FRONTEND.md` section 7: extend the **Card** bullet with the notes row and
-  add a **Notes** bullet with the behavior above. Section 8 non-goals: add
-  "notes are not searchable". Section 9 platform table if it lists card
-  behaviors.
-- `DESIGN.md`: mention notes in the Kanban paragraph.
-- `TECHNICAL.md`: no file-version change. Mention the `notes` column and the
-  startup `ALTER TABLE` guard in the server line if the schema gets
-  documented there.
-- `ROADMAP.md`: a Done entry.
-- `desktop/docs/DESIGN.md` still describes the v1 notes and `kanban.json`.
-  Refresh that section instead of leaving the stale text.
-- Delete this plan once shipped, or move it to a done section if the folder
-  keeps history.
+- `FRONTEND.md` section 7: the **Card** bullet describes the notes row and a
+  **Notes** bullet carries the behavior above. Section 8 non-goals: "notes
+  are not searchable". Section 9 platform table: the save keys per platform
+  on the Kanban row.
+- `DESIGN.md`: notes in the Kanban paragraph.
+- `TECHNICAL.md`: the persistence paragraph says `notes` is optional and left
+  out of the JSON when empty, so the file stays v2; the server paragraph
+  already covered the column and the guarded `ALTER TABLE`.
+- `ROADMAP.md`: a Done entry. `README.md`: the kanban sentence mentions notes.
+- `desktop/docs/DESIGN.md`: the Kanban section now describes the current
+  board (five columns, `kanban_v2.json`, notes) and points at FRONTEND.md.
+- Delete this plan once the manual test script below passes.
 
 ## Tests
 
@@ -254,15 +320,17 @@ next one before the previous is filled and reviewed.
    select, server tests. Gate: `just test`, `just clippy`, then start it
    locally with `just dev-server` against a copy of an existing database to
    see the migration run.
-4. **Tauri plumbing.** Command, handler registration, TS type, API wrapper,
-   hook, prop threading. Gate: `just check-desktop`.
-5. **Tauri card UI.** Notes row, textarea, keyboard handling, drag guard,
-   menu item. Gate: `just check-desktop`, manual test in `just dev`.
-6. **UniFFI bridge.** Record field, `From`, export, regenerated bindings.
-   Gate: `just macos-project`, `just test`, `just clippy`.
-7. **macOS model and card UI.** `setNotes`, `draggableIf`, notes row, editor,
-   menu item. Gate: `just dev-macos`, manual test.
-8. **Docs.** The five documents listed above. Gate: read-through.
+4. **Tauri plumbing.** (done) Command, handler registration, TS type, API
+   wrapper, hook, prop threading. Gate: `just check-desktop`.
+5. **Tauri card UI.** (done) Notes row, `NotesEditor`, keyboard handling,
+   drag guard, menu item. Gate: `just check-desktop` (passed), manual test
+   in `just dev`.
+6. **UniFFI bridge.** (done) Record field, `From`, export, regenerated
+   bindings. Gate: `just macos-project`, `just test`, `just clippy`.
+7. **macOS model and card UI.** (done) `setNotes`, `draggableIf`, notes row,
+   editor, menu item. Gate: `just macos-project` then the Debug `xcodebuild`
+   of `just dev-macos` (passed, no warnings), manual test.
+8. **Docs.** (done) The documents listed above. Gate: read-through.
 
 ## Rollout
 
