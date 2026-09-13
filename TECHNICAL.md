@@ -56,6 +56,23 @@ sign-in. The client ID and server URL keep working public-endpoint fallbacks.
 Desktop-client secrets are non-confidential to Google, but are still kept out
 of source on principle.
 
+## Sync server (`server/`)
+
+axum 0.8 on tokio; SQLite through `rusqlite` (bundled, WAL) behind an `r2d2`
+pool. The schema is created at start with `CREATE TABLE IF NOT EXISTS`, and a
+column added after the first release gets its own guarded step: `notes` on
+`manifest_cards` is added with `ALTER TABLE` only when `pragma_table_info`
+does not list it. Sign-in verifies a Google ID token with `jsonwebtoken`
+against Google's JWKS, fetched by `reqwest`; both run on rustls with the
+`aws-lc-rs` provider, and trust roots come from the OS store
+(`rustls-platform-verifier`), which is why the runtime image installs
+`ca-certificates`. Sessions are opaque UUID tokens with a TTL
+(`SESSION_TTL_DAYS`). `POST /v1/sync` takes the client's cards and answers
+with every stored card of that user; a stored card's column, notes and
+`updated_at` are replaced only by a strictly newer `updated_at`, so moves and
+notes merge per card, last writer wins. The crate is edition 2021 with
+`rustfmt.toml` set to `style_edition = "2024"`, so its layout matches `core/`.
+
 
 ## macOS build specifics
 
@@ -220,13 +237,15 @@ width, matching Apple's 824/1024 icon grid).
 ## Quality gates
 
 - `just clippy` — clippy pedantic, zero warnings across `core`,
-  `desktop/src-tauri`, `macos/ffi` (CLAUDE.md requirement).
+  `desktop/src-tauri`, `macos/ffi`, `server` (CLAUDE.md requirement).
 - `just test` — core tests: glob matcher, fetch/`gh` reachability classifiers,
   folder-overlap and config-upgrade unit tests, subprocess-timeout unit tests,
   and integration tests for the unpublished overlay, repo ordering, clean paths,
   repo folder names, symlinked and opted-out uninitialized folders, and
   ahead/behind (a local bare repo stands in for the remote, so the whole suite
-  is offline).
+  is offline). Server tests: the `notes` column migration on fresh and
+  pre-notes databases, and per-card last-writer-wins for notes through the
+  sync handler, each against a throwaway SQLite file (no network).
 - `just check-desktop` — frontend gates: `pnpm build` (tsc strict + vite) then eslint.
 - `just bench-scan <path> [local]` — times three `scan_folder` runs and prints
   every bucket count, so a scanner change can be shown to be faster *and* to

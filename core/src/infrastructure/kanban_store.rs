@@ -1,4 +1,4 @@
-use crate::domain::kanban::{KanbanCard, KanbanState};
+use crate::domain::kanban::{KanbanCard, KanbanState, normalize_notes};
 use anyhow::Result;
 use parking_lot::Mutex;
 use std::fs;
@@ -55,12 +55,20 @@ impl KanbanManager {
     /// # Errors
     /// Returns an error if the kanban state cannot be loaded or saved.
     pub fn move_card(&self, name_with_owner: &str, to_column: &str) -> Result<KanbanState> {
-        self.update(|state| {
-            if let Some(card) = state.cards.get_mut(name_with_owner) {
-                card.column = to_column.to_string();
-                card.updated_at = chrono::Utc::now().timestamp_millis();
-            }
-        })
+        self.touch_card(name_with_owner, |card| card.column = to_column.to_string())
+    }
+
+    /// Replace a card's notes. Normalized on the way in (trimmed, blank
+    /// clears them), so every caller stores the same shape.
+    ///
+    /// # Errors
+    /// Returns an error if the kanban state cannot be loaded or saved.
+    pub fn update_notes(
+        &self,
+        name_with_owner: &str,
+        notes: Option<String>,
+    ) -> Result<KanbanState> {
+        self.touch_card(name_with_owner, |card| card.notes = normalize_notes(notes))
     }
 
     /// # Errors
@@ -79,9 +87,26 @@ impl KanbanManager {
                 state.cards.entry(nwo.clone()).or_insert(KanbanCard {
                     name_with_owner: nwo,
                     column: "backlog".to_string(),
+                    notes: None,
                     created_at: now,
                     updated_at: now,
                 });
+            }
+        })
+    }
+
+    /// Apply `mutate` to one card and bump its `updated_at`, which is what
+    /// makes the change win the last-writer-wins cloud merge. An unknown
+    /// card is left alone and the unchanged state is returned.
+    fn touch_card(
+        &self,
+        name_with_owner: &str,
+        mutate: impl FnOnce(&mut KanbanCard),
+    ) -> Result<KanbanState> {
+        self.update(|state| {
+            if let Some(card) = state.cards.get_mut(name_with_owner) {
+                mutate(card);
+                card.updated_at = chrono::Utc::now().timestamp_millis();
             }
         })
     }

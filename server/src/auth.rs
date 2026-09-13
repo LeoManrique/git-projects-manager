@@ -67,11 +67,13 @@ pub struct Authed {
     pub sub: String,
 }
 
-#[axum::async_trait]
 impl FromRequestParts<AppState> for Authed {
     type Rejection = ApiError;
 
-    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
         let token = bearer_token(&parts.headers)
             .ok_or_else(|| ApiError::Unauthorized("missing bearer token".into()))?;
         let now = Utc::now().timestamp();
@@ -89,12 +91,18 @@ impl FromRequestParts<AppState> for Authed {
 }
 
 fn bearer_token(headers: &HeaderMap) -> Option<String> {
-    let h = headers.get(axum::http::header::AUTHORIZATION)?.to_str().ok()?;
-    h.strip_prefix("Bearer ").map(|s| s.to_string())
+    let h = headers
+        .get(axum::http::header::AUTHORIZATION)?
+        .to_str()
+        .ok()?;
+    h.strip_prefix("Bearer ").map(str::to_string)
 }
 
 pub async fn sign_out(State(state): State<AppState>, authed: Authed) -> Result<(), ApiError> {
     let conn = state.db.get()?;
-    conn.execute("DELETE FROM sessions WHERE sub = ?1", rusqlite::params![authed.sub])?;
+    conn.execute(
+        "DELETE FROM sessions WHERE sub = ?1",
+        rusqlite::params![authed.sub],
+    )?;
     Ok(())
 }

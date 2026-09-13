@@ -1,0 +1,3 @@
+# The crate is still edition 2021, but its code is laid out like the core
+# crate (edition 2024), so the formatter follows that style.
+style_edition = "2024"

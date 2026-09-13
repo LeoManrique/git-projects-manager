@@ -130,6 +130,10 @@
       from an older `config.json` reads as on, so upgrades change nothing. The
       Tauri form now passes one values object instead of positional booleans
 
+- [x] Sync server brought to current dependencies (axum 0.8; rustls with
+      `aws-lc-rs` and the OS trust store for the Google JWKS fetch and token
+      checks) and into `just test` / `just clippy`, with its first unit tests
+
 ## Pending
 - [ ] Re-run the multi-agent adversarial code review of the migration (first
       attempt aborted on session usage limits; a manual review pass was done instead)

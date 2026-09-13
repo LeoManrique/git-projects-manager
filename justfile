@@ -70,6 +70,7 @@ build-macos: macos-project
 test:
     cd core && cargo test
     cd macos/ffi && cargo test
+    cd server && cargo test
 
 # Time three scans of a folder, with bucket counts (add "local" to skip the network)
 bench-scan path mode="":
@@ -85,3 +86,4 @@ clippy:
     cd core && cargo clippy --all-targets -- -W clippy::pedantic
     cd desktop/src-tauri && cargo clippy --all-targets -- -W clippy::pedantic
     cd macos/ffi && cargo clippy --all-targets -- -W clippy::pedantic
+    cd server && cargo clippy --all-targets -- -W clippy::pedantic
