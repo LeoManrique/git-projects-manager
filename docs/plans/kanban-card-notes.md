@@ -159,12 +159,21 @@ framework, only `CREATE TABLE IF NOT EXISTS` at startup.
 - Root `div`: `draggable={!menu.isOpen && !isEditingNotes}`; the
   `cursor-grab` classes are dropped while editing.
 - Notes row after the owner row, inside the same `px-3 pb-2` wrapper as the
-  owner row so a card without notes keeps its height. When not editing and
-  notes exist: a `button` (whole row, `cursor-text`) wrapping a
-  `span.line-clamp-3.whitespace-pre-wrap.wrap-break-word` (the Tailwind 4
-  name; `break-words` is legacy). When editing: a local `NotesEditor`
-  component in a `-mx-1.5 -mb-1` wrapper, so the editor's own padding pulls
-  its box outward and the text stays where the row showed it.
+  owner row, rendered only while editing or when notes exist so a card
+  without notes keeps its height. A `-mx-1.5 -mb-1` wrapper holds either
+  the notes `div` (`cursor-text`, `line-clamp-3 whitespace-pre-wrap
+  wrap-break-word`, the Tailwind 4 name; `break-words` is legacy) or the
+  local `NotesEditor`. Both use the same `notesBoxClass` box (`rounded-md
+  bg-dark-bg/70 px-1.5 py-1`), whose padding the wrapper pulls outward so
+  the text lines up with the owner row and nothing moves when the editor
+  opens; the editor adds an accent focus ring.
+- Double-click: `onDoubleClick` on the card calls `startEditingNotes`, and
+  the ellipsis button stops `dblclick` propagation (stopping `click` does
+  not cover it). The first press of a double-click on a card being edited
+  blurs and closes the editor before `dblclick` lands, so `onMouseDown`
+  records `wasEditingAtPress` on first presses (`e.detail === 1`) and the
+  handler skips the reopen. The card is `select-none` so a double-click
+  highlights nothing; the textarea is `select-text`.
 - `NotesEditor`: `field-sizing: content` plus `max-h-[calc(5lh_+_0.5rem)]`
   and `overflow-y-auto` for the growth (WebView2, Safari 26.2+ and WebKitGTK
   2.52+ support it; an older Linux WebKit ignores it and shows the `rows={3}`
@@ -223,9 +232,10 @@ framework, only `CREATE TABLE IF NOT EXISTS` at startup.
     click reaches the text before the card's drag handling can claim it
     (a plain `.gesture` is scheduled after existing ones). While editing,
     `TextField("Add notes…", text: $notesDraft, axis: .vertical)` with
-    `.lineLimit(1...5)`, `.textFieldStyle(.plain)` (no bezel, so a `.quinary`
-    fill padded outward by 4 pt marks edit mode without moving the text),
-    the same single exit as the Tauri card: `.onSubmit` (Return;
+    `.lineLimit(1...5)`, `.textFieldStyle(.plain)` (no bezel; both states
+    share `notesBox`, a `.quinary` fill padded outward by 4 pt, and the
+    editor adds an accent `strokeBorder` overlay since `.plain` draws no
+    focus ring), the same single exit as the Tauri card: `.onSubmit` (Return;
     Option+Return inserts a line break) sets `isNotesFocused = false`, and
     `.onExitCommand` (Escape) sets `notesDiscarded = true` first and then
     does the same. Neither saves by itself, so the order in which AppKit
@@ -252,6 +262,27 @@ framework, only `CREATE TABLE IF NOT EXISTS` at startup.
     as a `@ViewBuilder` `if`, applied with `!isEditingNotes` where
     `.draggable` was. Flipping it rebuilds the subtree; the card's own
     `@State` and `@FocusState` sit above it and survive.
+  - Click outside: AppKit leaves a text field first responder when a click
+    hits nothing focusable, so `Views/EndFocusOnClickOutside.swift` adds
+    `endsFocusOnClickOutside(_ focus: FocusState<Bool>.Binding)`, applied
+    to the field: a local `NSEvent` mouse-down monitor, installed in
+    `.onAppear` and removed in `.onDisappear` (both fire through the
+    `draggableIf` rebuild), that walks from the window's field editor out to
+    the enclosing `NSTextField` and drops the focus when the click lands
+    outside its bounds or in another window, returning the event unchanged
+    so the click still reaches what is under it. Setting the focus state
+    from the handler lands on the next update, after the click is
+    dispatched.
+  - Double-click: `.simultaneousGesture(TapGesture(count: 2))` on the card
+    calls `startEditingNotes`. Simultaneous rather than `.onTapGesture`,
+    which would make the notes text's single tap wait about 290 ms for a
+    possible second click. A double-click whose first click closed the
+    editor does not reopen it: closing flips `draggableIf`, which rebuilds
+    the card and discards the first click's recognition (measured with the
+    gesture on either side of the switch; it holds as long as closing flips
+    it, which is why this side needs no `wasEditingAtPress` latch). The
+    hover `Menu` owns the mouse from its first press, so double-clicking it
+    never reaches the card.
   - `cardActions` gains *Add Notes…* / *Edit Notes…* (`notesActionTitle`)
     above *View on GitHub*. Both the hover `Menu` and `.contextMenu` reuse
     it, so both entry points come for free.
@@ -348,16 +379,28 @@ next one before the previous is filled and reviewed.
 ## Manual test script (after slice 7)
 
 1. Tauri app: hover a card without notes, open the ellipsis menu, choose
-   *Add Notes…*, type two lines, press Cmd+Enter. The card shows the text.
-2. Click the text, change it, click elsewhere. The change sticks.
+   *Add Notes…*, type two lines, press Cmd+Enter. The card shows the text
+   in a rounded box; cards without notes show no box.
+2. Click the text, change it, click elsewhere. The change sticks. The
+   editor's box sits exactly where the notes box was, with an accent
+   outline.
 3. Click the text, type something, press Escape. The previous text is back.
 4. Clear the text completely and blur. The notes row disappears.
-5. While editing, try to drag the card. Nothing happens. After saving, drag
+5. Double-click a card without notes. The editor opens and nothing on the
+   card gets selected. Double-click the card again while editing: the
+   editor closes and stays closed. Double-click the ellipsis button: the
+   menu opens and closes, no editor.
+6. While editing, try to drag the card. Nothing happens. After saving, drag
    it to another column. It moves.
-6. Sign in, add notes on a card, then open the macOS app and press Refresh.
-   The notes appear on the same card.
-7. macOS: edit them, press Return. Option+Return inserts a line break.
+7. Sign in, add notes on a card, then open the macOS app and press Refresh.
+   The notes appear on the same card, in the same box.
+8. macOS: edit them, press Return. Option+Return inserts a line break.
    Escape cancels. Right-click shows *Edit Notes…*.
-8. Back in the Tauri app, Refresh. The macOS edit appears.
-9. Quit both apps, open `kanban_v2.json`. Cards without notes have no
-   `notes` key, edited ones do, and `version` is still 2.
+9. macOS: open the editor, then click on empty board space, on another
+   card, on the same card outside the field, and on a toolbar button. Each
+   closes the editor (and saves a changed draft). Double-click a card
+   without notes: the editor opens; a double-click while editing closes it
+   without reopening.
+10. Back in the Tauri app, Refresh. The macOS edit appears.
+11. Quit both apps, open `kanban_v2.json`. Cards without notes have no
+    `notes` key, edited ones do, and `version` is still 2.

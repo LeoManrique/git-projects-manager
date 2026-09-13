@@ -140,10 +140,12 @@
       store/service `set_notes` sharing the move's mutate-then-sync path;
       the server column added by a guarded `ALTER TABLE` and replaced whole
       on upsert; a Tauri command and a UniFFI export; and an inline quick
-      editor on the card in both apps (*Add/Edit Notes…* menu entry, blur
-      saves, Escape cancels, no drag while editing, untouched drafts never
-      overwrite a synced edit). The v1 notes were exported to a text file for
-      manual re-entry rather than imported. Core, merge and server tests
+      editor on the card in both apps (opened by a click on the notes, a
+      double-click on the card, or the *Add/Edit Notes…* menu entry; any
+      click outside saves, Escape cancels, no drag while editing, untouched
+      drafts never overwrite a synced edit). The v1 notes were exported to a
+      text file for manual re-entry rather than imported. Core, merge and
+      server tests
 
 ## Pending
 - [ ] Re-run the multi-agent adversarial code review of the migration (first

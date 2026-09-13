@@ -141,7 +141,8 @@ struct KanbanColumnView: View {
 }
 
 /// One repo card: name + archived badge, owner + private lock, relative
-/// pushed time, and the notes row when the card has notes, edited in place.
+/// pushed time, and the notes row when the card has notes, edited in place
+/// (a click on the notes or a double-click on the card opens the editor).
 /// Draggable by nameWithOwner except while its notes are being edited;
 /// actions on hover/right-click.
 struct KanbanCardView: View {
@@ -225,6 +226,12 @@ struct KanbanCardView: View {
                 .strokeBorder(.separator, lineWidth: 1)
         )
         .shadow(color: .black.opacity(isHovering ? 0.12 : 0.05), radius: isHovering ? 3 : 1, y: 1)
+        // Double-click opens the editor, the mouse entry point for a card
+        // without notes. Simultaneous, so the notes text's own tap does not
+        // wait for a possible second click. A double-click whose first click
+        // closed the editor does not reopen it: closing flips the drag switch
+        // below, which rebuilds the card and discards that first click.
+        .simultaneousGesture(TapGesture(count: 2).onEnded { startEditingNotes() })
         // Off while editing. Flipping it rebuilds the card below this line;
         // the editor's state lives on this view and survives.
         .draggableIf(!isEditingNotes, entry.repo.nameWithOwner)
@@ -255,8 +262,19 @@ struct KanbanCardView: View {
         }
     }
 
+    private var notesBoxShape: some InsettableShape {
+        RoundedRectangle(cornerRadius: 5)
+    }
+
+    /// The fill behind the notes in both states, padded outward so the text
+    /// inside sits where the owner row's text does.
+    private var notesBox: some View {
+        notesBoxShape.fill(.quinary).padding(-4)
+    }
+
     /// Third row: the editor while editing, the notes when there are any,
-    /// nothing otherwise, so a card without notes keeps its height.
+    /// nothing otherwise, so a card without notes keeps its height. Both
+    /// states share the box, so opening the editor moves nothing.
     @ViewBuilder
     private var notesRow: some View {
         if isEditingNotes {
@@ -265,9 +283,10 @@ struct KanbanCardView: View {
                 .textFieldStyle(.plain)
                 .font(.caption)
                 .focused($isNotesFocused)
-                // `.plain` draws no bezel. The fill is padded outward so the
-                // text stays where the notes row shows it.
-                .background(RoundedRectangle(cornerRadius: 5).fill(.quinary).padding(-4))
+                .background(notesBox)
+                // `.plain` draws no focus ring; the outline is what tells the
+                // editor from the notes it replaced.
+                .overlay(notesBoxShape.strokeBorder(Color.accentColor.opacity(0.4)).padding(-4))
                 // A focus request made synchronously as the field appears is
                 // dropped; the async hop of `task` lands after it is installed.
                 .task { isNotesFocused = true }
@@ -278,6 +297,10 @@ struct KanbanCardView: View {
                     notesDiscarded = true
                     isNotesFocused = false
                 }
+                // AppKit keeps the field focused when a click lands on nothing
+                // focusable; this drops it, so any click outside the field
+                // closes the editor, as it does in the browser.
+                .endsFocusOnClickOutside($isNotesFocused)
         } else if let notes = entry.card.notes {
             Text(notes)
                 .font(.caption)
@@ -285,6 +308,8 @@ struct KanbanCardView: View {
                 .lineLimit(3)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                // After the frame, or the box would hug the text.
+                .background(notesBox)
                 .contentShape(Rectangle())
                 // High priority so the click reaches the text before the
                 // card's drag handling can claim it.

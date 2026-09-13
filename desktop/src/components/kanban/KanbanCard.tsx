@@ -30,6 +30,10 @@ function formatRelative(iso: string | null): string | null {
   return ago(Math.floor(diff / (365 * day)), 'year');
 }
 
+// The box the notes row and its editor share, so opening the editor moves
+// nothing. Both sit in a wrapper that pulls the box out by its own padding.
+const notesBoxClass = 'w-full rounded-md bg-dark-bg/70 px-1.5 py-1 text-[11px]';
+
 export function KanbanCard({
   cardView,
   authedUser,
@@ -48,6 +52,11 @@ export function KanbanCard({
   const [notesOpenedWith, setNotesOpenedWith] = useState<string | null>(null);
   const [notesDraft, setNotesDraft] = useState('');
   const isEditingNotes = notesOpenedWith !== null;
+  // The first press of a double-click on a card being edited blurs the
+  // editor, which closes it, so by the time dblclick lands the card looks
+  // idle. Remembered at the press, so the second click does not reopen
+  // what the first closed.
+  const wasEditingAtPress = useRef(false);
   const pushed = formatRelative(repo.pushedAt);
   const menu = useContextMenu({ menuWidth: 180 });
   const showActions = isHovered || menu.isOpen;
@@ -104,11 +113,19 @@ export function KanbanCard({
         draggable={!menu.isOpen && !isEditingNotes}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
+        onMouseDown={(e) => {
+          if (e.detail === 1) wasEditingAtPress.current = isEditingNotes;
+        }}
+        onDoubleClick={() => {
+          if (!wasEditingAtPress.current) startEditingNotes();
+        }}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
         title={repo.description ?? repo.nameWithOwner}
+        // No text selection, so a double-click opens the editor without
+        // highlighting the name; the textarea opts back in.
         className={`
-          rounded-[10px] bg-dark-elevated border
+          rounded-[10px] bg-dark-elevated border select-none
           transition-all duration-150
           ${isEditingNotes ? '' : 'cursor-grab active:cursor-grabbing'}
           ${
@@ -135,6 +152,7 @@ export function KanbanCard({
               menu.buttonRef.current?.blur();
             }}
             onMouseDown={(e) => e.stopPropagation()}
+            onDoubleClick={(e) => e.stopPropagation()}
             className={`
               shrink-0 -mr-1 p-1 rounded
               text-text-muted hover:text-text-primary hover:bg-dark-borderSubtle
@@ -171,23 +189,23 @@ export function KanbanCard({
           </div>
           {/* Third row: the editor while editing, the notes when there are
               any, nothing otherwise, so a card without notes keeps its
-              height. The editor's box is pulled out by its own padding so
-              the text stays where the notes row shows it. */}
-          {isEditingNotes ? (
+              height. The wrapper pulls the box out by the box's own
+              padding, so its text lines up with the owner row's. */}
+          {(isEditingNotes || card.notes !== undefined) && (
             <div className="-mx-1.5 -mb-1">
-              <NotesEditor value={notesDraft} onChange={setNotesDraft} onClose={finishEditingNotes} />
+              {isEditingNotes ? (
+                <NotesEditor value={notesDraft} onChange={setNotesDraft} onClose={finishEditingNotes} />
+              ) : (
+                // A div rather than a button: the global button press effect
+                // would shrink the text on click.
+                <div
+                  onClick={startEditingNotes}
+                  className={`${notesBoxClass} cursor-text line-clamp-3 whitespace-pre-wrap wrap-break-word text-text-secondary`}
+                >
+                  {card.notes}
+                </div>
+              )}
             </div>
-          ) : (
-            card.notes !== undefined && (
-              // A div rather than a button: the global button press effect
-              // would shrink the text on click.
-              <div
-                onClick={startEditingNotes}
-                className="mt-1 cursor-text line-clamp-3 whitespace-pre-wrap wrap-break-word text-[11px] text-text-secondary"
-              >
-                {card.notes}
-              </div>
-            )
           )}
         </div>
       </div>
@@ -274,7 +292,7 @@ function NotesEditor({ value, onChange, onClose }: NotesEditorProps) {
       onChange={(e) => onChange(e.target.value)}
       onKeyDown={handleKeyDown}
       onBlur={() => onClose(!discardRef.current)}
-      className="block w-full resize-none field-sizing-content max-h-[calc(5lh_+_0.5rem)] overflow-y-auto rounded-md bg-dark-bg/70 px-1.5 py-1 text-[11px] text-text-primary placeholder:text-text-muted outline-none focus:ring-1 focus:ring-accent-blue/40"
+      className={`block ${notesBoxClass} select-text resize-none field-sizing-content max-h-[calc(5lh_+_0.5rem)] overflow-y-auto text-text-primary placeholder:text-text-muted outline-none focus:ring-1 focus:ring-accent-blue/40`}
     />
   );
 }

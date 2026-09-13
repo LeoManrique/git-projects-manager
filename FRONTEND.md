@@ -339,15 +339,20 @@ A sidebar view organizing the user's **GitHub repositories** as cards.
 - **Card**: repo name (+ `ARCHIVED` chip), owner login, lock glyph when
   private, relative pushed time in named form ("yesterday", "2 weeks ago");
   a third row with the card's notes when it has any (secondary color, small
-  text, clamped to 3 lines, line breaks kept), nothing otherwise, so cards
-  without notes keep their height; tooltip shows the description.
-- **Notes** — free text per card, edited in place. Clicking the notes text
-  opens the editor, and so does the *Add Notes…* / *Edit Notes…* card
-  action, the only entry point for a card without notes. The editor
-  replaces the notes row, focused with its text selected (typing replaces
-  it; an arrow key or a click places the caret), placeholder "Add notes…",
-  and grows with the text up to about 5 lines, then scrolls. Losing focus
-  saves; Escape restores the previous text. The
+  text, clamped to 3 lines, line breaks kept, in a rounded box), nothing
+  otherwise, so cards without notes keep their height; tooltip shows the
+  description. Card text is not selectable: a double-click opens the notes
+  (see **Notes**).
+- **Notes** — free text per card, edited in place. Clicking the notes text,
+  double-clicking the card anywhere else, or the *Add Notes…* / *Edit
+  Notes…* card action opens the editor; the last two are the entry points
+  for a card without notes. The editor takes the box's place with an accent
+  outline, focused with its text selected (typing replaces it; an arrow key
+  or a click places the caret), placeholder "Add notes…", and grows with the
+  text up to about 5 lines, then scrolls. Losing focus saves, by the save
+  key (§9) or by a click anywhere outside the field, the card itself
+  included; Escape restores the previous text. A double-click while editing
+  only closes the editor; its second click does not reopen it. The
   saved text is trimmed, and an empty result clears the notes (the row
   disappears). Saving unchanged text is not an edit: nothing is written,
   `updatedAt` is not bumped, nothing syncs. The comparison is against the
