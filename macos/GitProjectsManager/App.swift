@@ -15,7 +15,13 @@ struct GitProjectsManagerApp: App {
         // this app only — a value the user set globally still wins, since the
         // registration domain is the lowest-priority one.
         UserDefaults.standard.register(defaults: ["NSInitialToolTipDelay": 350])
-        model = try? AppModel()
+        AppLog.start()
+        do {
+            model = try AppModel()
+        } catch {
+            AppLog.error("failed to start: \(AppModel.message(error))")
+            model = nil
+        }
     }
 
     var body: some Scene {

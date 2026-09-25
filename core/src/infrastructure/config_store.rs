@@ -1,4 +1,5 @@
 use crate::domain::{Config, MonitoredFolder};
+use crate::infrastructure::app_dir::app_data_dir;
 use anyhow::Result;
 use std::fs;
 use std::path::PathBuf;
@@ -12,13 +13,7 @@ impl ConfigManager {
     /// Returns an error if the platform config directory cannot be
     /// determined or the app config directory cannot be created.
     pub fn new() -> Result<Self> {
-        let config_dir = dirs::config_dir()
-            .ok_or_else(|| anyhow::anyhow!("Could not find config directory"))?
-            .join("git-projects-manager");
-
-        fs::create_dir_all(&config_dir)?;
-
-        let config_path = config_dir.join("config.json");
+        let config_path = app_data_dir()?.join("config.json");
 
         Ok(Self { config_path })
     }

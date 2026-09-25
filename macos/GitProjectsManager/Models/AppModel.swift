@@ -43,7 +43,14 @@ final class AppModel {
     private(set) var isBulkCleaning = false
 
     // UI state
-    var errorMessage: String?
+    /// The shared error surface (§5.6). Every message it shows also goes to
+    /// the log: the banner truncates to two lines and is replaced by the next
+    /// message, so it cannot be the only record.
+    var errorMessage: String? {
+        didSet {
+            if let errorMessage, errorMessage != oldValue { AppLog.warn("banner: \(errorMessage)") }
+        }
+    }
     var searchText = ""
     var selection: SidebarItem? = .all
     var folderForm: FolderFormTarget?
@@ -80,10 +87,23 @@ final class AppModel {
     func loadFolders() async {
         do {
             folders = try core.getMonitoredFolders()
+            forgetRemovedFolders()
         } catch {
             // Degrade silently to the empty state (FRONTEND.md §3).
-            NSLog("failed to load folders: \(Self.message(error))")
+            AppLog.error("failed to load folders: \(Self.message(error))")
         }
+    }
+
+    /// Drop the scan state of folders that are no longer monitored (§5.2). A
+    /// folder deleted mid-scan used to stay in `scanningFolders` forever once a
+    /// full scan superseded its own, and a non-empty set turns off the focus
+    /// rescan for the rest of the session.
+    private func forgetRemovedFolders() {
+        let ids = Set(folders.map(\.id))
+        // Assigned only on a real change: every write to an observed property
+        // invalidates the views reading it.
+        if !scanningFolders.isSubset(of: ids) { scanningFolders.formIntersection(ids) }
+        if !results.keys.allSatisfy(ids.contains) { results = results.filter { ids.contains($0.key) } }
     }
 
     func loadSettings() async {
@@ -95,7 +115,7 @@ final class AppModel {
             defaultTerminalId = settings.defaultTerminal
             defaultEditorId = settings.defaultEditor
         } catch {
-            NSLog("failed to load settings: \(Self.message(error))")
+            AppLog.error("failed to load settings: \(Self.message(error))")
         }
     }
 
@@ -140,12 +160,19 @@ final class AppModel {
         await withTaskGroup(of: (String, ScanResult?).self) { group in
             for folder in targets {
                 group.addTask { [core] in
-                    let result = try? await core.scanFolder(
-                        path: folder.path,
-                        onlyLocalChecks: folder.onlyLocalChecks,
-                        detectUninitialized: folder.detectUninitialized
-                    )
-                    return (folder.id, result)
+                    do {
+                        let result = try await core.scanFolder(
+                            path: folder.path,
+                            onlyLocalChecks: folder.onlyLocalChecks,
+                            detectUninitialized: folder.detectUninitialized
+                        )
+                        return (folder.id, result)
+                    } catch {
+                        // The folder keeps its previous result silently (§5.1),
+                        // so the log is the only place this shows up.
+                        AppLog.error("scan failed for \(folder.path): \(Self.message(error))")
+                        return (folder.id, nil)
+                    }
                 }
             }
             for await (folderId, result) in group {
@@ -153,7 +180,9 @@ final class AppModel {
                 // this folder's spinner — which is why the guard comes before
                 // the removal below and not after it (§5.2).
                 guard scanVersion == version else { continue }
-                if let result { results[folderId] = result }
+                // A folder deleted while it was scanning must not get its
+                // result back.
+                if let result, folder(withId: folderId) != nil { results[folderId] = result }
                 scanningFolders.remove(folderId)
             }
         }
@@ -286,7 +315,7 @@ final class AppModel {
             // overlap with another monitored folder, say); the generic
             // fallback covers errors that carry no message of their own.
             let reason = Self.message(error)
-            NSLog("folder save failed: \(reason)")
+            AppLog.error("folder save failed: \(reason)")
             if !reason.isEmpty { return reason }
             switch target {
             case .add: return "Failed to add folder"
@@ -303,11 +332,10 @@ final class AppModel {
             do {
                 try core.deleteMonitoredFolder(id: folder.id)
             } catch {
+                AppLog.error("folder delete failed: \(Self.message(error))")
                 errorMessage = "Failed to delete folder"
-                NSLog("folder delete failed: \(Self.message(error))")
                 return
             }
-            results.removeValue(forKey: folder.id)
             if selection == .folder(folder.id) { selection = .all }
             await loadFolders()
         }
@@ -444,6 +472,29 @@ final class AppModel {
         NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
     }
 
+    // MARK: - Diagnostics log (FRONTEND.md §6.4)
+
+    /// Where the log files live, for the Logs settings tab to show.
+    func logsFolderPath() -> String? {
+        do {
+            return try logsFolder()
+        } catch {
+            AppLog.error("failed to find the logs folder: \(Self.message(error))")
+            return nil
+        }
+    }
+
+    /// Returns a user-facing error message, or nil on success.
+    func showLogsFolder() -> String? {
+        do {
+            try openLogsFolder()
+            return nil
+        } catch {
+            AppLog.error("failed to open the logs folder: \(Self.message(error))")
+            return "Failed to open the logs folder"
+        }
+    }
+
     func copyPath(_ path: String) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
@@ -459,6 +510,7 @@ final class AppModel {
             defaultTerminalId = id
             return nil
         } catch {
+            AppLog.error("failed to save the default terminal: \(Self.message(error))")
             return "Failed to save setting"
         }
     }
@@ -469,6 +521,7 @@ final class AppModel {
             defaultEditorId = id
             return nil
         } catch {
+            AppLog.error("failed to save the default editor: \(Self.message(error))")
             return "Failed to save setting"
         }
     }
@@ -490,6 +543,7 @@ final class AppModel {
             gitCleanPatterns = patterns
             return nil
         } catch {
+            AppLog.error("failed to save git clean settings: \(Self.message(error))")
             return "Failed to save settings"
         }
     }

@@ -1,6 +1,7 @@
 use crate::domain::auth::SyncSession;
 use crate::domain::scanner::Scanner;
 use crate::infrastructure::{
+    app_dir::app_data_dir,
     config_store::ConfigManager, kanban_store::KanbanManager, repos_cache::ReposCacheManager,
     settings_store::SettingsManager, sync_client::SyncClient,
     token_store::{self, TokenStore},
@@ -28,11 +29,7 @@ impl AppState {
     /// created, or if any of the managers (config, settings, sync client)
     /// fail to initialize.
     pub fn new() -> anyhow::Result<Self> {
-        let config_dir = dirs::config_dir()
-            .ok_or_else(|| anyhow::anyhow!("Could not find config directory"))?
-            .join("git-projects-manager");
-
-        std::fs::create_dir_all(&config_dir)?;
+        let config_dir = app_data_dir()?;
 
         let token_store = token_store::default_store();
         let auth = match token_store.load() {

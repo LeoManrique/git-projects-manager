@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { api } from '../lib/api';
+import { describeError, log, logError } from '../lib/log';
 import {
   GhAuthStatus,
   GhRepo,
@@ -51,6 +52,11 @@ export function useKanban(): UseKanbanReturn {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Every message the board shows also goes to the log (FRONTEND.md §6.4).
+  useEffect(() => {
+    if (error) log('warn', `kanban: ${error}`);
+  }, [error]);
+
   const lastRefreshRef = useRef(0);
   const inFlightRef = useRef(false);
 
@@ -78,7 +84,7 @@ export function useKanban(): UseKanbanReturn {
         window.dispatchEvent(new Event(SYNC_USER_EVENT));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(describeError(err));
     } finally {
       inFlightRef.current = false;
       setIsRefreshing(false);
@@ -106,7 +112,9 @@ export function useKanban(): UseKanbanReturn {
           await doRefresh();
           setIsLoading(false);
         }
-      } catch {
+      } catch (err) {
+        // The refresh below repaints from scratch; only the log hears of it.
+        logError('Failed to load the kanban cache', err);
         await doRefresh();
         setIsLoading(false);
       }
@@ -171,7 +179,7 @@ export function useKanban(): UseKanbanReturn {
         window.dispatchEvent(new Event(SYNC_USER_EVENT));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(describeError(err));
     }
   }, []);
 
@@ -204,7 +212,7 @@ export function useKanban(): UseKanbanReturn {
         // Refetch first: doRefresh clears the error on its way in, and this
         // one has to outlive it.
         await doRefresh();
-        setError(err instanceof Error ? err.message : String(err));
+        setError(describeError(err));
       }
     },
     [doRefresh]

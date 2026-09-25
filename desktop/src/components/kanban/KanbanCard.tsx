@@ -4,6 +4,7 @@ import { KanbanCardView } from '../../types';
 import { useContextMenu } from '../../hooks';
 import { DotsIcon } from '../icons';
 import { api } from '../../lib/api';
+import { logError } from '../../lib/log';
 
 interface KanbanCardProps {
   cardView: KanbanCardView;
@@ -93,8 +94,8 @@ export function KanbanCard({
     menu.close();
     try {
       await api.openUrl(repo.url);
-    } catch {
-      /* surfaced upstream via error state if needed */
+    } catch (err) {
+      logError('Failed to open browser', err);
     }
   };
 

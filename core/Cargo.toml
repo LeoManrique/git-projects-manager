@@ -15,14 +15,27 @@ uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 git2 = "0.21"
 walkdir = "2"
-dirs = "6"
+dirs = "7"
 anyhow = "1"
 parking_lot = "0.12"
 rayon = "1.12"
 tracing = "0.1"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
-# vendored: build the dbus client statically so Linux builds don't need libdbus-dev.
-keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service", "vendored"] }
-oauth2 = { version = "5", default-features = false, features = ["reqwest", "rustls-tls"] }
+# The file log (infrastructure/logging.rs). No defaults: they pull in ANSI
+# colors and the `log` bridge, neither of which a log file wants.
+tracing-subscriber = { version = "0.3.23", default-features = false, features = ["fmt", "chrono"] }
+tracing-appender = "0.2.5"
+# `form`: the OAuth token exchange posts a form (infrastructure/oauth.rs).
+reqwest = { version = "0.13", default-features = false, features = ["json", "form", "rustls"] }
+# The default `v1` feature bundles the native store for each platform (Linux
+# uses zbus, pure Rust, so no libdbus-dev is needed).
+keyring = "4"
+# Only the PKCE and CSRF helpers are used; the token exchange goes through
+# reqwest directly, so no HTTP client feature (which would pin reqwest 0.12).
+oauth2 = { version = "5", default-features = false }
 tiny_http = "0.12"
 url = "2"
+
+[target.'cfg(unix)'.dependencies]
+# killpg: a timed-out git is killed together with its ssh/https helpers
+# (infrastructure/process.rs).
+libc = "0.2.189"

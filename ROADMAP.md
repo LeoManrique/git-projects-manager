@@ -147,6 +147,13 @@
       text file for manual re-entry rather than imported. Core, merge and
       server tests
 
+- [x] **Diagnostics log** in both apps, owned by the core, with a Settings →
+      Logs panel and full banner text on hover. Fixed along the way: `git pull`
+      had no timeout and its progress lines filled the banner; a timed-out git
+      left its network helpers running; a folder deleted mid-scan stayed
+      "scanning" and disabled focus rescans. Deps to latest in the touched
+      crates (reqwest 0.13, keyring 4, dirs 7)
+
 ## Pending
 - [ ] Re-run the multi-agent adversarial code review of the migration (first
       attempt aborted on session usage limits; a manual review pass was done instead)
@@ -157,3 +164,10 @@
       which needs the flag polled in the status loop (not just the walk) and a
       partial-result marker, since the old entry point had neither
 - [ ] Update stale `desktop/docs/*` (SETUP paths, QUICK_START npm→pnpm)
+- [ ] Bound the one-time `gh` lookup (`github_cli::resolve_gh`): it runs the
+      user's login shell with no timeout, so a hanging profile blocks every scan
+      thread that reaches `gh`
+- [ ] Tauri bulk pull/clean message omits the repo name the macOS app includes
+      (`"{repo}: {reason}"`)
+- [ ] Tauri kanban "View on GitHub" failure is only logged; macOS shows it on
+      the board ("Failed to open browser: …")

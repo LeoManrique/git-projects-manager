@@ -1,6 +1,7 @@
 import { useRef, useState, type ComponentType } from 'react';
 import { useKanban } from '../../hooks/useKanban';
 import { useAuth } from '../../hooks/useAuth';
+import { describeError } from '../../lib/log';
 import { useContextMenu } from '../../hooks';
 import { KanbanColumn } from './KanbanColumn';
 import { KANBAN_COLUMNS, ColumnId } from '../../config/kanbanColumns';
@@ -126,7 +127,7 @@ function SyncStatusChip({ syncStatus }: { syncStatus: SyncStatus }) {
       await signIn();
       menu.close();
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : String(e));
+      setActionError(describeError(e));
     } finally {
       setIsSigningIn(false);
     }
@@ -138,7 +139,7 @@ function SyncStatusChip({ syncStatus }: { syncStatus: SyncStatus }) {
       await signOut();
       menu.close();
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : String(e));
+      setActionError(describeError(e));
     }
   };
 

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api } from '../../lib/api';
+import { logError } from '../../lib/log';
 import { TrashIcon } from '../icons';
 
 interface GitCleanSettingsProps {
@@ -25,7 +26,7 @@ export default function GitCleanSettings({ onSettingsChange }: GitCleanSettingsP
       setExcludePatterns(settings.excludePatterns);
     } catch (err) {
       setError('Failed to load settings');
-      console.error(err);
+      logError('Failed to load git clean settings', err);
     } finally {
       setIsLoading(false);
     }
@@ -40,7 +41,7 @@ export default function GitCleanSettings({ onSettingsChange }: GitCleanSettingsP
       onSettingsChange();
     } catch (err) {
       setError('Failed to save settings');
-      console.error(err);
+      logError('Failed to save git clean settings', err);
     } finally {
       setIsSaving(false);
     }

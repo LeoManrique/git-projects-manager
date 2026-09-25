@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { api } from '../lib/api';
 import { MonitoredFolder, ScanResult, RepoStatus } from '../types';
 import { repoName } from '../lib/repoUtils';
+import { log, logError } from '../lib/log';
 
 // Minimum interval between focus-triggered rescans (FRONTEND.md §5.1)
 const FOCUS_SCAN_MIN_INTERVAL_MS = 20_000;
@@ -52,6 +53,33 @@ export function useScanner(folders: MonitoredFolder[]): UseScannerReturn {
   const scanVersionRef = useRef(0);
   const lastScanTimeRef = useRef(0);
   const hasInitialScanRef = useRef(false);
+  // The ids monitored right now, read by scans that started before a folder
+  // was deleted.
+  const folderIdsRef = useRef(new Set<string>());
+
+  // Every message the shared error surface shows also goes to the log: the
+  // banner is replaced by the next message, so it cannot be the only record
+  // (FRONTEND.md §6.4).
+  useEffect(() => {
+    if (error) log('warn', `banner: ${error}`);
+  }, [error]);
+
+  // Drop the scan state of folders that are no longer monitored (§5.2). A
+  // folder deleted mid-scan used to stay in `scanningFolders` forever once a
+  // full scan superseded its own, and a non-empty set turns off the focus
+  // rescan for the rest of the session.
+  useEffect(() => {
+    const ids = new Set(folders.map((f) => f.id));
+    folderIdsRef.current = ids;
+    setScanningFolders((prev) => {
+      const next = new Set([...prev].filter((id) => ids.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+    setResults((prev) => {
+      const kept = Object.entries(prev).filter(([id]) => ids.has(id));
+      return kept.length === Object.keys(prev).length ? prev : Object.fromEntries(kept);
+    });
+  }, [folders]);
 
   /**
    * Scan with UI indicators. Full scans bump the version; a folder whose
@@ -83,8 +111,9 @@ export function useScanner(folders: MonitoredFolder[]): UseScannerReturn {
           const result = await api
             .scanFolder(folder)
             .catch((err: unknown) => {
-              // Folder keeps its previous result silently (§5.1).
-              console.error(`Scan failed for ${folder.path}:`, err);
+              // Folder keeps its previous result silently (§5.1), so the log
+              // is the only place this shows up.
+              logError(`Scan failed for ${folder.path}`, err);
               return null;
             });
 
@@ -92,7 +121,10 @@ export function useScanner(folders: MonitoredFolder[]): UseScannerReturn {
           // to the scan that owns them now (§5.2).
           if (version !== scanVersionRef.current) return;
 
-          if (result) setResults((prev) => ({ ...prev, [folder.id]: result }));
+          // A folder deleted while it was scanning must not get its result back.
+          if (result && folderIdsRef.current.has(folder.id)) {
+            setResults((prev) => ({ ...prev, [folder.id]: result }));
+          }
           setScanningFolders((prev) => {
             const next = new Set(prev);
             next.delete(folder.id);

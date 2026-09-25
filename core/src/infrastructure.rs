@@ -1,3 +1,4 @@
+pub mod app_dir;
 pub mod atomic_write;
 pub mod config_store;
 pub mod git;
@@ -5,6 +6,7 @@ pub mod github_cli;
 pub mod ignore_patterns;
 pub mod kanban_store;
 pub mod launcher;
+pub mod logging;
 pub mod oauth;
 pub mod process;
 pub mod remote_check_store;

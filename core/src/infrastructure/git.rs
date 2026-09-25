@@ -1,9 +1,10 @@
+use crate::infrastructure::logging::log_safe;
 use crate::infrastructure::process::output_with_timeout;
 use anyhow::{Context, Result};
 use git2::{Repository, Status, StatusOptions};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Output};
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
@@ -67,13 +68,116 @@ fn git_command() -> Command {
     cmd
 }
 
+/// Abort an HTTPS transfer that has stalled below 1 KiB/s for 20 s, so a
+/// stalled remote fails fast with git's own error instead of running into the
+/// wall-clock timeout. Used by `fetch` and `pull`.
+fn limit_http(cmd: &mut Command) {
+    cmd.args([
+        "-c",
+        "http.lowSpeedLimit=1000",
+        "-c",
+        "http.lowSpeedTime=20",
+    ]);
+}
+
+/// The SSH equivalent of [`limit_http`] for the background fetch: no prompts,
+/// and a 10 s connect timeout.
+///
+/// `GIT_SSH_COMMAND` outranks `GIT_SSH` and `core.sshCommand`, so it is only
+/// set when the user has chosen none of them; otherwise a per-account key setup
+/// (`core.sshCommand = ssh -i work_key`) would be silently replaced by plain
+/// `ssh`. Never used by `pull`: `BatchMode` also turns off the passphrase
+/// prompt a pull the user asked for may rely on.
+fn limit_ssh(cmd: &mut Command, repo_path: &Path) {
+    if !uses_own_ssh(repo_path) {
+        cmd.env("GIT_SSH_COMMAND", "ssh -oBatchMode=yes -oConnectTimeout=10");
+    }
+}
+
+/// Whether the user configured how git runs ssh, for this repo or globally.
+fn uses_own_ssh(repo_path: &Path) -> bool {
+    std::env::var_os("GIT_SSH_COMMAND").is_some()
+        || std::env::var_os("GIT_SSH").is_some()
+        || Repository::open(repo_path)
+            .and_then(|repo| repo.config())
+            .and_then(|config| config.get_string("core.sshCommand"))
+            .is_ok()
+}
+
+/// A git command that takes longer than this is logged even when it succeeds,
+/// so a scan that feels slow can be traced to the repos that made it slow.
+const SLOW_GIT: Duration = Duration::from_secs(5);
+
+/// Run a git command under a wall-clock `timeout` and log how it went.
+///
+/// The single place git subprocesses are executed, so every one of them is
+/// bounded and every failure reaches the log with its stderr — the part the
+/// UI truncates or never shows.
+fn run_git(cmd: &mut Command, timeout: Duration) -> std::io::Result<Output> {
+    let started = Instant::now();
+    let result = output_with_timeout(cmd, timeout);
+    log_git_result(cmd, &result, started.elapsed());
+    result
+}
+
+fn log_git_result(cmd: &Command, result: &std::io::Result<Output>, elapsed: Duration) {
+    let repo = cmd
+        .get_current_dir()
+        .map(|dir| dir.display().to_string())
+        .unwrap_or_default();
+    let command = describe(cmd);
+    let elapsed_ms = elapsed.as_millis();
+    match result {
+        Err(error) => {
+            tracing::warn!(%repo, %command, elapsed_ms, %error, "git did not finish");
+        }
+        Ok(output) if !output.status.success() => {
+            let stderr = log_safe(&String::from_utf8_lossy(&output.stderr));
+            let status = output.status;
+            tracing::warn!(%repo, %command, elapsed_ms, %status, %stderr, "git failed");
+        }
+        Ok(_) if elapsed >= SLOW_GIT => {
+            tracing::info!(%repo, %command, elapsed_ms, "git was slow");
+        }
+        Ok(_) => tracing::debug!(%repo, %command, elapsed_ms, "git ok"),
+    }
+}
+
+/// The git arguments worth reading in a log line: everything but the
+/// `-c key=value` knobs, which are the same on every call.
+fn describe(cmd: &Command) -> String {
+    let mut args = cmd.get_args().map(|a| a.to_string_lossy());
+    let mut shown = Vec::new();
+    while let Some(arg) = args.next() {
+        if arg == "-c" {
+            args.next();
+        } else {
+            shown.push(arg);
+        }
+    }
+    shown.join(" ")
+}
+
 /// How long a single `git fetch` may run before it is killed.
 ///
-/// The `-c` knobs below bound a *stalled transfer*, but not a TCP connect to a
+/// [`limit_http`] and [`limit_ssh`] bound a *stalled transfer*, but not a TCP connect to a
 /// black-holed route: libcurl's default connect timeout is 300 s. A killed
 /// fetch classifies as [`RemoteReachability::Unreachable`] — never `NotFound` —
 /// so the failure mode is "we could not check", not a repo wrongly flagged.
 const FETCH_TIMEOUT: Duration = Duration::from_secs(20);
+
+/// How long a `git pull` may run before it is killed.
+///
+/// Generous on purpose. A stalled HTTPS transfer is already cut short by
+/// [`limit_http`]; this is the backstop for what that cannot see (a
+/// black-holed connect, a stalled ssh, a hanging hook). A timeout sends
+/// `SIGTERM` first so git can remove its lock files, but a pull that ignores it
+/// is killed and may still leave `.git/index.lock` behind — worse than waiting.
+const PULL_TIMEOUT: Duration = Duration::from_mins(5);
+
+/// How long a local-only git command (`rev-list`, the `clean` dry run) may
+/// run. They touch no network, so this only catches a hung filesystem.
+const LOCAL_TIMEOUT: Duration = Duration::from_mins(1);
 
 /// How long a *successful* fetch is trusted before the next scan re-fetches the
 /// same repo.
@@ -242,13 +346,12 @@ impl GitOperations {
             "gc.auto=0",
             "-c",
             "maintenance.auto=false",
-            // Abort a transfer that has stalled below 1 KiB/s for 20s. libcurl's
-            // default connect timeout is 300s, so without this a black-holed
-            // route holds a worker for minutes and the scan appears frozen.
-            "-c",
-            "http.lowSpeedLimit=1000",
-            "-c",
-            "http.lowSpeedTime=20",
+        ]);
+        // Without them a black-holed route holds a worker for minutes and the
+        // scan appears frozen.
+        limit_http(&mut cmd);
+        limit_ssh(&mut cmd, repo_path);
+        cmd.args([
             "fetch",
             "--quiet",
             // Nothing in a scan result depends on tags or submodule refs, and
@@ -258,13 +361,7 @@ impl GitOperations {
         ])
         .current_dir(repo_path);
 
-        // The SSH equivalent of the two settings above. Skipped when the user
-        // has configured their own ssh wrapper, which we must not override.
-        if std::env::var_os("GIT_SSH_COMMAND").is_none() {
-            cmd.env("GIT_SSH_COMMAND", "ssh -oBatchMode=yes -oConnectTimeout=10");
-        }
-
-        let output = output_with_timeout(&mut cmd, FETCH_TIMEOUT)?;
+        let output = run_git(&mut cmd, FETCH_TIMEOUT)?;
 
         let stderr = String::from_utf8_lossy(&output.stderr);
         let reachability = classify_fetch(output.status.success(), &stderr);
@@ -288,10 +385,10 @@ impl GitOperations {
     /// Returns an error if `git rev-list` cannot be executed, exits with a
     /// failure status, or prints something other than two counts.
     pub fn ahead_behind_via_cli(repo_path: &Path) -> Result<(bool, bool)> {
-        let output = git_command()
-            .args(["rev-list", "--left-right", "--count", "@{upstream}...HEAD"])
-            .current_dir(repo_path)
-            .output()?;
+        let mut cmd = git_command();
+        cmd.args(["rev-list", "--left-right", "--count", "@{upstream}...HEAD"])
+            .current_dir(repo_path);
+        let output = run_git(&mut cmd, LOCAL_TIMEOUT)?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -308,21 +405,28 @@ impl GitOperations {
     }
 
     /// # Errors
-    /// Returns an error if the `git pull` command cannot be executed, or if it
-    /// exits with a failure status.
+    /// Returns an error if the `git pull` command cannot be executed, exceeds
+    /// [`PULL_TIMEOUT`], or exits with a failure status.
     pub fn pull(repo_path: &Path) -> Result<String> {
         // No explicit fetch first: `git pull` *is* fetch + merge, so the extra
         // call was a second full network round-trip whose result was discarded.
-        let output = git_command()
-            .arg("pull")
-            .current_dir(repo_path)
-            .output()?;
+        let mut cmd = git_command();
+        limit_http(&mut cmd);
+        // `--quiet` keeps git's progress lines ("From <url>", "* [new tag]")
+        // out of stderr, so a failure's stderr is the reason and nothing else.
+        // They used to fill the two lines the error banner shows.
+        cmd.args(["pull", "--quiet"]).current_dir(repo_path);
+        // One self-contained message: the Tauri bridge shows only the
+        // outermost layer of an error chain.
+        let output = run_git(&mut cmd, PULL_TIMEOUT)
+            .map_err(|e| anyhow::anyhow!("Pull failed: {e}"))?;
 
         if output.status.success() {
+            tracing::info!(repo = %repo_path.display(), "pull succeeded");
             Ok(String::from_utf8_lossy(&output.stdout).to_string())
         } else {
-            let error = String::from_utf8_lossy(&output.stderr).to_string();
-            anyhow::bail!("Pull failed: {error}")
+            let error = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("Pull failed: {}", error.trim())
         }
     }
 
@@ -334,20 +438,22 @@ impl GitOperations {
     /// So we dry-run, filter in Rust, then delete the survivors ourselves.
     ///
     /// # Errors
-    /// Returns an error if the `git clean` dry run cannot be executed or exits
-    /// with a failure status. If individual paths cannot be deleted the rest
-    /// are still removed, and the error names every path that failed.
+    /// Returns an error if the `git clean` dry run cannot be executed, exceeds
+    /// [`LOCAL_TIMEOUT`], or exits with a failure status. If individual paths
+    /// cannot be deleted the rest are still removed, and the error names every
+    /// path that failed.
     pub fn clean(repo_path: &Path, exclude_patterns: &[String]) -> Result<(Vec<String>, Vec<String>)> {
         let mut cmd = git_command();
         cmd.arg("clean")
             .arg("-fdXn") // dry run: list what would be removed
             .current_dir(repo_path);
 
-        let output = cmd.output()?;
+        let output = run_git(&mut cmd, LOCAL_TIMEOUT)
+            .map_err(|e| anyhow::anyhow!("Clean failed: {e}"))?;
 
         if !output.status.success() {
-            let error = String::from_utf8_lossy(&output.stderr).to_string();
-            anyhow::bail!("Clean failed: {error}")
+            let error = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("Clean failed: {}", error.trim())
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -392,15 +498,16 @@ impl GitOperations {
             }
         }
 
+        let removed = files_removed.len() + directories_removed.len();
         if !failures.is_empty() {
             anyhow::bail!(
-                "removed {} path(s), failed to remove {}: {}",
-                files_removed.len() + directories_removed.len(),
+                "removed {removed} path(s), failed to remove {}: {}",
                 failures.len(),
                 failures.join("; ")
             );
         }
 
+        tracing::info!(repo = %repo_path.display(), removed, "clean succeeded");
         Ok((files_removed, directories_removed))
     }
 }
@@ -491,6 +598,14 @@ mod tests {
         assert!(path_matches_any(".vscode/settings.json", &patterns));
         assert!(path_matches_any(".vscode/", &patterns));
         assert!(path_matches_any("sub/.vscode/foo", &patterns));
+    }
+
+    #[test]
+    fn describe_leaves_out_the_config_knobs() {
+        let mut cmd = git_command();
+        limit_http(&mut cmd);
+        cmd.args(["pull", "--quiet"]);
+        assert_eq!(describe(&cmd), "pull --quiet");
     }
 
     #[test]

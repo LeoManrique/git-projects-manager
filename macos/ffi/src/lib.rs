@@ -7,7 +7,7 @@
 
 use gpm_core::AppState;
 use gpm_core::domain;
-use gpm_core::infrastructure::{github_cli, launcher};
+use gpm_core::infrastructure::{github_cli, launcher, logging};
 use gpm_core::services;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -299,6 +299,68 @@ impl From<services::kanban::KanbanRefresh> for KanbanRefresh {
             sync_status: r.sync_status.into(),
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Logging (free functions: the log must start before `GpmCore::new`, so that a
+// startup failure is recorded too)
+// ---------------------------------------------------------------------------
+
+#[derive(uniffi::Enum)]
+pub enum LogLevel {
+    Error,
+    Warn,
+    Info,
+}
+
+impl From<LogLevel> for logging::LogLevel {
+    fn from(l: LogLevel) -> Self {
+        match l {
+            LogLevel::Error => Self::Error,
+            LogLevel::Warn => Self::Warn,
+            LogLevel::Info => Self::Info,
+        }
+    }
+}
+
+/// Start the diagnostics log (`macos.<date>.log`), returning its folder.
+/// Idempotent.
+///
+/// # Errors
+/// Errs when the logs folder or today's file cannot be created.
+#[uniffi::export]
+// UniFFI exports take owned values; the signature is the FFI contract.
+#[allow(clippy::needless_pass_by_value)]
+pub fn init_logging(app_version: String) -> FfiResult<String> {
+    let dir = logging::init("macos", &app_version)?;
+    Ok(dir.display().to_string())
+}
+
+/// Record a line from the Swift side: an error it showed or swallowed.
+#[uniffi::export]
+// UniFFI exports take owned values; the signature is the FFI contract.
+#[allow(clippy::needless_pass_by_value)]
+pub fn log_message(level: LogLevel, message: String) {
+    logging::frontend(level.into(), &message);
+}
+
+/// Where the log files live.
+///
+/// # Errors
+/// Errs when the app data folder cannot be determined.
+#[uniffi::export]
+pub fn logs_folder() -> FfiResult<String> {
+    Ok(logging::logs_dir()?.display().to_string())
+}
+
+/// Open the logs folder in Finder.
+///
+/// # Errors
+/// Errs when the folder cannot be created or Finder fails to launch.
+#[uniffi::export]
+pub fn open_logs_folder() -> FfiResult<()> {
+    logging::open_logs_folder()?;
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------

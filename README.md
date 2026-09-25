@@ -20,7 +20,8 @@ Monorepo layout:
   sync server.
 
 Both apps include the GitHub-backed kanban board, with per-card notes and optional
-cloud sync.
+cloud sync, and keep a daily diagnostics log of failed git commands, scans and
+errors (Settings → Logs opens its folder).
 
 Frontend behavior for both apps is specified in [FRONTEND.md](./FRONTEND.md) — the
 single source of truth. Architecture details live in [TECHNICAL.md](./TECHNICAL.md).

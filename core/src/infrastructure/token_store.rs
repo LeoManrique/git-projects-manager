@@ -1,5 +1,6 @@
 use crate::domain::auth::SyncSession;
-use anyhow::{Context, Result};
+use crate::infrastructure::app_dir::app_data_dir;
+use anyhow::Result;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -57,11 +58,7 @@ impl FileTokenStore {
     /// Returns an error if the platform config directory cannot be
     /// determined or the app config directory cannot be created.
     pub fn new() -> Result<Self> {
-        let dir = dirs::config_dir()
-            .context("could not find config directory")?
-            .join(SERVICE);
-        std::fs::create_dir_all(&dir)?;
-        Ok(Self { path: dir.join("session.json") })
+        Ok(Self { path: app_data_dir()?.join("session.json") })
     }
 }
 

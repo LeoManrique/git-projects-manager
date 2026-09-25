@@ -8,7 +8,7 @@ tauri-build = { version = "2.6.3", features = [] }
 
 [dependencies]
 gpm-core = { path = "../../core" }
-tauri = { version = "2.11.3", features = [] }
+tauri = { version = "2.11.6", features = [] }
 tauri-plugin-dialog = "2.7"
 tauri-plugin-fs = "2.5"
 tauri-plugin-os = "2.3"
@@ -16,8 +16,6 @@ tauri-plugin-shell = "2.3"
 serde = { version = "1", features = ["derive"] }
 chrono = "0.4"
 anyhow = "1"
-tracing = "0.1"
-tracing-subscriber = "0.3"
 
 [features]
 default = ["custom-protocol"]

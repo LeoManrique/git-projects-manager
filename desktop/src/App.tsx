@@ -4,16 +4,18 @@ import { AllFoldersOverview, FolderDetail, ScanButton, RepoActionHandlers } from
 import DefaultAppsSettings from './components/settings/DefaultAppsSettings';
 import GitCleanSettings from './components/settings/GitCleanSettings';
 import AccountSettings from './components/settings/AccountSettings';
+import LogsSettings from './components/settings/LogsSettings';
 import { KanbanBoard } from './components/kanban';
 import { Sidebar, Selection } from './components/navigation';
 import { api } from './lib/api';
+import { logError } from './lib/log';
 import { localOnlyNotice } from './lib/repoUtils';
 import { MonitoredFolder, TerminalApp, EditorApp } from './types';
 import { useScanner } from './hooks/useScanner';
-import { FolderIcon, AppsIcon, CloseIcon, CleanIcon, UserIcon, SearchIcon } from './components/icons';
+import { FolderIcon, AppsIcon, CloseIcon, CleanIcon, UserIcon, LogsIcon, SearchIcon } from './components/icons';
 import './App.css';
 
-type SettingsCategory = 'folders' | 'apps' | 'gitclean' | 'account';
+type SettingsCategory = 'folders' | 'apps' | 'gitclean' | 'account' | 'logs';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -39,6 +41,7 @@ function SettingsModal({ isOpen, initialCategory, onClose, folders, onRefreshFol
     { id: 'apps', label: 'Default Apps', icon: <AppsIcon /> },
     { id: 'gitclean', label: 'Git Clean', icon: <CleanIcon /> },
     { id: 'account', label: 'Account', icon: <UserIcon /> },
+    { id: 'logs', label: 'Logs', icon: <LogsIcon /> },
   ];
 
   return (
@@ -117,6 +120,9 @@ function SettingsModal({ isOpen, initialCategory, onClose, folders, onRefreshFol
             {activeCategory === 'account' && (
               <AccountSettings />
             )}
+            {activeCategory === 'logs' && (
+              <LogsSettings />
+            )}
           </div>
         </div>
       </div>
@@ -142,7 +148,7 @@ function App() {
       const loaded = await api.getMonitoredFolders();
       setFolders(loaded || []);
     } catch (err) {
-      console.error('Failed to load folders:', err);
+      logError('Failed to load folders', err);
     }
   }, []);
 
@@ -156,7 +162,7 @@ function App() {
       setDefaultTerminal(terminals.find(t => t.id === appSettings.defaultTerminal) ?? null);
       setDefaultEditor(editors.find(e => e.id === appSettings.defaultEditor) ?? null);
     } catch (err) {
-      console.error('Failed to load app settings:', err);
+      logError('Failed to load app settings', err);
     }
   }, []);
 
@@ -279,7 +285,11 @@ function App() {
 
         {/* Shared error surface (FRONTEND.md §5.6) */}
         {selection.view !== 'kanban' && scanner.error && (
-          <div className="flex-shrink-0 mx-3 mt-2 bg-accent-red/10 border border-accent-red/20 text-accent-red px-2.5 py-1.5 rounded text-xs">
+          <div
+            // The full text: the log keeps it too (FRONTEND.md §6.4).
+            title={scanner.error}
+            className="flex-shrink-0 mx-3 mt-2 bg-accent-red/10 border border-accent-red/20 text-accent-red px-2.5 py-1.5 rounded text-xs line-clamp-2 break-words"
+          >
             {scanner.error}
           </div>
         )}

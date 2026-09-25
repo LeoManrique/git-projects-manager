@@ -1,3 +1,4 @@
+use crate::infrastructure::app_dir::app_data_dir;
 use crate::infrastructure::atomic_write::write_atomic;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -38,15 +39,12 @@ impl Default for RemoteCheckStore {
 
 impl RemoteCheckStore {
     /// Self-locating like the other stores
-    /// (`dirs::config_dir()/git-projects-manager/remote_checks_v1.json`).
+    /// (`<app data dir>/remote_checks_v1.json`).
     #[must_use]
     pub fn new() -> Self {
-        let path = dirs::config_dir().map_or_else(
-            || PathBuf::from("remote_checks_v1.json"),
-            |d| {
-                d.join("git-projects-manager")
-                    .join("remote_checks_v1.json")
-            },
+        let path = app_data_dir().map_or_else(
+            |_| PathBuf::from("remote_checks_v1.json"),
+            |d| d.join("remote_checks_v1.json"),
         );
         Self { path }
     }

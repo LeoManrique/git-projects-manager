@@ -6,7 +6,8 @@
 //! - `macos/ffi` — the `UniFFI` bridge for the native `SwiftUI` app (macOS).
 //!
 //! Both frontends share the same on-disk stores under
-//! `dirs::config_dir()/git-projects-manager/`.
+//! `dirs::config_dir()/git-projects-manager/`, and write their diagnostics
+//! log to its `logs/` folder through [`infrastructure::logging`].
 
 pub mod config;
 pub mod domain;

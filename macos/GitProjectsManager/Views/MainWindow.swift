@@ -156,6 +156,9 @@ struct ErrorBanner: View {
                 Text(message)
                     .lineLimit(2)
                     .truncationMode(.middle)
+                    // The full text, which the two lines may cut; the log
+                    // keeps it too (FRONTEND.md §6.4).
+                    .help(message)
                 Spacer(minLength: 0)
             }
             .font(.callout)

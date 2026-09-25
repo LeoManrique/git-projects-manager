@@ -81,15 +81,27 @@ pub fn open_url(url: &str) -> Result<()> {
     if !url.starts_with("https://") && !url.starts_with("http://") {
         bail!("refusing to open non-http(s) URL");
     }
+    system_open(url)
+}
 
+/// Open a local folder in the system file manager.
+///
+/// # Errors
+/// Errs when the platform open command fails to spawn.
+pub fn open_path(path: &str) -> Result<()> {
+    system_open(path)
+}
+
+/// Hand `target` (a URL or a path) to the platform's default handler.
+fn system_open(target: &str) -> Result<()> {
     #[cfg(target_os = "macos")]
-    Command::new("open").arg(url).spawn()?;
+    Command::new("open").arg(target).spawn()?;
 
     #[cfg(target_os = "linux")]
-    Command::new("xdg-open").arg(url).spawn()?;
+    Command::new("xdg-open").arg(target).spawn()?;
 
     #[cfg(target_os = "windows")]
-    Command::new("cmd").args(["/C", "start", "", url]).spawn()?;
+    Command::new("cmd").args(["/C", "start", "", target]).spawn()?;
 
     Ok(())
 }

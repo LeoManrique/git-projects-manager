@@ -46,6 +46,12 @@ folders and surfaces repository status at a glance.
 - **Scan automatically**: on launch, on demand, and on window focus — the
   focus rescan shows the same progress as a manual scan (20s throttle). On
   demand means one control, which scans whatever the current view shows.
+- **Keep a diagnostics log**: failed, timed-out and slow git commands, scans,
+  and the errors the app showed or recovered from go to a log file in the app's
+  data folder. Error banners are short-lived and cut long git output, so the
+  log is where a failed pull or a stuck scan can be explained afterwards;
+  Settings opens its folder. A hung pull is stopped and reported rather than
+  leaving a spinner up forever.
 - **Kanban board** (both apps): the user's GitHub repos as cards in five
   fixed columns (auto-populated via the `gh` CLI, drag to organize), each
   card carrying free-text notes edited in place, with optional

@@ -64,7 +64,12 @@ final class KanbanModel {
     // UI state
     private(set) var isLoading = true
     private(set) var isRefreshing = false
-    var errorMessage: String?
+    /// Logged on the same terms as `AppModel.errorMessage`.
+    var errorMessage: String? {
+        didSet {
+            if let errorMessage, errorMessage != oldValue { AppLog.warn("kanban: \(errorMessage)") }
+        }
+    }
 
     private var hasStarted = false
     private var lastRefreshAt: Date?
@@ -87,11 +92,16 @@ final class KanbanModel {
     func startIfNeeded() {
         guard !hasStarted else { return }
         hasStarted = true
-        if let local = try? core.loadKanbanLocal() {
-            repos = local.repos
-            state = local.state
-            syncStatus = local.syncStatus
-            isLoading = false
+        do {
+            if let local = try core.loadKanbanLocal() {
+                repos = local.repos
+                state = local.state
+                syncStatus = local.syncStatus
+                isLoading = false
+            }
+        } catch {
+            // The refresh below repaints from scratch; only the log hears of it.
+            AppLog.error("failed to load the kanban cache: \(AppModel.message(error))")
         }
         Task { await refresh() }
     }
@@ -112,6 +122,7 @@ final class KanbanModel {
         do {
             status = try await core.checkGhAuth()
         } catch {
+            AppLog.error("gh auth check failed: \(AppModel.message(error))")
             status = .error(message: AppModel.message(error))
         }
         auth = status
@@ -229,7 +240,9 @@ final class KanbanModel {
             await refresh()
             return nil
         } catch {
-            return AppModel.message(error)
+            let reason = AppModel.message(error)
+            AppLog.error("sign-in failed: \(reason)")
+            return reason
         }
     }
 

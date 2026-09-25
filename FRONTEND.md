@@ -8,8 +8,8 @@ Source of truth for how **both** frontends behave:
 Both sit on the same Rust core (`core/`, crate `gpm-core`) and share the same on-disk
 stores, so a machine with both apps installed sees identical data.
 
-**Scope**: Folders, Scanning, Settings, the Kanban board (§7), and Account/sign-in
-(§6.3) — all present in **both** apps.
+**Scope**: Folders, Scanning, Settings, the Kanban board (§7), Account/sign-in
+(§6.3), and the diagnostics log (§6.4) — all present in **both** apps.
 
 This spec defines *behavior*. Both apps share the same layout — sidebar navigation,
 an All Folders overview with actionable repos expanded inline, a per-folder detail
@@ -94,6 +94,7 @@ camelCase keys, written atomically (temp file + rename) by the core.
 | `settings.json` | `{ defaultTerminal?, defaultEditor?, gitCleanSettings? }` | ids, not paths |
 | `kanban_v2.json`, `repos_cache_v1.json` | kanban state / GitHub repo cache | shared by both apps (§7) |
 | OS keychain (`git-projects-manager` / `sync_session`) | sync session | shared by both apps (macOS may prompt once before the other app may read the item) |
+| `logs/macos.<date>.log`, `logs/desktop.<date>.log` | diagnostics log (§6.4) | one file per app per day, so two apps running at once never share a file |
 
 Frontend-only state (scan results, expansion, search text, selected view) is **session
 memory** — never persisted. Every launch starts fresh and rescans.
@@ -103,7 +104,7 @@ memory** — never persisted. Every launch starts fresh and rescans.
 | Behavior | Rule |
 |---|---|
 | Window | Single main window, resizable, ~1024×680 default, min ~800×540 |
-| Startup | Load folders + settings concurrently; failures degrade silently to empty state |
+| Startup | Start the diagnostics log (§6.4) first, then load folders + settings concurrently; failures degrade silently to empty state (and are logged) |
 | Auto-scan | The first time the folder list becomes non-empty in a session, scan all folders once |
 | Search | One search field filtering repo lists live (§5.4); session-only value |
 | Scan | One primary toolbar action, targeting the current view: **Scan All** in the overview, **Scan Folder** in a folder's detail view (§5.1); disabled when no folders exist or its target is already scanning |
@@ -138,8 +139,10 @@ memory** — never persisted. Every launch starts fresh and rescans.
   progress ("Add…"/"Save…"). Failures show the reason reported by the core, so a
   rejected path explains itself; a generic banner ("Failed to add folder",
   "Failed to update folder", "Failed to delete folder") covers errors that carry
-  no message. Details also go to the log.
+  no message. Details also go to the diagnostics log (§6.4).
 - After every successful mutation the folder list is re-fetched and all views update.
+  Re-fetching also drops the results and scan-progress state of any folder no
+  longer in the list (§5.2).
 - Empty state: "No folders configured yet." / main view: "No folders configured.
   Add a folder to get started."
 
@@ -149,7 +152,7 @@ memory** — never persisted. Every launch starts fresh and rescans.
 
 All modes call the core scan once per target folder, **concurrently**; each folder's
 result merges into the results map on completion. A folder whose scan fails keeps its
-previous result silently.
+previous result; the failure is shown nowhere but the diagnostics log (§6.4).
 
 There is **one** scan control, in the toolbar/header, and what it scans follows
 the view: the All Folders overview scans every folder, a folder's detail view
@@ -190,6 +193,12 @@ late finisher can never wipe a spinner the running scan is still showing. There
 is no cancel, in the UI or in the core. The scan control is instead disabled
 while its own target is scanning, so a second click cannot start a scan that
 would only supersede the one on screen.
+
+A folder deleted while it is scanning leaves no trace: its result is not stored
+when its scan completes, and the folder-list re-fetch (§4) removes it from the
+scanning set. Without the second rule, a deleted folder whose scan was
+superseded stayed "scanning" forever, and since the focus rescan waits for an
+empty set (§5.1), focus rescans stopped for the rest of the session.
 
 ### 5.3 Results display
 
@@ -271,7 +280,7 @@ Per-repo actions (context/row menu):
 | Open in LMS Github | always | runs `lms-github <path>` via login shell |
 | Show in Finder | macOS only | reveals the repo directory in Finder (the Tauri app has no reveal action yet) |
 | Copy Path | always | copies the repo's absolute path to the clipboard |
-| Fetch & Pull | not for Uninitialized; disabled for Changed/Errors | `git pull` (which fetches); success → rescan of that repo's folder; failure → "Failed to pull {path}: {err}" |
+| Fetch & Pull | not for Uninitialized; disabled for Changed/Errors | `git pull --quiet` (which fetches); success → rescan of that repo's folder; failure → "Failed to pull {path}: {err}", where `{err}` is git's error alone (no progress lines); a pull still running after 5 minutes is killed and reported as timed out |
 | Clean Ignored Files | Clean section only | `git clean -fdX` dry-run filtered by exclude patterns (§6.2), survivors deleted; 0 removed → "No ignored files to clean in {name}"; rescan of that repo's folder after |
 
 Bulk **Fetch & Pull All** / **Clean All** run per-repo operations in parallel; if k
@@ -287,6 +296,10 @@ An action sets its message **before** triggering its rescan, and that rescan doe
 not clear it — the message clears when the next *on-demand* scan starts (Scan All
 or a per-folder Scan). Per-folder scan failures during a multi-folder pass are
 silent (previous data kept).
+
+The area shows at most two lines; hovering it shows the full text. Every message
+it shows, and every message the kanban board shows, is also written to the
+diagnostics log (§6.4), since the next message replaces it.
 
 ## 6. Settings
 
@@ -320,6 +333,38 @@ signing in. Signed-out: a "Sign in with Google" button ("Waiting for browser…"
 while pending). Signed-in: shows `name || email || sub` (email as a second line
 when both exist) and a Sign Out button. Errors render inline. Both the Settings
 Account panel and the board's sync status chip menu (§7) offer sign-in/out.
+
+### 6.4 Logs
+
+A diagnostics log both apps write through the core, for troubleshooting failures
+the UI shows briefly or not at all. It lives in the shared data folder (§2) under
+`logs/`: one file per app per day (`macos.<date>.log`, `desktop.<date>.log`),
+the newest **14** of each kept. The date in the name is UTC, the timestamps in
+the lines are local time.
+
+What it records:
+
+- **Every git command** the core runs that fails, times out, or takes **5 s** or
+  longer: the repo, the command, the duration, and git's full stderr on one line.
+  Successful pulls and cleans are recorded too.
+- **Every scan**: a start line and a finish line per folder, with the repo, error
+  and unknown-remote counts. A start with no finish is a scan that hung.
+- **Every repo check that failed** (the Errors bucket) and every repo whose
+  ahead/behind could not be determined.
+- **Every message the UI showed** (§5.6) and the failures it recovers from
+  without a message: loading folders, settings or the kanban cache, folder scans
+  (§5.1), saving settings, sign-in/out, the `gh` auth check, and opening the
+  browser or the logs folder.
+- The app version at startup, and any Rust panic with its backtrace. The Tauri
+  app also records uncaught frontend errors (with their stack) and unhandled
+  promise rejections.
+
+Credentials embedded in URLs (`https://user:token@host`) are masked before a
+line is written, since the log is meant to be shared when reporting a problem.
+
+The **Logs** settings panel explains this, shows the folder's path (selectable),
+and has an **Open Logs Folder** button that opens it in the system file manager;
+a failure to open shows inline as "Failed to open the logs folder".
 
 ## 7. Kanban board
 
@@ -407,7 +452,7 @@ A sidebar view organizing the user's **GitHub repositories** as cards.
 | Chrome | Custom sidebar (§5.3) + content header (title, search, scan control); dark-only dense UI | `NavigationSplitView` sidebar (§5.3); Liquid Glass toolbar with the scan control. Registers a 350 ms `NSInitialToolTipDelay` so toolbar help text appears promptly and at the same speed everywhere |
 | Appearance | Fixed dark palette | System light & dark, accent-aware; semantic colors for badge roles (green/yellow/orange/purple/blue/pink/gray/red) |
 | Folder CRUD | Settings modal → "Monitored Folders" panel; sidebar **Add Folder** opens it | Main window: sidebar add button + sheet; edit via context menu/sheet |
-| Settings | In-app modal via sidebar gear (Monitored Folders / Default Apps / Git Clean / Account) | Native Settings scene (⌘,): Default Apps, Git Clean, Account |
+| Settings | In-app modal via sidebar gear (Monitored Folders / Default Apps / Git Clean / Account / Logs) | Native Settings scene (⌘,): Default Apps, Git Clean, Account, Logs |
 | Repo actions | Hover kebab dropdown (also on right-click) | Native context menu (right-click) + hover affordance |
 | Search | Content-header text input (hidden on the kanban view) | `.searchable` toolbar field (also filters kanban) |
 | Directory picker | Tauri dialog plugin | `NSOpenPanel` / SwiftUI fileImporter |

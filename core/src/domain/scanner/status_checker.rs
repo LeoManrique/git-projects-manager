@@ -1,6 +1,7 @@
 use super::remote_check::RemoteCheckCtx;
 use crate::domain::{PublishState, RepoStatus};
 use crate::infrastructure::git::{GitOperations, RemoteReachability, RepoInspector};
+use crate::infrastructure::logging::log_safe;
 use std::path::Path;
 
 /// Outcome of the remote half of a status check.
@@ -36,17 +37,12 @@ impl StatusChecker {
         let repo = match RepoInspector::open(path) {
             Ok(r) => r,
             Err(e) => {
-                return RepoStatus {
-                    path: path_str,
-                    branch: None,
-                    has_changes: None,
-                    has_unpushed: None,
-                    has_unpulled: None,
-                    remote_state_unknown: false,
-                    publish_state: PublishState::Published,
-                    has_error: true,
-                    error_message: Some(format!("Failed to open repository: {e}")),
-                };
+                return Self::failed(
+                    path_str,
+                    None,
+                    PublishState::Published,
+                    format!("Failed to open repository: {e}"),
+                );
             }
         };
 
@@ -62,17 +58,12 @@ impl StatusChecker {
                 if GitOperations::is_unborn_branch_error(&e) {
                     (None, true)
                 } else {
-                    return RepoStatus {
-                        path: path_str,
-                        branch: None,
-                        has_changes: None,
-                        has_unpushed: None,
-                        has_unpulled: None,
-                        remote_state_unknown: false,
-                        publish_state: Self::base_publish_state(has_remote),
-                        has_error: true,
-                        error_message: Some(format!("Failed to get branch: {e}")),
-                    };
+                    return Self::failed(
+                        path_str,
+                        None,
+                        Self::base_publish_state(has_remote),
+                        format!("Failed to get branch: {e}"),
+                    );
                 }
             }
         };
@@ -81,17 +72,12 @@ impl StatusChecker {
         let has_changes = match repo.has_pending_changes() {
             Ok(c) => Some(c),
             Err(e) => {
-                return RepoStatus {
-                    path: path_str,
+                return Self::failed(
+                    path_str,
                     branch,
-                    has_changes: None,
-                    has_unpushed: None,
-                    has_unpulled: None,
-                    remote_state_unknown: false,
-                    publish_state: Self::base_publish_state(has_remote),
-                    has_error: true,
-                    error_message: Some(format!("Failed to check changes: {e}")),
-                };
+                    Self::base_publish_state(has_remote),
+                    format!("Failed to check changes: {e}"),
+                );
             }
         };
 
@@ -124,6 +110,29 @@ impl StatusChecker {
             publish_state,
             has_error: false,
             error_message: None,
+        }
+    }
+
+    /// The status of a repo whose local check failed, which lands it in the
+    /// Errors bucket. Logged, because the row shows only the first line of
+    /// `message`.
+    fn failed(
+        path: String,
+        branch: Option<String>,
+        publish_state: PublishState,
+        message: String,
+    ) -> RepoStatus {
+        tracing::warn!(repo = %path, error = %log_safe(&message), "repo check failed");
+        RepoStatus {
+            path,
+            branch,
+            has_changes: None,
+            has_unpushed: None,
+            has_unpulled: None,
+            remote_state_unknown: false,
+            publish_state,
+            has_error: true,
+            error_message: Some(message),
         }
     }
 
@@ -201,11 +210,18 @@ impl StatusChecker {
             },
             // Both git and libgit2 declined to answer. Say so instead of
             // letting two `None`s read as "nothing to push or pull".
-            Err(_) => RemoteStatus {
-                reachability,
-                unknown: true,
-                ..RemoteStatus::default()
-            },
+            Err(e) => {
+                tracing::warn!(
+                    repo = %path.display(),
+                    error = %log_safe(&format!("{e:#}")),
+                    "ahead/behind unknown"
+                );
+                RemoteStatus {
+                    reachability,
+                    unknown: true,
+                    ..RemoteStatus::default()
+                }
+            }
         }
     }
 }

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api } from '../../lib/api';
+import { logError } from '../../lib/log';
 import { TerminalApp, EditorApp } from '../../types';
 import { Select, SelectOption } from '../ui/Select';
 
@@ -37,7 +38,7 @@ export default function DefaultAppsSettings({ onSettingsChange }: DefaultAppsSet
       setSelectedEditor(settings.defaultEditor ?? null);
     } catch (err) {
       setError('Failed to load settings');
-      console.error(err);
+      logError('Failed to load default apps settings', err);
     } finally {
       setIsLoading(false);
     }
@@ -52,7 +53,7 @@ export default function DefaultAppsSettings({ onSettingsChange }: DefaultAppsSet
       onSettingsChange();
     } catch (err) {
       setError('Failed to save setting');
-      console.error(err);
+      logError('Failed to save the default terminal', err);
     } finally {
       setIsSaving(false);
     }
@@ -67,7 +68,7 @@ export default function DefaultAppsSettings({ onSettingsChange }: DefaultAppsSet
       onSettingsChange();
     } catch (err) {
       setError('Failed to save setting');
-      console.error(err);
+      logError('Failed to save the default editor', err);
     } finally {
       setIsSaving(false);
     }

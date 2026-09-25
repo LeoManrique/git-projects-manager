@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '../../hooks';
+import { describeError } from '../../lib/log';
 
 export default function AccountSettings() {
   const { user, status, signIn, signOut } = useAuth();
@@ -12,7 +13,7 @@ export default function AccountSettings() {
     try {
       await signIn();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(describeError(e));
     } finally {
       setBusy(false);
     }
@@ -24,7 +25,7 @@ export default function AccountSettings() {
     try {
       await signOut();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(describeError(e));
     } finally {
       setBusy(false);
     }

@@ -7,8 +7,8 @@ core/            gpm-core (Rust, edition 2024) — Tauri-free shared core
 ├── domain/      scan pipeline (finder → status checker → categorizer, rayon-parallel),
 │                folder/settings/kanban/auth types
 ├── infrastructure/  git ops (git2 + git CLI), stores (JSON, atomic writes),
-│                launcher (open in terminal/editor/URL), gh CLI, OAuth PKCE,
-│                sync client, keyring token store
+│                launcher (open in terminal/editor/URL/folder), gh CLI, OAuth PKCE,
+│                sync client, keyring token store, diagnostics log (tracing)
 ├── services/    shared orchestration: kanban refresh/move/delete + cloud
 │                sync merge, Google sign-in/out (used by both frontends)
 └── resources/   terminals.json / editors.json catalogs (compile-time embedded)
@@ -31,16 +31,49 @@ server/          axum + SQLite sync server (kanban state; Google OAuth)
 
 ## Shared persistence (`dirs::config_dir()/git-projects-manager/`)
 
-Pretty JSON, camelCase, written atomically (temp file + rename). Both apps
+Located by one helper (`infrastructure::app_dir::app_data_dir`, which also
+creates it). Pretty JSON, camelCase, written atomically (temp file + rename). Both apps
 read/write the same files: `config.json` (folders), `settings.json`,
 `kanban_v2.json`, `repos_cache_v1.json`, `remote_checks_v1.json` (gh
 remote-existence debounce). A kanban card's `notes` is optional and left out
 of the JSON when empty, so `kanban_v2.json` keeps version 2 and a file
 written before notes existed still loads. Sync session in the OS
-keychain (`keyring` with `apple-native`/`windows-native`/`sync-secret-service`
-features; file fallback `session.json`, 0600). Kanban read-modify-write
+keychain (`keyring` 4 with its default `v1` feature: the native store per
+platform, zbus Secret Service on Linux so no libdbus is linked; file fallback
+`session.json`, 0600). Kanban read-modify-write
 cycles are serialized in-process; across processes files are last-writer-wins
 (atomic rename prevents corruption; the next refresh + cloud sync reconciles).
+The `logs/` subfolder holds the diagnostics log (see Logging).
+
+## Logging (`infrastructure::logging`)
+
+- The core owns the log file for both apps (file naming, retention and contents:
+  FRONTEND.md §6.4): a `tracing` subscriber over a `tracing-appender`
+  `RollingFileAppender` (`Rotation::DAILY`, `max_log_files`, prefix = the app
+  name passed to `init`), with `ChronoLocal` line timestamps. Level `INFO`;
+  debug builds also mirror to stderr (Xcode console, `tauri dev` terminal).
+- `logging::init(app, version)` runs first thing in each app (Swift `AppLog.start()`
+  from `App.init`, Tauri `main`), before `AppState`, so startup failures are
+  logged. Idempotent via a `OnceLock` holding the first call's outcome. It also
+  installs a panic hook that logs the panic with a forced backtrace, then chains
+  to the previous hook.
+- The writer is the appender itself, not `tracing_appender::non_blocking`: the
+  volume is a few lines per git command, and a background writer needs a
+  `WorkerGuard` that nothing in an FFI library can hold until exit, so the lines
+  right before a crash would be lost.
+- `tracing-subscriber` is built with `fmt` + `chrono` only. No `tracing-log`, so
+  records from the `log` crate (Tauri's own) are not captured; no `ansi`, and the
+  file layer sets `with_ansi(false)` anyway since features merge across a build.
+- Frontend lines enter through `logging::frontend(level, message)` (target
+  `frontend`): FFI `log_message` (UniFFI enum `LogLevel`), Tauri command
+  `log_message` (serde lowercase `"error" | "warn" | "info"`). All free text —
+  frontend messages, git stderr, repo errors, panic messages and backtraces —
+  goes through `log_safe`: the userinfo of any `scheme://user:token@host` URL is
+  masked to `***` (git can echo a remote URL with its token), and CR/LF become
+  `\r`/`\n` so one event is one line.
+- `logs_folder` / `get_logs_folder` return the path; `open_logs_folder` opens it
+  with the platform opener (`launcher::open_path`, the same `open` / `xdg-open` /
+  `cmd /C start` helper `open_url` uses).
 
 ## Sync configuration (build-time)
 
@@ -150,13 +183,25 @@ width, matching Apple's 824/1024 icon grid).
 - **`git` invocation invariants** (`git_command()`): `core.quotePath=false` (git
   otherwise C-quotes non-ASCII paths, which broke the `git clean` parser),
   `LC_ALL=C` (output we match on stays English), `GIT_TERMINAL_PROMPT=0` (a
-  credential prompt would block on `Command::output()` forever).
+  credential prompt would block forever).
+- **One runner** (`run_git`): every git subprocess goes through it, under a
+  wall-clock timeout, and it logs the outcome — failure or timeout at `WARN`
+  with the repo, the arguments minus the constant `-c` knobs, the duration, the
+  exit status and the whole stderr; a slow success (`SLOW_GIT`) at `INFO`; other
+  successes at `DEBUG` (not recorded at the `INFO` level).
+- **Network limits** (bound a stalled transfer; libcurl's default connect
+  timeout is 300 s): `limit_http` (`fetch` and `pull`) sets
+  `http.lowSpeedLimit=1000` + `http.lowSpeedTime=20`; `limit_ssh` (`fetch` only)
+  sets `GIT_SSH_COMMAND` to `ssh` with `ConnectTimeout=10`/`BatchMode`, but only
+  when none of `GIT_SSH_COMMAND`, `GIT_SSH` or the repo's `core.sshCommand` (read
+  through libgit2's config levels) is set — `GIT_SSH_COMMAND` outranks the other
+  two, so setting it replaced per-account key setups. Pull never gets it:
+  `BatchMode` also disables the passphrase prompt a user-started pull may need.
 - **Fetch flags**: `gc.auto=0` + `maintenance.auto=false` (no per-repo background
   repack fork), `--no-tags --no-recurse-submodules` (nothing in a scan result
-  uses them), `http.lowSpeedLimit=1000` + `http.lowSpeedTime=20` and an SSH
-  `ConnectTimeout`/`BatchMode` (bounds a stalled transfer; libcurl's default
-  connect timeout is 300 s). `pull` no longer pre-fetches — `git pull` is
-  fetch + merge, so the extra call was a discarded network round-trip.
+  uses them). `pull` does not pre-fetch — `git pull` is fetch + merge — and runs
+  `--quiet`, so its stderr holds only the error: the progress lines ("From
+  <url>", "* [new tag]") used to fill the two lines the error banner shows.
 - **Fetch debounce**: a successful fetch is recorded per repo in a process-wide
   map, and a fetch within 30 s of it is skipped (reported `Reachable`, since that
   is what the skipped fetch established). Ahead/behind is still computed from the
@@ -166,12 +211,20 @@ width, matching Apple's 824/1024 icon grid).
   **3.4 s → 1.0 s** over 76 repos. Failures are never recorded, so an unreachable
   remote is retried immediately.
 - **Wall-clock timeouts** (`infrastructure::process`): `git fetch` is killed
-  after 20 s and `gh` after 15 s (60 s for `repo list`). git's own knobs bound a
-  *stalled transfer* but not a TCP connect to a black-holed route, and `gh` has
-  no equivalent knob. The helper drains stdout and stderr on their own threads —
-  `try_wait` never reads the pipes, so a child filling the 64 KiB pipe buffer
-  would deadlock against the loop timing it out. A killed fetch classifies as
-  `Unreachable`, never `NotFound`.
+  after 20 s, `git pull` after 5 min, the local `git rev-list` and `git clean`
+  dry run after 1 min, and `gh` after 15 s (60 s for `repo list`). git's own
+  knobs bound a *stalled transfer* but not a TCP connect to a black-holed route,
+  and `gh` has no equivalent knob. The pull limit is generous because a pull
+  killed mid-merge can leave `.git/index.lock` behind. The helper drains stdout
+  and stderr on their own threads — `try_wait` never reads the pipes, so a child
+  filling the 64 KiB pipe buffer would deadlock against the loop timing it out.
+  On Unix the child leads its own process group (`process_group(0)`), and a
+  timeout sends the group `SIGTERM` (git removes its lock files on it), waits up
+  to 1 s, then `SIGKILL`: git's `ssh`/`git-remote-https` helpers inherit its
+  stderr, so killing git alone left the reader threads waiting on them for up to
+  libcurl's 300 s connect timeout. A descendant that leaves the group is bounded
+  too: once the child exits, the pipes get 2 s (`PIPE_GRACE`) and are then
+  abandoned. A killed fetch classifies as `Unreachable`, never `NotFound`.
 - `onlyLocalChecks` per folder skips fetch + ahead/behind; the `git remote`
   presence check is local, so publish state is still resolved (but never
   `RemoteNotFound`, which needs a fetch).
@@ -235,13 +288,19 @@ width, matching Apple's 824/1024 icon grid).
   authoritative. A cancel UI needs polling in the status loop and a partial-result
   marker first.
 - Unborn repos (no commits) detected via typed `git2::ErrorCode::UnbornBranch`.
+- **Scan logging**: `scan_folder` logs `scan started` and `scan finished` (repo,
+  error and unknown-remote counts, seconds) per folder, so a hang shows as a
+  start with no finish. Each repo that lands in Errors (`StatusChecker::failed`)
+  and each `remote_state_unknown` repo is logged with its error.
 
 ## Quality gates
 
 - `just clippy` — clippy pedantic, zero warnings across `core`,
   `desktop/src-tauri`, `macos/ffi`, `server` (CLAUDE.md requirement).
 - `just test` — core tests: glob matcher, fetch/`gh` reachability classifiers,
-  folder-overlap and config-upgrade unit tests, subprocess-timeout unit tests,
+  folder-overlap and config-upgrade unit tests, subprocess-timeout unit tests
+  (including a timed-out child whose grandchild holds the pipes), log-line
+  folding and git argument description,
   and integration tests for the unpublished overlay, repo ordering, clean paths,
   repo folder names, symlinked and opted-out uninitialized folders, and
   ahead/behind (a local bare repo stands in for the remote, so the whole suite

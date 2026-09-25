@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api } from '../../lib/api';
+import { logError } from '../../lib/log';
 import { MonitoredFolder, FolderFormValues } from '../../types';
 import { FolderForm } from './FolderForm';
 
@@ -31,7 +32,7 @@ export default function FolderManager({ folders, onRefresh }: FolderManagerProps
       // folder was refused (an overlap with another monitored folder, say),
       // which the generic fallback cannot.
       setError(typeof err === 'string' && err.trim() ? err : errorMsg);
-      console.error(err);
+      logError(errorMsg, err);
     } finally {
       setIsLoading(false);
     }

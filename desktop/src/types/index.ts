@@ -13,3 +13,4 @@ export type {
   SyncStatus,
 } from './kanban';
 export type { SyncUser } from './auth';
+export type { LogLevel } from './log';

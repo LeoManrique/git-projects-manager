@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../lib/api';
+import { describeError, logError } from '../lib/log';
 import { SyncUser } from '../types';
 
 export type AuthStatus = 'loading' | 'signed-out' | 'signed-in';
@@ -29,7 +30,8 @@ export function useAuth(): UseAuthReturn {
       setUser(u);
       setStatus(u ? 'signed-in' : 'signed-out');
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      logError('Failed to load the sync user', e);
+      setError(describeError(e));
       setStatus('signed-out');
     }
   }, []);
@@ -49,7 +51,8 @@ export function useAuth(): UseAuthReturn {
       setStatus('signed-in');
       broadcast();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      logError('Sign-in failed', e);
+      setError(describeError(e));
       throw e;
     }
   }, []);
@@ -62,7 +65,8 @@ export function useAuth(): UseAuthReturn {
       setStatus('signed-out');
       broadcast();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      logError('Sign-out failed', e);
+      setError(describeError(e));
       throw e;
     }
   }, []);

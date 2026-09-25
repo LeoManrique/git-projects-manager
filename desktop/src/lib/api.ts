@@ -13,6 +13,7 @@ import {
   GitCleanSettings,
   GitCleanResult,
   SyncUser,
+  LogLevel,
 } from '../types';
 
 /**
@@ -153,5 +154,18 @@ export const api = {
 
   async getSyncUser(): Promise<SyncUser | null> {
     return await invoke('get_sync_user');
+  },
+
+  // Diagnostics log
+  async logMessage(level: LogLevel, message: string): Promise<void> {
+    await invoke('log_message', { level, message });
+  },
+
+  async getLogsFolder(): Promise<string> {
+    return await invoke('get_logs_folder');
+  },
+
+  async openLogsFolder(): Promise<void> {
+    await invoke('open_logs_folder');
   },
 };

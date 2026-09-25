@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api } from '../../lib/api';
+import { logError } from '../../lib/log';
 import { FolderFormValues, NEW_FOLDER } from '../../types';
 import { BrowseFolderIcon } from '../icons';
 
@@ -38,7 +39,7 @@ export function FolderForm({
       const path = await api.browseFolder();
       if (path) set('path', path);
     } catch (err) {
-      console.error('Failed to browse folder:', err);
+      logError('Failed to browse folder', err);
     }
   };
 

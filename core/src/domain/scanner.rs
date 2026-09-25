@@ -63,6 +63,9 @@ impl Scanner {
         detect_uninitialized: bool,
     ) -> ScanResult {
         let start_time = Instant::now();
+        // Paired with "scan finished" below: a start with no finish is a scan
+        // that hung, which is otherwise indistinguishable from a slow one.
+        tracing::info!(folder = %path.display(), only_local_checks, "scan started");
 
         // Find all git repositories
         let repositories = RepositoryFinder::find_repositories(path);
@@ -100,7 +103,16 @@ impl Scanner {
         }
 
         // Categorize results
-        Self::categorize_results(path, statuses, uninitialized_folders, start_time)
+        let result = Self::categorize_results(path, statuses, uninitialized_folders, start_time);
+        tracing::info!(
+            folder = %path.display(),
+            repos = result.total_repositories,
+            errors = result.errors.len(),
+            remote_state_unknown = result.remote_state_unknown.len(),
+            elapsed_s = result.execution_time,
+            "scan finished"
+        );
+        result
     }
 
     /// Case-insensitive ordering of repos by absolute path, shared by every

@@ -6,9 +6,11 @@ use gpm_core::AppState;
 use tauri::Manager;
 
 fn main() {
-    tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::INFO)
-        .init();
+    // First, so a failure to start is logged too. A release build on Windows
+    // has no console, so stderr is only a fallback for `tauri dev`.
+    if let Err(e) = gpm_core::infrastructure::logging::init("desktop", env!("CARGO_PKG_VERSION")) {
+        eprintln!("failed to start the diagnostics log: {e:#}");
+    }
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -57,6 +59,9 @@ fn main() {
             commands::auth::sign_in_with_google,
             commands::auth::sign_out,
             commands::auth::get_sync_user,
+            commands::logs::log_message,
+            commands::logs::get_logs_folder,
+            commands::logs::open_logs_folder,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

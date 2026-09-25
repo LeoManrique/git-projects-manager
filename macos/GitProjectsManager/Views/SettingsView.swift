@@ -12,8 +12,49 @@ struct SettingsView: View {
             Tab("Account", systemImage: "person.crop.circle") {
                 AccountSettingsView()
             }
+            Tab("Logs", systemImage: "doc.text.magnifyingglass") {
+                LogsSettingsView()
+            }
         }
         .frame(width: 520)
+    }
+}
+
+/// Where the diagnostics log lives, and a way to get to it (FRONTEND.md §6.4).
+struct LogsSettingsView: View {
+    @Environment(AppModel.self) private var model
+    @State private var path: String?
+    @State private var error: String?
+
+    var body: some View {
+        Form {
+            Section("Diagnostics Log") {
+                Text("Every git command that fails or runs slowly, every error shown in the app, and every scan's start and end are written here. One file per day, kept for two weeks.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+
+                if let path {
+                    Text(path)
+                        .font(.caption)
+                        .monospaced()
+                        .textSelection(.enabled)
+                }
+
+                Button("Open Logs Folder") {
+                    error = model.showLogsFolder()
+                }
+            }
+
+            if let error {
+                Section {
+                    Label(error, systemImage: "exclamationmark.circle")
+                        .foregroundStyle(.red)
+                }
+            }
+        }
+        .formStyle(.grouped)
+        // Once per appearance, not per render: the lookup crosses the FFI.
+        .task { path = model.logsFolderPath() }
     }
 }
 
