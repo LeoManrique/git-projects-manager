@@ -11,6 +11,7 @@ pub mod oauth;
 pub mod process;
 pub mod remote_check_store;
 pub mod repos_cache;
+pub mod resource_limits;
 pub mod settings_store;
 pub mod sync_client;
 pub mod token_store;

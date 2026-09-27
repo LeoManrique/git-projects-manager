@@ -3,7 +3,7 @@ use crate::domain::scanner::Scanner;
 use crate::infrastructure::{
     app_dir::app_data_dir,
     config_store::ConfigManager, kanban_store::KanbanManager, repos_cache::ReposCacheManager,
-    settings_store::SettingsManager, sync_client::SyncClient,
+    resource_limits, settings_store::SettingsManager, sync_client::SyncClient,
     token_store::{self, TokenStore},
 };
 use parking_lot::RwLock;
@@ -29,6 +29,8 @@ impl AppState {
     /// created, or if any of the managers (config, settings, sync client)
     /// fail to initialize.
     pub fn new() -> anyhow::Result<Self> {
+        // Here because both frontends build exactly one `AppState`, at startup.
+        resource_limits::raise_open_files_limit();
         let config_dir = app_data_dir()?;
 
         let token_store = token_store::default_store();

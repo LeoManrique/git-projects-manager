@@ -180,6 +180,10 @@ width, matching Apple's 824/1024 icon grid).
   check's wall time is a `git fetch` blocked on DNS/TLS, so a CPU-sized pool
   serializes the fetches into `repos / CPUs` waves. Kept off the global pool so
   no other rayon user inherits a thread count sized for blocking I/O.
+- **Open files limit** (`resource_limits`): `AppState::new` raises the soft
+  `RLIMIT_NOFILE` to `min(10240, hard)` (macOS rejects more than `OPEN_MAX`). A
+  macOS app starts at 256, which a Clean All during a rescan exhausted ("Too many
+  open files"). No-op on Windows.
 - **`git` invocation invariants** (`git_command()`): `core.quotePath=false` (git
   otherwise C-quotes non-ASCII paths, which broke the `git clean` parser),
   `LC_ALL=C` (output we match on stays English), `GIT_TERMINAL_PROMPT=0` (a
@@ -188,7 +192,9 @@ width, matching Apple's 824/1024 icon grid).
   wall-clock timeout, and it logs the outcome — failure or timeout at `WARN`
   with the repo, the arguments minus the constant `-c` knobs, the duration, the
   exit status and the whole stderr; a slow success (`SLOW_GIT`) at `INFO`; other
-  successes at `DEBUG` (not recorded at the `INFO` level).
+  successes at `DEBUG` (not recorded at the `INFO` level). The one failure it
+  cannot see, a clean whose deletions partly fail, is logged by `clean` itself
+  (`clean incomplete`).
 - **Network limits** (bound a stalled transfer; libcurl's default connect
   timeout is 300 s): `limit_http` (`fetch` and `pull`) sets
   `http.lowSpeedLimit=1000` + `http.lowSpeedTime=20`; `limit_ssh` (`fetch` only)

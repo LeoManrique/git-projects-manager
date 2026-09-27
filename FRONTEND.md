@@ -346,7 +346,8 @@ What it records:
 
 - **Every git command** the core runs that fails, times out, or takes **5 s** or
   longer: the repo, the command, the duration, and git's full stderr on one line.
-  Successful pulls and cleans are recorded too.
+  Successful pulls and cleans are recorded too, and so is every path a clean
+  could not delete, including the repos a bulk message leaves unnamed.
 - **Every scan**: a start line and a finish line per folder, with the repo, error
   and unknown-remote counts. A start with no finish is a scan that hung.
 - **Every repo check that failed** (the Errors bucket) and every repo whose

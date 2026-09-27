@@ -500,10 +500,18 @@ impl GitOperations {
 
         let removed = files_removed.len() + directories_removed.len();
         if !failures.is_empty() {
+            // The one clean failure `run_git` cannot see, so it is logged
+            // here; a bulk banner quotes only the first repo that failed.
+            let failed = failures.join("; ");
+            tracing::warn!(
+                repo = %repo_path.display(),
+                removed,
+                failed = %log_safe(&failed),
+                "clean incomplete"
+            );
             anyhow::bail!(
-                "removed {removed} path(s), failed to remove {}: {}",
-                failures.len(),
-                failures.join("; ")
+                "removed {removed} path(s), failed to remove {}: {failed}",
+                failures.len()
             );
         }
 
