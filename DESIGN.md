@@ -30,7 +30,9 @@ folders and surfaces repository status at a glance.
   Unpulled (purple), Unpublished (blue — no remote, never pushed to a host),
   Remote Not Found (pink — a remote is configured but the host reports it is
   gone), Unknown Remote State (gray — the remote comparison was attempted and
-  failed, so the repo is *not* silently reported as clean), Clean (green),
+  failed, so the repo is *not* silently reported as clean; a fetch that fails
+  alone does not count, the repo is compared with what was last fetched, so
+  working offline does not flag every repo), Clean (green),
   Uninitialized (gray — directories with files but no git, reported only for
   folders that hold code projects), Errors (red).
   Unpublished, Remote Not Found and Unknown Remote State are overlays: the repo
