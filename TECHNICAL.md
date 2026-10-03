@@ -20,7 +20,8 @@ desktop/         Tauri 2 app — Windows/Linux
 
 macos/           native macOS 26+ app — full parity (kanban + sync included)
 ├── ffi/         gpm-ffi: UniFFI 0.32 staticlib over gpm-core
-│                (proc-macro exports; async scan/git/kanban/sync on tokio)
+│                (proc-macro exports; async scan/git/kanban/sync on tokio,
+│                streamed scans through a `FolderScan` handle)
 ├── generated/   Swift bindings (build artifact, gitignored)
 ├── GitProjectsManager/  SwiftUI (Swift 6, @Observable, Liquid Glass)
 │   └── Resources/AppIcon.icon  Icon Composer app icon (glyph + fill)
@@ -310,7 +311,12 @@ width, matching Apple's 824/1024 icon grid).
   arrive after a newer one) and returns the complete one; `scan_folder` is it
   without the callback. `recheck_repos` re-reads repos after an action and
   skips those a scan in flight has queued but not started, since that scan
-  reads them fresh.
+  reads them fresh. The bridges carry the snapshots: Tauri's `scan_folder`
+  sends them through an `ipc::Channel` and still returns the final one;
+  macOS's `start_folder_scan` returns a `FolderScan` whose async `next()`
+  reads a tokio `watch` channel, which keeps only the newest snapshot, so a
+  busy main actor skips the ones in between. A Swift callback would have run
+  Swift code on the scan's threads. Both bridges export `recheck_repos`.
 - No cancellation. The removed flag was polled only by the directory walk, so it stopped the
   cheap half and left every `git fetch` running, and it returned a `ScanResult`
   indistinguishable from a complete one that the frontends stored as

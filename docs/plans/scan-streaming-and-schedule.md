@@ -1,6 +1,7 @@
 # Plan: streamed scans, a "Last scan" indicator and a calmer schedule
 
-Status: slices 1–2 of 8 done (the core). Next: slice 3, the bridges. The "why"
+Status: slices 1–3 of 8 done (core and bridges). Next: slice 4, the
+coordinator. The "why"
 is in `docs/analysis/automatic-scan-strategy.md`. Delete this file once the
 manual test script at the bottom passes.
 
@@ -93,55 +94,33 @@ frontends keep doing what they do today with it (replace the folder's entry).
 
 ## Changes by layer, core outward
 
-### 1–4. Core (done)
+### 1–6. Core and bridges (done)
 
 TECHNICAL.md (Scanning → Scan thread pool, Registry, Streaming, Fetch
-debounce) and FRONTEND.md's data model describe it. What the bridges need:
+debounce) and FRONTEND.md's data model describe them. What the coordinator
+needs:
 
-- `Scanner::scan_folder_streaming(path, only_local_checks,
-  detect_uninitialized, on_snapshot: impl FnMut(ScanResult)) -> ScanResult`
-  blocks until every repo is checked. `on_snapshot` runs on the calling
-  thread with every snapshot but the final one, which is returned. A closure
-  replaced the planned `ScanSink` trait: it needs neither `Send` nor `Sync`.
-- `Scanner::recheck_repos(folder, &[PathBuf], only_local_checks) ->
-  Option<ScanResult>`, blocking; `None` for a folder never scanned.
-- Call both from outside `SCAN_POOL` (`spawn_blocking` is fine): the caller
-  blocks while the jobs run on the pool.
+- **Tauri**: `api.scanFolder(folder, onSnapshot)` resolves with the final
+  snapshot; `onSnapshot` gets every one before it. `useScanner` passes
+  `() => {}` for now.
+- **macOS**: `core.startFolderScan(path:onlyLocalChecks:detectUninitialized:)`
+  is synchronous and returns a `FolderScan`; loop on `await scan.next()`
+  until `nil`. The old async `scanFolder` export is still there because
+  `AppModel` calls it; delete it when slice 4 switches over.
+- **Both**: `recheckRepos(folder, repos, onlyLocalChecks)` returns the
+  folder's snapshot, `nil`/`null` for a folder never scanned.
+- A scan that dies (a panic) ends without a complete snapshot: `next()`
+  returns `nil` early, and the Tauri promise rejects. Clear the folder's
+  in-flight entry either way.
+- A recheck's snapshot and a scan's stream arrive separately, so the
+  revision check in step 7 is what keeps the newer one on screen.
 - Until slice 4, two scans of one folder can still overlap; the older one
-  then returns a snapshot with `is_complete == false`.
-- `pull()` calls `record_fetch`, so a recheck within 30 s reads the refs the
-  pull updated.
+  then ends with `is_complete == false`.
 - Found on the way: with more queued repos than pool threads, a folder's jobs
   still queue behind another folder's; they wait for those to *start*, no
   longer to finish.
-- Found in slice 1: the macOS Release build failed with E0463 because a
-  stripped proc-macro dylib does not load under Xcode's
-  `MACOSX_DEPLOYMENT_TARGET`. Fixed with `[profile.release.build-override]
-  strip = "none"` in `macos/ffi/Cargo.toml`.
-
-### 5. UniFFI bridge: `macos/ffi/src/lib.rs` (UniFFI 0.32.2)
-
-- `#[derive(uniffi::Object)] FolderScan` wrapping a `tokio::sync::watch`
-  receiver, with `async fn next(&self) -> Option<ScanResult>`: waits for a
-  newer snapshot, returns `None` after the complete one has been returned.
-  A watch channel keeps only the newest value, so a busy main actor skips
-  intermediate snapshots instead of queueing them.
-- `GpmCore::start_folder_scan(...) -> Arc<FolderScan>`: spawns the blocking
-  streaming scan with a callback that `send`s into the watch sender, then
-  sends the returned final snapshot.
-- `GpmCore::recheck_repos(...)`: async, `spawn_blocking`, like `pull_repo`.
-- Chosen over a foreign-trait callback because the callback would run Swift
-  code on rayon workers; the object keeps every Swift call on the async side
-  the bridge already uses. Fix the stale `:583` comment
-  ("`git fetch` + `git pull`").
-
-### 6. Tauri commands: `desktop/src-tauri/src/commands/scan.rs` (Tauri 2.11.6)
-
-- `scan_folder` gains `on_snapshot: tauri::ipc::Channel<ScanResult>`, which
-  the callback `send`s to. The command still returns the complete result.
-- New `recheck_repos` command, registered in `main.rs`.
-- `desktop/src/lib/api.ts`: `scanFolder(folder, onSnapshot)` creates the
-  `Channel`; `recheckRepos(folder, paths)`.
+- `FolderScan` is unit-tested with a hand-built channel. Nothing tests the
+  bridges end to end: `GpmCore::new` uses the real app-data folder.
 
 ### 7. Scan coordinator, both frontends
 
@@ -232,8 +211,6 @@ scan per folder there is nothing to supersede.
   - §5.5: post-action recheck of the affected repos only.
   - §9: where the label sits in each app.
 - **DESIGN.md** :46-48: the automatic scan sentence.
-- **TECHNICAL.md**: the `Channel` / `FolderScan` bridges in Scanning, and
-  the `macos/ffi` line of the architecture tree.
 - **ROADMAP.md**: tick the overlap item (:172-173); fix the stale :30-32
   (post-action rescans are not full scans); add the done items. The 20 s
   fetch item (:174-175) stays open.
@@ -263,7 +240,7 @@ In user-flow order, both apps in each slice from step 7 on:
 1. ~~Core types and registry (steps 1–2), with their tests.~~ Done.
 2. ~~Core streaming scan, recheck and pull's `record_fetch` (steps 3–4).~~
    Done.
-3. Bridges (steps 5–6).
+3. ~~Bridges (steps 5–6).~~ Done.
 4. Coordinator: streaming, spinners, Checking section, joining (step 7
    minus rechecks).
 5. Post-action rechecks (rest of step 7).

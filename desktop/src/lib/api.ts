@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { Channel, invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import {
   MonitoredFolder,
@@ -44,11 +44,27 @@ export const api = {
   },
 
   // Scanning
-  async scanFolder(folder: MonitoredFolder): Promise<ScanResult> {
+  /** Resolves with the final snapshot; `onSnapshot` gets the ones before it. */
+  async scanFolder(
+    folder: MonitoredFolder,
+    onSnapshot: (snapshot: ScanResult) => void,
+  ): Promise<ScanResult> {
+    const channel = new Channel<ScanResult>();
+    channel.onmessage = onSnapshot;
     return await invoke('scan_folder', {
       path: folder.path,
       onlyLocalChecks: folder.onlyLocalChecks,
       detectUninitialized: folder.detectUninitialized,
+      onSnapshot: channel,
+    });
+  },
+
+  /** Null when the folder was never scanned. */
+  async recheckRepos(folder: MonitoredFolder, repos: string[]): Promise<ScanResult | null> {
+    return await invoke('recheck_repos', {
+      folder: folder.path,
+      repos,
+      onlyLocalChecks: folder.onlyLocalChecks,
     });
   },
 

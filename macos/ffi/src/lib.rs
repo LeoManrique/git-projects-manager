@@ -10,7 +10,9 @@ use gpm_core::domain;
 use gpm_core::infrastructure::{github_cli, launcher, logging};
 use gpm_core::services;
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use tokio::sync::watch;
 
 uniffi::setup_scaffolding!();
 
@@ -374,6 +376,34 @@ pub fn open_logs_folder() -> FfiResult<()> {
 }
 
 // ---------------------------------------------------------------------------
+// Folder scan handle
+// ---------------------------------------------------------------------------
+
+/// One folder scan in flight, read with [`FolderScan::next`] until it returns
+/// `None`.
+///
+/// A watch channel holds only the newest snapshot, so a caller that reads
+/// slower than repos land skips the ones in between instead of queueing them.
+/// Chosen over a Swift callback, which would run Swift code on the scan's
+/// worker threads.
+#[derive(uniffi::Object)]
+pub struct FolderScan {
+    snapshots: tokio::sync::Mutex<watch::Receiver<Option<domain::ScanResult>>>,
+}
+
+#[uniffi::export(async_runtime = "tokio")]
+impl FolderScan {
+    /// Wait for a snapshot newer than the last one returned. `None` once the
+    /// final snapshot has been returned, or if the scan died without one.
+    pub async fn next(&self) -> Option<ScanResult> {
+        let mut snapshots = self.snapshots.lock().await;
+        // Errs only when the scan is over and its last snapshot already seen.
+        snapshots.changed().await.ok()?;
+        snapshots.borrow_and_update().clone().map(ScanResult::from)
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Core object
 // ---------------------------------------------------------------------------
 
@@ -581,7 +611,7 @@ impl GpmCore {
         let scanner = Arc::clone(&self.state.scanner);
         let result = tokio::task::spawn_blocking(move || {
             scanner.scan_folder(
-                std::path::Path::new(&path),
+                Path::new(&path),
                 only_local_checks,
                 detect_uninitialized,
             )
@@ -591,13 +621,60 @@ impl GpmCore {
         Ok(result.into())
     }
 
-    /// `git fetch` + `git pull` for the repository at `path`.
+    /// Start scanning one monitored folder and return the handle its
+    /// snapshots arrive through ([`FolderScan::next`]). Returns at once; the
+    /// scan blocks a thread of its own.
+    #[must_use]
+    pub fn start_folder_scan(
+        &self,
+        path: String,
+        only_local_checks: bool,
+        detect_uninitialized: bool,
+    ) -> Arc<FolderScan> {
+        let scanner = Arc::clone(&self.state.scanner);
+        let (tx, rx) = watch::channel(None);
+        std::thread::spawn(move || {
+            let result = scanner.scan_folder_streaming(
+                Path::new(&path),
+                only_local_checks,
+                detect_uninitialized,
+                |snapshot| {
+                    tx.send_replace(Some(snapshot));
+                },
+            );
+            tx.send_replace(Some(result));
+        });
+        Arc::new(FolderScan { snapshots: tokio::sync::Mutex::new(rx) })
+    }
+
+    /// Read `repos` of the folder at `folder` again after an action changed
+    /// them. `None` when the folder was never scanned.
+    ///
+    /// # Errors
+    /// Errs when the worker thread panics or is cancelled by runtime shutdown.
+    pub async fn recheck_repos(
+        &self,
+        folder: String,
+        repos: Vec<String>,
+        only_local_checks: bool,
+    ) -> FfiResult<Option<ScanResult>> {
+        let scanner = Arc::clone(&self.state.scanner);
+        let result = tokio::task::spawn_blocking(move || {
+            let repos: Vec<PathBuf> = repos.into_iter().map(PathBuf::from).collect();
+            scanner.recheck_repos(Path::new(&folder), &repos, only_local_checks)
+        })
+        .await
+        .map_err(|e| GpmError::Failure(format!("recheck task failed: {e}")))?;
+        Ok(result.map(ScanResult::from))
+    }
+
+    /// `git pull` for the repository at `path`.
     ///
     /// # Errors
     /// Errs when the pull fails (dirty tree, auth, network, ...).
     pub async fn pull_repo(&self, path: String) -> FfiResult<String> {
         let out = tokio::task::spawn_blocking(move || {
-            gpm_core::infrastructure::git::GitOperations::pull(std::path::Path::new(&path))
+            gpm_core::infrastructure::git::GitOperations::pull(Path::new(&path))
         })
         .await
         .map_err(|e| GpmError::Failure(format!("pull task failed: {e}")))??;
@@ -612,7 +689,7 @@ impl GpmCore {
     pub async fn clean_repo(&self, path: String) -> FfiResult<GitCleanResult> {
         let patterns = self.state.settings_manager.get_git_clean_settings().exclude_patterns;
         let (files, dirs) = tokio::task::spawn_blocking(move || {
-            gpm_core::infrastructure::git::GitOperations::clean(std::path::Path::new(&path), &patterns)
+            gpm_core::infrastructure::git::GitOperations::clean(Path::new(&path), &patterns)
         })
         .await
         .map_err(|e| GpmError::Failure(format!("clean task failed: {e}")))??;
@@ -698,5 +775,46 @@ impl GpmCore {
     /// Best-effort server sign-out; the local session is always cleared.
     pub async fn sign_out(&self) {
         services::auth::sign_out(&self.state).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn folder_scan() -> (watch::Sender<Option<domain::ScanResult>>, FolderScan) {
+        let (tx, rx) = watch::channel(None);
+        (tx, FolderScan { snapshots: tokio::sync::Mutex::new(rx) })
+    }
+
+    fn snapshot(revision: u64) -> domain::ScanResult {
+        domain::ScanResult { revision, ..domain::ScanResult::default() }
+    }
+
+    fn next_revision(scan: &FolderScan) -> Option<u64> {
+        tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap()
+            .block_on(scan.next())
+            .map(|s| s.revision)
+    }
+
+    #[test]
+    fn next_skips_to_the_newest_snapshot() {
+        let (tx, scan) = folder_scan();
+        tx.send_replace(Some(snapshot(1)));
+        tx.send_replace(Some(snapshot(2)));
+
+        assert_eq!(next_revision(&scan), Some(2));
+    }
+
+    #[test]
+    fn next_returns_the_final_snapshot_then_none() {
+        let (tx, scan) = folder_scan();
+        tx.send_replace(Some(snapshot(3)));
+        drop(tx);
+
+        assert_eq!(next_revision(&scan), Some(3));
+        assert_eq!(next_revision(&scan), None);
     }
 }

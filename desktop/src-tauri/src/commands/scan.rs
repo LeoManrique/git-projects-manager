@@ -1,7 +1,8 @@
 use gpm_core::domain::{GitCleanResult, ScanResult};
 use gpm_core::infrastructure::git::GitOperations;
 use gpm_core::AppState;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use tauri::ipc::Channel;
 use tauri::State;
 
 /// Run a blocking body on the runtime's blocking pool.
@@ -42,16 +43,45 @@ pub async fn clean_repo(path: String, state: State<'_, AppState>) -> Result<GitC
     .await
 }
 
+/// Scan one folder, sending each snapshot through `on_snapshot` as repos land
+/// and returning the final one.
 #[tauri::command]
 pub async fn scan_folder(
     path: String,
     only_local_checks: bool,
     detect_uninitialized: bool,
+    on_snapshot: Channel<ScanResult>,
     state: State<'_, AppState>,
 ) -> Result<ScanResult, String> {
     let scanner = state.scanner.clone();
     blocking(move || {
-        Ok(scanner.scan_folder(&PathBuf::from(path), only_local_checks, detect_uninitialized))
+        Ok(scanner.scan_folder_streaming(
+            Path::new(&path),
+            only_local_checks,
+            detect_uninitialized,
+            |snapshot| {
+                // Fails only when the webview is gone, and then nobody is
+                // waiting for the snapshot.
+                let _ = on_snapshot.send(snapshot);
+            },
+        ))
+    })
+    .await
+}
+
+/// Read `repos` of the folder at `folder` again after an action changed them.
+/// `None` when the folder was never scanned.
+#[tauri::command]
+pub async fn recheck_repos(
+    folder: String,
+    repos: Vec<String>,
+    only_local_checks: bool,
+    state: State<'_, AppState>,
+) -> Result<Option<ScanResult>, String> {
+    let scanner = state.scanner.clone();
+    blocking(move || {
+        let repos: Vec<PathBuf> = repos.into_iter().map(PathBuf::from).collect();
+        Ok(scanner.recheck_repos(Path::new(&folder), &repos, only_local_checks))
     })
     .await
 }
