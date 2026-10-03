@@ -1,6 +1,6 @@
 # Plan: streamed scans, a "Last scan" indicator and a calmer schedule
 
-Status: slice 1 of 8 done (core types and registry). Next: slice 2. The "why"
+Status: slices 1–2 of 8 done (the core). Next: slice 3, the bridges. The "why"
 is in `docs/analysis/automatic-scan-strategy.md`. Delete this file once the
 manual test script at the bottom passes.
 
@@ -77,7 +77,7 @@ core Scanner::scan_folder_streaming ── walk ──▶ FolderState (core regi
         └─▶ StatusChecker::check ── apply ────────┘
                                      │ categorize, bump revision
                                      ▼
-                           ScanSink::snapshot(ScanResult)
+                     on_snapshot(ScanResult), on the calling thread
                      ┌───────────────┴───────────────┐
               macOS: tokio watch               Tauri: ipc::Channel
               → FolderScan.next() async        → onmessage, flushed
@@ -93,63 +93,31 @@ frontends keep doing what they do today with it (replace the folder's entry).
 
 ## Changes by layer, core outward
 
-### 1–2. Core types and registry (done)
+### 1–4. Core (done)
 
-`ScanResult` carries `started_at_ms`, `revision`, `pending`, `checking` and
-`is_complete` in the core, the FFI record and `types/scan.ts`; TECHNICAL.md
-(Scanning → Registry) and FRONTEND.md's data model describe them. What the
-remaining slices need to know:
+TECHNICAL.md (Scanning → Scan thread pool, Registry, Streaming, Fetch
+debounce) and FRONTEND.md's data model describe it. What the bridges need:
 
-- The registry is `core/src/domain/scanner/registry.rs`, private to the
-  scanner, and categorizing moved into it. API: `begin(folder, repos,
-  uninitialized, scan_started, started_at_ms)`, `apply(folder, status,
-  read_started)`, `finish(folder, scan_started)`, `forget(folder)`; each
-  returns the folder's snapshot (`None` for an unknown folder or repo).
-- `finish` completes only the newest scan of a folder, so two overlapping
-  scans (still possible until slice 5) never report a half-done one as
-  complete.
-- `revision` is one counter for the whole process, so it never repeats, not
-  even for a folder forgotten and scanned again.
-- `scan_folder` already goes through the registry (`par_iter` with one `apply`
-  per repo); slice 2 swaps `par_iter` for `spawn` and adds the sink.
-- `forget` runs from `services::folders::{update, delete}`, which both bridges
-  now call; a path edit forgets the old path too.
-- The registry does not yet track which pending repos a scan has *started*;
-  `recheck_repos` (slice 2) needs that.
-- Found on the way: the macOS Release build failed with E0463 because a
+- `Scanner::scan_folder_streaming(path, only_local_checks,
+  detect_uninitialized, on_snapshot: impl FnMut(ScanResult)) -> ScanResult`
+  blocks until every repo is checked. `on_snapshot` runs on the calling
+  thread with every snapshot but the final one, which is returned. A closure
+  replaced the planned `ScanSink` trait: it needs neither `Send` nor `Sync`.
+- `Scanner::recheck_repos(folder, &[PathBuf], only_local_checks) ->
+  Option<ScanResult>`, blocking; `None` for a folder never scanned.
+- Call both from outside `SCAN_POOL` (`spawn_blocking` is fine): the caller
+  blocks while the jobs run on the pool.
+- Until slice 4, two scans of one folder can still overlap; the older one
+  then returns a snapshot with `is_complete == false`.
+- `pull()` calls `record_fetch`, so a recheck within 30 s reads the refs the
+  pull updated.
+- Found on the way: with more queued repos than pool threads, a folder's jobs
+  still queue behind another folder's; they wait for those to *start*, no
+  longer to finish.
+- Found in slice 1: the macOS Release build failed with E0463 because a
   stripped proc-macro dylib does not load under Xcode's
   `MACOSX_DEPLOYMENT_TARGET`. Fixed with `[profile.release.build-override]
   strip = "none"` in `macos/ffi/Cargo.toml`.
-
-### 3. Core scan: `core/src/domain/scanner.rs`
-
-- `ScanSink` trait (`Send + Sync`): `fn snapshot(&self, result: &ScanResult)`.
-- `scan_folder_streaming(path, only_local_checks, detect_uninitialized, sink)`:
-  today's `scan_folder` body, emitting the `begin` snapshot, then **one
-  `SCAN_POOL.spawn` per repo** instead of `par_iter`. Each job checks its
-  repo, `apply`s, and emits. A shared remaining-counter makes the last job
-  finish the scan: `persist()` the remote-check cache, `finish`, log
-  `scan finished`, emit the complete snapshot.
-  - Why `spawn` and not `par_iter`: a `par_iter` join that waits steals other
-    folders' jobs, which is how `Documents` ended up finishing with `Dev`'s
-    ryujinx. Fire-and-forget jobs never wait inside the pool, so a folder is
-    done when its own repos are.
-- `scan_folder` (blocking, today's signature) becomes a wrapper that runs the
-  streaming scan with a no-op sink and returns the complete snapshot. Tests,
-  `examples/timescan.rs` and `just bench-scan` keep working.
-- `recheck_repos(folder, repo_paths, only_local_checks) -> Option<ScanResult>`:
-  for each path, skip it if it is `pending` and not yet started in a scan in
-  flight (that scan will read it fresh); otherwise check it (on the pool) and
-  `apply`. Returns the folder's snapshot, or `None` if the folder was never
-  scanned.
-
-### 4. Core git: `core/src/infrastructure/git.rs`
-
-- `pull()` calls `record_fetch` on success, so the recheck right after a pull
-  skips the fetch and reads ahead/behind from the refs the pull just updated.
-- Fix the stale comments found on the way: `:197-198` (cancel / fresh
-  `Scanner`), `:165` (a killed fetch does not classify as `Unreachable`; the
-  status checker gets `None`).
 
 ### 5. UniFFI bridge: `macos/ffi/src/lib.rs` (UniFFI 0.32.2)
 
@@ -159,7 +127,8 @@ remaining slices need to know:
   A watch channel keeps only the newest value, so a busy main actor skips
   intermediate snapshots instead of queueing them.
 - `GpmCore::start_folder_scan(...) -> Arc<FolderScan>`: spawns the blocking
-  streaming scan with a sink that `send`s into the watch sender.
+  streaming scan with a callback that `send`s into the watch sender, then
+  sends the returned final snapshot.
 - `GpmCore::recheck_repos(...)`: async, `spawn_blocking`, like `pull_repo`.
 - Chosen over a foreign-trait callback because the callback would run Swift
   code on rayon workers; the object keeps every Swift call on the async side
@@ -168,9 +137,8 @@ remaining slices need to know:
 
 ### 6. Tauri commands: `desktop/src-tauri/src/commands/scan.rs` (Tauri 2.11.6)
 
-- `scan_folder` gains `on_snapshot: tauri::ipc::Channel<ScanResult>`. Its sink
-  calls `send` (safe from any thread; delivery order is kept by the JS
-  `Channel`). The command still returns the complete result.
+- `scan_folder` gains `on_snapshot: tauri::ipc::Channel<ScanResult>`, which
+  the callback `send`s to. The command still returns the complete result.
 - New `recheck_repos` command, registered in `main.rs`.
 - `desktop/src/lib/api.ts`: `scanFolder(folder, onSnapshot)` creates the
   `Channel`; `recheckRepos(folder, paths)`.
@@ -264,9 +232,8 @@ scan per folder there is nothing to supersede.
   - §5.5: post-action recheck of the affected repos only.
   - §9: where the label sits in each app.
 - **DESIGN.md** :46-48: the automatic scan sentence.
-- **TECHNICAL.md**: Scanning (streaming API, `spawn` per repo, `record_fetch`
-  on pull, the `Channel` / `FolderScan` bridges) and the `macos/ffi` line of
-  the architecture tree.
+- **TECHNICAL.md**: the `Channel` / `FolderScan` bridges in Scanning, and
+  the `macos/ffi` line of the architecture tree.
 - **ROADMAP.md**: tick the overlap item (:172-173); fix the stale :30-32
   (post-action rescans are not full scans); add the done items. The 20 s
   fetch item (:174-175) stays open.
@@ -283,11 +250,10 @@ scan per folder there is nothing to supersede.
 
 ## Tests
 
-- Core (registry tests are in `registry.rs` and `tests/scan_snapshots.rs`):
-  the streaming scan's last snapshot equals the blocking `scan_folder` result;
-  `recheck_repos` skips a repo still pending; two folders, one with a blocked
-  repo, complete independently (a test git remote that never answers, or a
-  fake checker).
+- Core: done (`registry.rs`, `tests/scan_snapshots.rs`). Dropped: "two
+  folders, one blocked, complete independently". The old bug needs the pool
+  saturated (more than 32 repos that never answer), too slow and timing-bound
+  for `just test`.
 - `just clippy` (pedantic) clean for core, ffi and src-tauri.
 
 ## Slices for implementation (Code Mentor style)
@@ -295,7 +261,8 @@ scan per folder there is nothing to supersede.
 In user-flow order, both apps in each slice from step 7 on:
 
 1. ~~Core types and registry (steps 1–2), with their tests.~~ Done.
-2. Core streaming scan, recheck and pull's `record_fetch` (steps 3–4).
+2. ~~Core streaming scan, recheck and pull's `record_fetch` (steps 3–4).~~
+   Done.
 3. Bridges (steps 5–6).
 4. Coordinator: streaming, spinners, Checking section, joining (step 7
    minus rechecks).

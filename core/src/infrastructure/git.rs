@@ -162,8 +162,9 @@ fn describe(cmd: &Command) -> String {
 ///
 /// [`limit_http`] and [`limit_ssh`] bound a *stalled transfer*, but not a TCP connect to a
 /// black-holed route: libcurl's default connect timeout is 300 s. A killed
-/// fetch classifies as [`RemoteReachability::Unreachable`] — never `NotFound` —
-/// so the failure mode is "we could not check", not a repo wrongly flagged.
+/// fetch is an error, which the status checker reads as no verdict — never
+/// `NotFound` — so the failure mode is "we could not check", not a repo
+/// wrongly flagged.
 const FETCH_TIMEOUT: Duration = Duration::from_secs(20);
 
 /// How long a `git pull` may run before it is killed.
@@ -184,7 +185,7 @@ const LOCAL_TIMEOUT: Duration = Duration::from_mins(1);
 ///
 /// Fetching stays on the scan path — ahead/behind counts are meant to be
 /// current — but scans come in bursts that ask the same question twice: the
-/// rescan fired right after a pull or clean, a window-focus rescan landing on
+/// recheck fired right after a pull or clean, a window-focus rescan landing on
 /// the heels of the startup scan, a Scan All moments after either. Those repeat
 /// the whole network round-trip for a state that cannot have changed. The
 /// window is deliberately short, so a scan the user asks for after doing
@@ -194,8 +195,8 @@ const LOCAL_TIMEOUT: Duration = Duration::from_mins(1);
 /// cached.
 const FETCH_DEBOUNCE: Duration = Duration::from_secs(30);
 
-/// When each repo was last fetched successfully. Process-wide, because a
-/// `Scanner` is replaced on cancel and every scan builds a fresh one.
+/// When each repo was last fetched successfully. Outside the `Scanner`
+/// because a successful pull records here too.
 static LAST_FETCH: LazyLock<Mutex<HashMap<PathBuf, Instant>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
@@ -423,6 +424,9 @@ impl GitOperations {
 
         if output.status.success() {
             tracing::info!(repo = %repo_path.display(), "pull succeeded");
+            // The pull's own fetch just updated the tracking refs, so the
+            // recheck that follows can read them instead of fetching again.
+            record_fetch(repo_path);
             Ok(String::from_utf8_lossy(&output.stdout).to_string())
         } else {
             let error = String::from_utf8_lossy(&output.stderr);

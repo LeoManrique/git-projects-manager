@@ -13,7 +13,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub(crate) const REMOTE_CHECK_TTL_SECS: i64 = 24 * 60 * 60;
 
 /// Shared, thread-safe debounce for `gh` remote-existence checks during one
-/// scan. Loaded once, consulted per repo across the rayon pool, saved once.
+/// scan or recheck. Loaded once, consulted per repo across the pool, saved
+/// once.
 pub(crate) struct RemoteCheckCtx {
     cache: Mutex<HashMap<String, RemoteCheckEntry>>,
     store: RemoteCheckStore,

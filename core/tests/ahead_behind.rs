@@ -196,7 +196,7 @@ fn an_offline_folder_never_reports_unknown() {
 
 #[test]
 fn a_second_scan_within_the_debounce_window_does_not_refetch() {
-    // Fetching stays on the scan path, but bursts of scans (the rescan after a
+    // Fetching stays on the scan path, but bursts of scans (the recheck after a
     // pull, a focus rescan on the heels of the startup scan) ask the same
     // question twice. The second scan here reuses the tracking ref the first
     // one fetched, which is visible precisely because it misses a commit

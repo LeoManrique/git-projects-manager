@@ -183,7 +183,11 @@ width, matching Apple's 824/1024 icon grid).
   (`4 × CPUs`, clamped to 8–32) rather than the global one. Almost all of a
   check's wall time is a `git fetch` blocked on DNS/TLS, so a CPU-sized pool
   serializes the fetches into `repos / CPUs` waves. Kept off the global pool so
-  no other rayon user inherits a thread count sized for blocking I/O.
+  no other rayon user inherits a thread count sized for blocking I/O. Each repo
+  is one job spawned through `in_place_scope` from the calling thread, which is
+  outside the pool and simply blocks. The `par_iter` it replaced joined on a
+  pool thread, and a joining thread runs other queued jobs while it waits, so
+  one folder's scan finished only after another folder's slow repo.
 - **Open files limit** (`resource_limits`): `AppState::new` raises the soft
   `RLIMIT_NOFILE` to `min(10240, hard)` (macOS rejects more than `OPEN_MAX`). A
   macOS app starts at 256, which a Clean All during a rescan exhausted ("Too many
@@ -216,10 +220,11 @@ width, matching Apple's 824/1024 icon grid).
   map, and a fetch within 30 s of it is skipped (reported `Reachable`, since that
   is what the skipped fetch established). Ahead/behind is still computed from the
   tracking refs, so counts stay current to within the window — only the round
-  trip goes. Scans arrive in bursts (post-action rescan, focus rescan after
+  trip goes. Scans arrive in bursts (post-action recheck, focus rescan after
   startup) that repeat identical network work; a repeat scan measures
   **3.4 s → 1.0 s** over 76 repos. Failures are never recorded, so an unreachable
-  remote is retried immediately.
+  remote is retried immediately. A successful `pull` records too: its fetch just
+  updated the tracking refs the recheck after it reads.
 - **Wall-clock timeouts** (`infrastructure::process`): `git fetch` is killed
   after 20 s, `git pull` after 5 min, the local `git rev-list` and `git clean`
   dry run after 1 min, and `gh` after 15 s (60 s for `repo list`). git's own
@@ -234,7 +239,7 @@ width, matching Apple's 824/1024 icon grid).
   stderr, so killing git alone left the reader threads waiting on them for up to
   libcurl's 300 s connect timeout. A descendant that leaves the group is bounded
   too: once the child exits, the pipes get 2 s (`PIPE_GRACE`) and are then
-  abandoned. A killed fetch classifies as `Unreachable`, never `NotFound`.
+  abandoned. A killed fetch is an error, so it never reads as `NotFound`.
 - `onlyLocalChecks` per folder skips fetch + ahead/behind; the `git remote`
   presence check is local, so publish state is still resolved (but never
   `RemoteNotFound`, which needs a fetch).
@@ -295,18 +300,24 @@ width, matching Apple's 824/1024 icon grid).
   latest state. A scan seeds it after the walk (repos no longer found are
   dropped, every found repo is `pending`, repos with no previous status are in
   `checking`) and applies each status as it is read; every change returns a
-  whole, categorized `ScanResult` with a process-wide increasing `revision`. A
+  whole, categorized `ScanResult` with an increasing `revision` shared by every folder. A
   status is kept only if no later-started read was applied, so a slow read
   never overwrites a fresher one. `finish` completes only the newest scan of
   the folder. Editing a folder's path or deleting it (`services::folders`)
   forgets its state.
+- **Streaming**: `scan_folder_streaming` hands each snapshot to a callback on
+  the calling thread (the walk's, then one per landed repo, skipping any that
+  arrive after a newer one) and returns the complete one; `scan_folder` is it
+  without the callback. `recheck_repos` re-reads repos after an action and
+  skips those a scan in flight has queued but not started, since that scan
+  reads them fresh.
 - No cancellation. The removed flag was polled only by the directory walk, so it stopped the
   cheap half and left every `git fetch` running, and it returned a `ScanResult`
   indistinguishable from a complete one that the frontends stored as
   authoritative. A cancel UI needs polling in the status loop and a partial-result
   marker first.
 - Unborn repos (no commits) detected via typed `git2::ErrorCode::UnbornBranch`.
-- **Scan logging**: `scan_folder` logs `scan started` and `scan finished` (repo,
+- **Scan logging**: a scan logs `scan started` and `scan finished` (repo,
   error and unknown-remote counts, seconds) per folder, so a hang shows as a
   start with no finish. Each repo that lands in Errors (`StatusChecker::failed`)
   and each `remote_state_unknown` repo is logged with its error.

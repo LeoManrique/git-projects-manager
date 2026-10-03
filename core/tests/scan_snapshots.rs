@@ -1,5 +1,5 @@
-//! Verifies the snapshot fields a blocking `scan_folder` returns: complete,
-//! nothing left pending or checking, and stamped with its start.
+//! Verifies the snapshots a scan streams and returns, and that a recheck
+//! reads a repo again.
 
 use gpm_core::domain::scanner::Scanner;
 use std::path::{Path, PathBuf};
@@ -27,6 +27,10 @@ impl Fixture {
 
     fn path(&self) -> &Path {
         &self.base
+    }
+
+    fn repo(&self) -> PathBuf {
+        self.base.join("repo")
     }
 }
 
@@ -60,4 +64,44 @@ fn a_rescan_has_a_higher_revision() {
     let second = scanner.scan_folder(fixture.path(), true, false);
 
     assert!(second.revision > first.revision);
+}
+
+#[test]
+fn a_streaming_scan_shows_a_new_repo_as_checking_first() {
+    let fixture = Fixture::new("snapshot-streaming");
+    let mut snapshots = Vec::new();
+
+    let result =
+        Scanner::new().scan_folder_streaming(fixture.path(), true, false, |s| snapshots.push(s));
+
+    let first = &snapshots[0];
+    assert_eq!(first.checking.len(), 1);
+    assert_eq!(first.pending.len(), 1);
+    assert!(snapshots.iter().all(|s| !s.is_complete));
+    assert!(snapshots.windows(2).all(|w| w[0].revision < w[1].revision));
+    assert!(result.is_complete);
+    assert!(result.revision > snapshots.last().unwrap().revision);
+}
+
+#[test]
+fn a_recheck_reads_a_changed_repo_again() {
+    let fixture = Fixture::new("snapshot-recheck");
+    let scanner = Scanner::new();
+    let first = scanner.scan_folder(fixture.path(), true, false);
+    assert!(first.with_changes.is_empty());
+
+    std::fs::write(fixture.repo().join("new.txt"), "x").unwrap();
+    let rechecked = scanner.recheck_repos(fixture.path(), &[fixture.repo()], true).unwrap();
+
+    assert_eq!(rechecked.with_changes.len(), 1);
+    assert!(rechecked.revision > first.revision);
+}
+
+#[test]
+fn a_recheck_of_a_folder_never_scanned_is_none() {
+    let fixture = Fixture::new("snapshot-recheck-unknown");
+
+    let rechecked = Scanner::new().recheck_repos(fixture.path(), &[fixture.repo()], true);
+
+    assert!(rechecked.is_none());
 }

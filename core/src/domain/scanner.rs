@@ -5,9 +5,8 @@ mod status_checker;
 mod uninitialized;
 
 use crate::domain::ScanResult;
-use rayon::prelude::*;
-use std::path::Path;
-use std::sync::LazyLock;
+use std::path::{Path, PathBuf};
+use std::sync::{mpsc, LazyLock};
 use std::time::Instant;
 
 use finder::RepositoryFinder;
@@ -54,17 +53,31 @@ impl Scanner {
         Self::default()
     }
 
-    /// Scan a folder for git repositories and check their status
-    ///
-    /// `detect_uninitialized` is the monitored folder's own setting: a folder
-    /// that is not a projects folder reports no Uninitialized entries, because
-    /// there every ordinary subdirectory would be one.
+    /// [`Self::scan_folder_streaming`] without the intermediate snapshots.
     #[must_use]
     pub fn scan_folder(
         &self,
         path: &Path,
         only_local_checks: bool,
         detect_uninitialized: bool,
+    ) -> ScanResult {
+        self.scan_folder_streaming(path, only_local_checks, detect_uninitialized, |_| {})
+    }
+
+    /// Scan a folder for git repositories and check their status, passing
+    /// `on_snapshot` the folder's state after the walk and again each time a
+    /// repo's status lands. Blocks until every repo is checked and returns the
+    /// final snapshot, which `on_snapshot` does not get.
+    ///
+    /// `detect_uninitialized` is the monitored folder's own setting: a folder
+    /// that is not a projects folder reports no Uninitialized entries, because
+    /// there every ordinary subdirectory would be one.
+    pub fn scan_folder_streaming(
+        &self,
+        path: &Path,
+        only_local_checks: bool,
+        detect_uninitialized: bool,
+        mut on_snapshot: impl FnMut(ScanResult),
     ) -> ScanResult {
         let scan_started = Instant::now();
         let started_at_ms = chrono::Utc::now().timestamp_millis();
@@ -91,29 +104,9 @@ impl Scanner {
             scan_started,
             started_at_ms,
         );
+        on_snapshot(first.clone());
 
-        // Detecting a deleted remote requires a network fetch, so the debounce
-        // cache is only loaded for online scans; local-only scans stay offline.
-        let remote_ctx =
-            (!only_local_checks).then(|| RemoteCheckCtx::load(REMOTE_CHECK_TTL_SECS));
-
-        // Check status of all repositories in parallel
-        let check_all = || {
-            repositories.par_iter().for_each(|repo_path| {
-                let read_started = Instant::now();
-                let status =
-                    StatusChecker::check(repo_path, only_local_checks, remote_ctx.as_ref());
-                self.registry.apply(path, status, read_started);
-            });
-        };
-        match SCAN_POOL.as_ref() {
-            Some(pool) => pool.install(check_all),
-            None => check_all(),
-        }
-
-        if let Some(ctx) = &remote_ctx {
-            ctx.persist();
-        }
+        self.check_repos(path, &repositories, only_local_checks, on_snapshot);
 
         // `None` only when the folder was forgotten mid-scan, and no frontend
         // keeps the result of a folder it no longer monitors.
@@ -129,8 +122,92 @@ impl Scanner {
         result
     }
 
+    /// Read `repos` of `folder` again, after an action changed them. A repo
+    /// that a scan in flight has queued but not started is skipped, since
+    /// that scan reads it fresh anyway. Returns the folder's snapshot, `None`
+    /// if the folder was never scanned.
+    #[must_use]
+    pub fn recheck_repos(
+        &self,
+        folder: &Path,
+        repos: &[PathBuf],
+        only_local_checks: bool,
+    ) -> Option<ScanResult> {
+        if !self.registry.knows(folder) {
+            return None;
+        }
+        let unqueued: Vec<PathBuf> = repos
+            .iter()
+            .filter(|repo| !self.registry.is_queued(folder, repo))
+            .cloned()
+            .collect();
+        self.check_repos(folder, &unqueued, only_local_checks, |_| {});
+        self.registry.snapshot(folder)
+    }
+
     /// Drop everything known about a folder that is no longer monitored.
     pub fn forget(&self, path: &Path) {
         self.registry.forget(path);
+    }
+
+    /// Check `repos` on the scan pool, one job each, applying every status to
+    /// `folder` as it lands. Blocks until all are done; `on_snapshot` runs on
+    /// this thread with each newer snapshot.
+    ///
+    /// The jobs are spawned, never joined inside the pool. A pool thread that
+    /// waits on a join runs other queued jobs meanwhile, so one folder's scan
+    /// used to finish only after another folder's slow repo it had picked up.
+    /// This thread is outside the pool and simply blocks.
+    fn check_repos(
+        &self,
+        folder: &Path,
+        repos: &[PathBuf],
+        only_local_checks: bool,
+        mut on_snapshot: impl FnMut(ScanResult),
+    ) {
+        // Detecting a deleted remote requires a network fetch, so the debounce
+        // cache is only loaded for online checks; local-only ones stay offline.
+        let remote_ctx =
+            (!only_local_checks).then(|| RemoteCheckCtx::load(REMOTE_CHECK_TTL_SECS));
+        let ctx = remote_ctx.as_ref();
+        let (tx, rx) = mpsc::channel::<ScanResult>();
+
+        in_scan_pool(move |scope| {
+            for repo in repos {
+                let tx = tx.clone();
+                scope.spawn(move |_| {
+                    self.registry.start(folder, repo);
+                    let read_started = Instant::now();
+                    let status = StatusChecker::check(repo, only_local_checks, ctx);
+                    if let Some(snapshot) = self.registry.apply(folder, status, read_started) {
+                        let _ = tx.send(snapshot);
+                    }
+                });
+            }
+            // Only the jobs' senders are left, so the loop ends with the last job.
+            drop(tx);
+            // Two jobs can send in the opposite order they applied in. A newer
+            // snapshot already holds the older one's status, so it is skipped.
+            let mut last_revision = 0;
+            for snapshot in rx {
+                if snapshot.revision > last_revision {
+                    last_revision = snapshot.revision;
+                    on_snapshot(snapshot);
+                }
+            }
+        });
+
+        if let Some(ctx) = &remote_ctx {
+            ctx.persist();
+        }
+    }
+}
+
+/// Run `op` on this thread with a scope whose jobs go to [`SCAN_POOL`], and
+/// wait for them.
+fn in_scan_pool<'scope>(op: impl FnOnce(&rayon::Scope<'scope>)) {
+    match SCAN_POOL.as_ref() {
+        Some(pool) => pool.in_place_scope(op),
+        None => rayon::in_place_scope(op),
     }
 }

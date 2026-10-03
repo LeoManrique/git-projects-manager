@@ -31,6 +31,8 @@ struct FolderState {
     /// Keyed by repo path. `None` until the repo's first check lands.
     repos: HashMap<String, Option<Reading>>,
     pending: HashSet<String>,
+    /// The pending repos whose read has not started yet.
+    queued: HashSet<String>,
     uninitialized: Vec<RepoStatus>,
     scan_started: Instant,
     started_at_ms: i64,
@@ -70,8 +72,10 @@ impl ScanRegistry {
             .collect();
         uninitialized.sort_by(|a, b| by_path_ci(&a.path, &b.path));
 
+        let pending: HashSet<String> = repos.keys().cloned().collect();
         let state = FolderState {
-            pending: repos.keys().cloned().collect(),
+            queued: pending.clone(),
+            pending,
             repos,
             uninitialized,
             scan_started,
@@ -83,6 +87,28 @@ impl ScanRegistry {
         let snapshot = state.snapshot(folder);
         folders.insert(folder.to_path_buf(), state);
         snapshot
+    }
+
+    /// Whether `folder` has been scanned and not forgotten since.
+    pub(super) fn knows(&self, folder: &Path) -> bool {
+        self.inner.lock().folders.contains_key(folder)
+    }
+
+    /// Note that a read of `repo` is starting.
+    pub(super) fn start(&self, folder: &Path, repo: &Path) {
+        if let Some(state) = self.inner.lock().folders.get_mut(folder) {
+            state.queued.remove(&repo.display().to_string());
+        }
+    }
+
+    /// Whether `repo` waits for a scan in flight that has not started reading
+    /// it yet, so that scan will read it fresh anyway.
+    pub(super) fn is_queued(&self, folder: &Path, repo: &Path) -> bool {
+        self.inner
+            .lock()
+            .folders
+            .get(folder)
+            .is_some_and(|state| state.queued.contains(&repo.display().to_string()))
     }
 
     /// Apply one repo's status, read starting at `read_started`. The repo
@@ -125,6 +151,11 @@ impl ScanRegistry {
             state.revision = next_revision(last_revision);
         }
         Some(state.snapshot(folder))
+    }
+
+    /// The folder's current snapshot, `None` if it is unknown.
+    pub(super) fn snapshot(&self, folder: &Path) -> Option<ScanResult> {
+        self.inner.lock().folders.get(folder).map(|state| state.snapshot(folder))
     }
 
     /// Drop a folder that is no longer monitored, so its state goes with it.
@@ -343,6 +374,18 @@ mod tests {
         registry.forget(folder());
 
         assert!(registry.apply(folder(), clean("a"), Instant::now()).is_none());
+    }
+
+    #[test]
+    fn a_repo_is_queued_until_its_read_starts() {
+        let registry = ScanRegistry::default();
+        begin(&registry, &["a"]);
+        assert!(registry.is_queued(folder(), &repo("a")));
+
+        registry.start(folder(), &repo("a"));
+
+        assert!(!registry.is_queued(folder(), &repo("a")));
+        assert_eq!(registry.snapshot(folder()).unwrap().pending, vec![path_of("a")]);
     }
 
     #[test]
