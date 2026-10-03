@@ -221,8 +221,8 @@ width, matching Apple's 824/1024 icon grid).
   map, and a fetch within 30 s of it is skipped (reported `Reachable`, since that
   is what the skipped fetch established). Ahead/behind is still computed from the
   tracking refs, so counts stay current to within the window — only the round
-  trip goes. Scans arrive in bursts (post-action recheck, focus rescan after
-  startup) that repeat identical network work; a repeat scan measures
+  trip goes. Scans arrive in bursts (post-action recheck, a Scan All right after
+  another) that repeat identical network work; a repeat scan measures
   **3.4 s → 1.0 s** over 76 repos. Failures are never recorded, so an unreachable
   remote is retried immediately. A successful `pull` records too: its fetch just
   updated the tracking refs the recheck after it reads.
@@ -318,9 +318,16 @@ width, matching Apple's 824/1024 icon grid).
   busy main actor skips the ones in between. A Swift callback would have run
   Swift code on the scan's threads. Both bridges export `recheck_repos`,
   which the frontends call after every pull or clean, one call per folder.
-  Each frontend keeps one scan per folder (a second request joins it) and
-  drops a snapshot whose `revision` is not newer than the one shown; Tauri
-  applies streamed snapshots once per animation frame.
+  Each frontend keeps one scan per folder (a second request joins it, unless
+  the folder was edited since; then it waits for that scan) and drops a
+  snapshot whose `revision` is not newer than the one shown; Tauri applies
+  streamed snapshots once per animation frame.
+- **Background timer**: each frontend runs one loop that sleeps until the
+  last full scan is 10 min old. macOS sleeps on `ContinuousClock`, which
+  counts system sleep, so an overdue scan runs at wake. WebKit's timers stop
+  while the system sleeps, so the Tauri loop wakes at least every 60 s and
+  re-checks the wall clock. In both, a timer that fires over 60 s late waits
+  30 s for the network.
 - No cancellation. The removed flag was polled only by the directory walk, so it stopped the
   cheap half and left every `git fetch` running, and it returned a `ScanResult`
   indistinguishable from a complete one that the frontends stored as

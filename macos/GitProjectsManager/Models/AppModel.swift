@@ -73,10 +73,21 @@ final class AppModel {
     private(set) var gitCleanPatterns: [String] = []
 
     // Scan bookkeeping (FRONTEND.md §5.1)
-    /// When the last full scan started: what "Last scan" shows.
+    /// When the last full scan started: what "Last scan" shows, and the
+    /// debouncer of both automatic scans below.
     private(set) var lastFullScanStartedAt: Date?
-    private var lastScanStartedAt: Date?
+    private var hasStarted = false
     private var hasInitialScan = false
+    private var activationObserver: (any NSObjectProtocol)?
+
+    /// A silent full scan runs once the last full scan is this old.
+    private static let backgroundScanMinAge: TimeInterval = 10 * 60
+    /// Coming to the front, or opening a window, runs a visible one past this.
+    private static let focusScanMinAge: TimeInterval = 15 * 60
+    /// A background timer this late was held back by system sleep, and fired
+    /// at wake, likely before the network is back: it waits `wakeGrace` first.
+    private static let lateTimer: Duration = .seconds(60)
+    private static let wakeGrace: Duration = .seconds(30)
 
     var defaultTerminal: TerminalApp? { availableTerminals.first { $0.id == defaultTerminalId } }
     var defaultEditor: EditorApp? { availableEditors.first { $0.id == defaultEditorId } }
@@ -88,11 +99,32 @@ final class AppModel {
 
     // MARK: - Startup
 
-    func start() async {
+    /// A main window appeared. The first one starts the app; any later one
+    /// rescans if the last full scan is old enough (§5.1).
+    func windowDidOpen() {
+        guard hasStarted else {
+            hasStarted = true
+            Task { await start() }
+            return
+        }
+        scanIfStale()
+    }
+
+    private func start() async {
         async let foldersLoad: Void = loadFolders()
         async let settingsLoad: Void = loadSettings()
         _ = await (foldersLoad, settingsLoad)
         triggerInitialScanIfNeeded()
+        // Registered once here rather than per window, so two windows never
+        // react to one activation twice.
+        activationObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.appDidBecomeActive() }
+        }
+        Task { await runBackgroundScans() }
     }
 
     func loadFolders() async {
@@ -143,6 +175,9 @@ final class AppModel {
 
     /// A folder's scan in flight, and whether it shows its progress.
     private struct InFlightScan {
+        let id: UUID
+        /// The folder as it was when the scan was asked for.
+        let folder: MonitoredFolder
         /// Ends with the scan's start (unix ms), or nil if it never finished.
         let task: Task<Int64?, Never>
         var isVisible: Bool
@@ -155,17 +190,23 @@ final class AppModel {
     /// Returns when each target's scan started, nil for one that failed.
     @discardableResult
     private func requestScan(_ targets: [MonitoredFolder], visible: Bool) async -> [Int64?] {
-        lastScanStartedAt = Date()
         var scans: [Task<Int64?, Never>] = []
         for folder in targets {
-            if let inFlight = inFlightScans[folder.id] {
+            let inFlight = inFlightScans[folder.id]
+            if let inFlight, Self.scansAlike(inFlight.folder, folder) {
                 if visible, !inFlight.isVisible { inFlightScans[folder.id]?.isVisible = true }
                 scans.append(inFlight.task)
             } else {
+                // A scan of the folder as it was before an edit is not joined:
+                // this one waits for it, so the two never fetch a repo at once.
                 // Runs on the main actor once this loop yields, so its entry
                 // is in place before the scan can end and remove it.
-                let task = Task { await runScan(folder) }
-                inFlightScans[folder.id] = InFlightScan(task: task, isVisible: visible)
+                let id = UUID()
+                let task = Task {
+                    _ = await inFlight?.task.value
+                    return await runScan(folder, id: id)
+                }
+                inFlightScans[folder.id] = InFlightScan(id: id, folder: folder, task: task, isVisible: visible)
                 scans.append(task)
             }
         }
@@ -174,10 +215,16 @@ final class AppModel {
         return starts
     }
 
+    /// Whether a scan of `a` also answers for `b`: the name plays no part.
+    private static func scansAlike(_ a: MonitoredFolder, _ b: MonitoredFolder) -> Bool {
+        a.path == b.path && a.onlyLocalChecks == b.onlyLocalChecks
+            && a.detectUninitialized == b.detectUninitialized
+    }
+
     /// One folder's scan: every snapshot the core streams lands on screen as
     /// it arrives, the last one being the complete result. Returns when the
     /// scan started, or nil if it ended before it finished.
-    private func runScan(_ folder: MonitoredFolder) async -> Int64? {
+    private func runScan(_ folder: MonitoredFolder, id: UUID) async -> Int64? {
         let scan = core.startFolderScan(
             path: folder.path,
             onlyLocalChecks: folder.onlyLocalChecks,
@@ -188,7 +235,8 @@ final class AppModel {
             apply(snapshot, to: folder.id)
             last = snapshot
         }
-        inFlightScans[folder.id] = nil
+        // A newer scan of the edited folder may have taken the entry already.
+        if inFlightScans[folder.id]?.id == id { inFlightScans[folder.id] = nil }
         // Ends early only when the core's scan thread died. The folder keeps
         // what it had (§5.1), so the log is the only place this shows up.
         guard let last, last.isComplete else {
@@ -222,23 +270,64 @@ final class AppModel {
     }
 
     /// Full scan of all folders, with global + per-folder progress indicators.
-    /// Drives Scan All, the startup auto-scan and the window-focus rescan.
-    /// On-demand, so it clears the shared error surface (§5.6).
+    /// Drives Scan All, the startup auto-scan and the focus rescan. On-demand,
+    /// so it clears the shared error surface (§5.6).
     func scanAll() async {
         errorMessage = nil
-        visibleFullScans += 1
-        recordFullScan(startedAt: await requestScan(folders, visible: true))
-        visibleFullScans -= 1
+        await fullScan(visible: true)
+    }
+
+    /// A scan of every folder, which moves the "Last scan" clock once it ends.
+    private func fullScan(visible: Bool) async {
+        if visible { visibleFullScans += 1 }
+        recordFullScan(startedAt: await requestScan(folders, visible: visible))
+        if visible { visibleFullScans -= 1 }
     }
 
     /// Move the "Last scan" clock to the start of a full scan that just
     /// ended: the earliest of its folders' scans, joined ones included, so the
     /// label never claims a folder is fresher than it is. A folder whose scan
-    /// failed does not hold it back, and it never moves back.
+    /// failed does not hold it back. It moves back only from a start in the
+    /// future, left by a system clock set back since.
     private func recordFullScan(startedAt starts: [Int64?]) {
         guard let earliest = starts.compactMap(\.self).min() else { return }
         let startedAt = Date(timeIntervalSince1970: Double(earliest) / 1000)
-        if lastFullScanStartedAt.map({ startedAt > $0 }) ?? true { lastFullScanStartedAt = startedAt }
+        if let current = lastFullScanStartedAt, startedAt < current, current <= .now { return }
+        lastFullScanStartedAt = startedAt
+    }
+
+    /// How long until the last full scan is `age` old: zero once it is, and
+    /// when its age is unknown (no full scan yet, or a start in the future
+    /// after the system clock was set back).
+    private func timeUntilLastFullScan(isOlderThan age: TimeInterval) -> TimeInterval {
+        guard let last = lastFullScanStartedAt else { return 0 }
+        let elapsed = Date.now.timeIntervalSince(last)
+        return elapsed < 0 ? 0 : max(age - elapsed, 0)
+    }
+
+    /// Silent full scans for as long as the app runs, window or not, each once
+    /// the last full scan is `backgroundScanMinAge` old, whatever started that
+    /// one (§5.1).
+    /// Sleeps on the continuous clock, which counts system sleep, so a scan
+    /// that fell due meanwhile runs at wake.
+    private func runBackgroundScans() async {
+        // After a run that moved nothing (no folder, or every scan failed),
+        // look again in an interval rather than at once.
+        var retryAt = Date.distantPast
+        func untilDue() -> TimeInterval {
+            max(timeUntilLastFullScan(isOlderThan: Self.backgroundScanMinAge), retryAt.timeIntervalSinceNow, 0)
+        }
+        while true {
+            let due = ContinuousClock.now + .seconds(untilDue())
+            try? await Task.sleep(until: due, tolerance: .seconds(10))
+            if ContinuousClock.now - due > Self.lateTimer { try? await Task.sleep(for: Self.wakeGrace) }
+            // A scan that ended meanwhile moved the clock: sleep again.
+            guard untilDue() == 0 else { continue }
+            await fullScan(visible: false)
+            if timeUntilLastFullScan(isOlderThan: Self.backgroundScanMinAge) == 0 {
+                retryAt = .now + Self.backgroundScanMinAge
+            }
+        }
     }
 
     /// Scan a single folder (per-folder Scan control). On-demand, so it
@@ -311,14 +400,17 @@ final class AppModel {
         return repoPath == base || repoPath.hasPrefix(base + "/")
     }
 
-    /// Window regained focus: rescan all folders with the normal scan
-    /// indicators, throttled to once per 20s since the last scan of any kind
-    /// (§5.1). Skipped while any scan is in flight.
-    func appDidBecomeActive() {
+    private func appDidBecomeActive() {
         kanban.appDidBecomeActive()
-        guard hasInitialScan, !folders.isEmpty else { return }
-        guard inFlightScans.isEmpty else { return }
-        if let last = lastScanStartedAt, Date().timeIntervalSince(last) < 20 { return }
+        scanIfStale()
+    }
+
+    /// The app came to the front or a window opened: rescan every folder,
+    /// visibly, if the last full scan is `focusScanMinAge` old (§5.1). A scan
+    /// in flight is joined, and turns visible.
+    private func scanIfStale() {
+        guard hasInitialScan, !folders.isEmpty,
+              timeUntilLastFullScan(isOlderThan: Self.focusScanMinAge) == 0 else { return }
         Task { await scanAll() }
     }
 

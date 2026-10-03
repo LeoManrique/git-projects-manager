@@ -293,7 +293,7 @@ remains is presentation. Unchanged by Tier 2.
 | Bulk pull/clean error banner, "No ignored files to clean" | **Fixed** |
 | Superseded scan's spinner | **Fixed** |
 | Blocking work off the runtime thread | **Fixed** |
-| Focus-throttle reference point | Open — Tauri measures from last scan *end*, macOS from last scan *start*. The spec is ambiguous; pick one |
+| Focus-throttle reference point | **Fixed** — both apps debounce on the start of the last full scan |
 | Sync settings commands on the main thread | Open — Tauri v2 runs sync commands on the main thread, and `get_available_terminals` / `get_available_editors` stat the whole app catalog there |
 | List virtualization | Open — macOS uses a lazy `List`, Tauri a plain `.map`. Presentation only |
 

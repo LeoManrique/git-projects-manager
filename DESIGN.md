@@ -43,9 +43,10 @@ folders and surfaces repository status at a glance.
 - **Act on repos**: open in default terminal/editor/`lms-github`, reveal in
   Finder, copy path, fetch & pull (single or all unpulled), clean git-ignored
   files with exclude patterns (single or all clean).
-- **Scan automatically**: on launch, on demand, and on window focus — the
-  focus rescan shows the same progress as a manual scan (20s throttle). On
-  demand means one control, which scans whatever the current view shows.
+- **Scan automatically**: on launch, on demand, silently in the background once
+  the last full scan is 10 minutes old, and on window focus once it is 15
+  minutes old (that one shows the same progress as a manual scan). On demand
+  means one control, which scans whatever the current view shows.
 - **Keep a diagnostics log**: failed, timed-out and slow git commands, scans,
   and the errors the app showed or recovered from go to a log file in the app's
   data folder. Error banners are short-lived and cut long git output, so the

@@ -4,8 +4,27 @@ import { MonitoredFolder, ScanResult, RepoStatus } from '../types';
 import { repoName } from '../lib/repoUtils';
 import { log, logError } from '../lib/log';
 
-// Minimum interval between focus-triggered rescans (FRONTEND.md §5.1)
-const FOCUS_SCAN_MIN_INTERVAL_MS = 20_000;
+// The schedule (FRONTEND.md §5.1): the "Last scan" clock is the debouncer.
+// A silent full scan runs once the last full scan is this old.
+const BACKGROUND_SCAN_MIN_AGE_MS = 10 * 60_000;
+// Coming to the front, or the window showing again, runs a visible one past this.
+const FOCUS_SCAN_MIN_AGE_MS = 15 * 60_000;
+// WebKit's timers stop while the system sleeps, so a long timeout would fire
+// as late as the sleep was long: the background timer wakes at least this often.
+const MAX_TIMER_MS = 60_000;
+// A background timer this late was held back by system sleep (or a suspended
+// WebView) and likely fired before the network is back: it waits first.
+const LATE_TIMER_MS = 60_000;
+const WAKE_GRACE_MS = 30_000;
+
+/** Whether a scan of `a` also answers for `b`: the name plays no part. */
+function scansAlike(a: MonitoredFolder, b: MonitoredFolder): boolean {
+  return (
+    a.path === b.path &&
+    a.onlyLocalChecks === b.onlyLocalChecks &&
+    a.detectUninitialized === b.detectUninitialized
+  );
+}
 
 /** True when `repoPath` is `folderPath` or sits underneath it. */
 function isInside(repoPath: string, folderPath: string): boolean {
@@ -18,6 +37,9 @@ function isInside(repoPath: string, folderPath: string): boolean {
 
 /** A folder's scan in flight, and whether it shows its progress. */
 interface InFlightScan {
+  id: symbol;
+  /** The folder as it was when the scan was asked for. */
+  folder: MonitoredFolder;
   /** Resolves to the scan's start (unix ms), or null if it failed. */
   done: Promise<number | null>;
   visible: boolean;
@@ -49,7 +71,7 @@ export interface UseScannerReturn {
 /**
  * Owns all scan state and repo operations (FRONTEND.md §5): streamed scans,
  * at most one per folder (a second request joins it), auto-scan on startup,
- * the throttled focus rescan, and the pull / clean actions with their
+ * the background and focus rescans, and the pull / clean actions with their
  * recheck of the repos they touched.
  */
 export function useScanner(folders: MonitoredFolder[]): UseScannerReturn {
@@ -69,7 +91,8 @@ export function useScanner(folders: MonitoredFolder[]): UseScannerReturn {
   const inFlightRef = useRef(new Map<string, InFlightScan>());
   const queuedSnapshotsRef = useRef(new Map<string, ScanResult>());
   const flushFrameRef = useRef<number | null>(null);
-  const lastScanTimeRef = useRef(0);
+  // `lastFullScanStartedAt` for the timer and listeners, which outlive renders.
+  const lastFullScanRef = useRef<number | null>(null);
   const hasInitialScanRef = useRef(false);
   // The folders monitored right now, read by scans and actions that started
   // before a folder was edited or deleted.
@@ -157,12 +180,9 @@ export function useScanner(folders: MonitoredFolder[]): UseScannerReturn {
         // this shows up.
         logError(`Scan failed for ${folder.path}`, err);
         return null;
-      } finally {
-        inFlightRef.current.delete(folder.id);
-        publishInFlight();
       }
     },
-    [queueSnapshot, applySnapshots, publishInFlight]
+    [queueSnapshot, applySnapshots]
   );
 
   /**
@@ -174,16 +194,27 @@ export function useScanner(folders: MonitoredFolder[]): UseScannerReturn {
    */
   const requestScan = useCallback(
     async (targets: MonitoredFolder[], visible: boolean) => {
-      lastScanTimeRef.current = Date.now();
       const scans = targets.map((folder) => {
         const inFlight = inFlightRef.current.get(folder.id);
-        if (inFlight) {
+        if (inFlight && scansAlike(inFlight.folder, folder)) {
           if (visible) inFlight.visible = true;
           return inFlight.done;
         }
-        // `runScan` removes the entry only after an await, so it is in place first.
-        const done = runScan(folder);
-        inFlightRef.current.set(folder.id, { done, visible });
+        // A scan of the folder as it was before an edit is not joined: this
+        // one waits for it, so the two never fetch a repo at once. The entry
+        // is removed only after an await, so it is in place first.
+        const id = Symbol(folder.path);
+        const done = (async () => {
+          await inFlight?.done;
+          try {
+            return await runScan(folder);
+          } finally {
+            // A newer scan of the edited folder may have taken the entry already.
+            if (inFlightRef.current.get(folder.id)?.id === id) inFlightRef.current.delete(folder.id);
+            publishInFlight();
+          }
+        })();
+        inFlightRef.current.set(folder.id, { id, folder, done, visible });
         return done;
       });
       publishInFlight();
@@ -196,25 +227,48 @@ export function useScanner(folders: MonitoredFolder[]): UseScannerReturn {
    * Move the "Last scan" clock to the start of a full scan that just ended:
    * the earliest of its folders' scans, joined ones included, so the label
    * never claims a folder is fresher than it is. A folder whose scan failed
-   * does not hold it back, and it never moves back.
+   * does not hold it back. It moves back only from a start in the future,
+   * left by a system clock set back since.
    */
   const recordFullScan = useCallback((starts: (number | null)[]) => {
     const known = starts.filter((start) => start !== null);
     if (known.length === 0) return;
     const earliest = Math.min(...known);
-    setLastFullScanStartedAt((prev) => (prev === null || earliest > prev ? earliest : prev));
+    const current = lastFullScanRef.current;
+    if (current !== null && earliest < current && current <= Date.now()) return;
+    lastFullScanRef.current = earliest;
+    setLastFullScanStartedAt(earliest);
   }, []);
 
-  /** On-demand, so it clears the shared error surface (§5.6). */
-  const fullScan = useCallback(async () => {
-    setError('');
-    setVisibleFullScans((n) => n + 1);
-    recordFullScan(await requestScan(folders, true));
-    setVisibleFullScans((n) => n - 1);
-  }, [requestScan, recordFullScan, folders]);
+  /**
+   * How long until the last full scan is `ageMs` old: 0 once it is, and when
+   * its age is unknown (no full scan yet, or a start in the future after the
+   * system clock was set back).
+   */
+  const timeUntilLastFullScanIsOlderThan = useCallback((ageMs: number) => {
+    const last = lastFullScanRef.current;
+    if (last === null) return 0;
+    const elapsed = Date.now() - last;
+    return elapsed < 0 ? 0 : Math.max(ageMs - elapsed, 0);
+  }, []);
 
+  /** A scan of every folder, which moves the "Last scan" clock once it ends. */
+  const fullScan = useCallback(
+    async (visible: boolean) => {
+      if (visible) setVisibleFullScans((n) => n + 1);
+      recordFullScan(await requestScan(foldersRef.current, visible));
+      if (visible) setVisibleFullScans((n) => n - 1);
+    },
+    [requestScan, recordFullScan]
+  );
+
+  /**
+   * Visible full scan: Scan All, the startup auto-scan and the focus rescan.
+   * On-demand, so it clears the shared error surface (§5.6).
+   */
   const scanAll = useCallback(() => {
-    void fullScan();
+    setError('');
+    void fullScan(true);
   }, [fullScan]);
 
   const scanFolder = useCallback(
@@ -272,23 +326,63 @@ export function useScanner(folders: MonitoredFolder[]): UseScannerReturn {
   useEffect(() => {
     if (folders.length > 0 && !hasInitialScanRef.current) {
       hasInitialScanRef.current = true;
-      void fullScan();
+      scanAll();
     }
-  }, [folders, fullScan]);
+  }, [folders, scanAll]);
 
-  // Rescan when the window regains focus: a normal full scan (so it shows the
-  // usual global + per-folder indicators), throttled to once per 20s and
-  // skipped while any scan is in flight (§5.1).
+  // The window came to the front or shows again: rescan every folder, visibly,
+  // if the last full scan is FOCUS_SCAN_MIN_AGE_MS old (§5.1). A scan in
+  // flight is joined, and turns visible.
   useEffect(() => {
-    const handleFocus = () => {
-      if (!hasInitialScanRef.current || folders.length === 0) return;
-      if (inFlightRef.current.size > 0) return;
-      if (Date.now() - lastScanTimeRef.current < FOCUS_SCAN_MIN_INTERVAL_MS) return;
-      void fullScan();
+    const scanIfStale = () => {
+      if (document.visibilityState === 'hidden') return;
+      if (!hasInitialScanRef.current || foldersRef.current.length === 0) return;
+      if (timeUntilLastFullScanIsOlderThan(FOCUS_SCAN_MIN_AGE_MS) > 0) return;
+      scanAll();
     };
-    window.addEventListener('focus', handleFocus);
-    return () => window.removeEventListener('focus', handleFocus);
-  }, [folders, fullScan]);
+    window.addEventListener('focus', scanIfStale);
+    document.addEventListener('visibilitychange', scanIfStale);
+    return () => {
+      window.removeEventListener('focus', scanIfStale);
+      document.removeEventListener('visibilitychange', scanIfStale);
+    };
+  }, [scanAll, timeUntilLastFullScanIsOlderThan]);
+
+  // Silent full scans for as long as the app runs, each once the last full
+  // scan is BACKGROUND_SCAN_MIN_AGE_MS old, whatever started that one (§5.1).
+  // The window always exists: closing it quits the app.
+  useEffect(() => {
+    let stopped = false;
+    let timer: number | undefined;
+    const sleep = (ms: number) =>
+      new Promise<void>((resolve) => {
+        timer = window.setTimeout(resolve, ms);
+      });
+    // After a run that moved nothing (no folder, or every scan failed), look
+    // again in an interval rather than at once.
+    let retryAt = 0;
+    const untilDue = () =>
+      Math.max(timeUntilLastFullScanIsOlderThan(BACKGROUND_SCAN_MIN_AGE_MS), retryAt - Date.now(), 0);
+    void (async () => {
+      while (!stopped) {
+        const delay = Math.min(untilDue(), MAX_TIMER_MS);
+        const firesAt = Date.now() + delay;
+        await sleep(delay);
+        if (Date.now() - firesAt > LATE_TIMER_MS) await sleep(WAKE_GRACE_MS);
+        // A scan that ended meanwhile moved the clock: sleep again.
+        if (stopped || untilDue() > 0) continue;
+        await fullScan(false);
+        if (timeUntilLastFullScanIsOlderThan(BACKGROUND_SCAN_MIN_AGE_MS) === 0) {
+          retryAt = Date.now() + BACKGROUND_SCAN_MIN_AGE_MS;
+        }
+      }
+    })();
+    // The loop's pending sleep never resolves, so it stops there.
+    return () => {
+      stopped = true;
+      window.clearTimeout(timer);
+    };
+  }, [fullScan, timeUntilLastFullScanIsOlderThan]);
 
   const withRepoFlag = (
     setFlagged: React.Dispatch<React.SetStateAction<Set<string>>>,

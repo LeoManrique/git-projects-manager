@@ -29,14 +29,7 @@ struct GitProjectsManagerApp: App {
             if let model {
                 MainWindow()
                     .environment(model)
-                    .task { await model.start() }
-                    .onReceive(
-                        NotificationCenter.default.publisher(
-                            for: NSApplication.didBecomeActiveNotification
-                        )
-                    ) { _ in
-                        model.appDidBecomeActive()
-                    }
+                    .onAppear { model.windowDidOpen() }
             } else {
                 ContentUnavailableView(
                     "Failed to Start",

@@ -29,7 +29,7 @@
       `vendored` dbus for Linux builds
 - [x] Focus rescans are no longer silent: the window-focus rescan runs as a
       full scan in both apps, showing the same global + per-folder progress
-      as Scan All (still 20s-throttled)
+      as Scan All
 - [x] macOS releases ship the native SwiftUI app: `deploy_releases.sh` builds
       and uploads it (version bump covers `project.yml`), `install_release.sh`
       installs it (macOS 26+ check, replaces older Tauri installs)
@@ -164,6 +164,10 @@
       and the row spins from the click until the new state lands
 - [x] "Last scan: 3 minutes ago" beside the scan control in both apps: the
       start of the last full scan, re-rendered only when its text changes
+- [x] Automatic rescans debounced by that clock in both apps: a silent
+      background scan once it is 10 min old, a visible one on focus once it is
+      15 min old (was: on every focus, 20 s throttle); a folder edited
+      mid-scan gets a fresh scan instead of joining the old one
 
 ## Pending
 - [ ] Re-run the multi-agent adversarial code review of the migration (first

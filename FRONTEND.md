@@ -107,7 +107,7 @@ view) is **session memory** — never persisted. Every launch starts fresh and r
 |---|---|
 | Window | Single main window, resizable, ~1024×680 default, min ~800×540 |
 | Startup | Start the diagnostics log (§6.4) first, then load folders + settings concurrently; failures degrade silently to empty state (and are logged) |
-| Auto-scan | The first time the folder list becomes non-empty in a session, scan all folders once |
+| Auto-scan | The first time the folder list becomes non-empty in a session, scan all folders once; after that, the automatic rescans of §5.1 |
 | Search | One search field filtering repo lists live (§5.4); session-only value |
 | Scan | One primary toolbar action, targeting the current view: **Scan All** in the overview, **Scan Folder** in a folder's detail view (§5.1); disabled when no folders exist or its target is already scanning |
 | Settings access | Tauri: sidebar gear button → Settings (modal). macOS: standard Settings scene (⌘,) plus folder management in the main window (§9) |
@@ -168,27 +168,39 @@ and in the not-scanned empty state, where they name their own target.
    Shows global + per-folder progress.
 2. **Per-folder scan** — the scan control in a folder's detail view and the
    per-folder buttons in the overview. Per-folder progress only.
-3. **Focus rescan** — when the app window regains focus (after the initial scan,
-   folders exist): rescan all folders as a full scan, so it shows the **same
-   global + per-folder progress** as Scan All. Throttled to at most once per
-   **20 seconds** since the last scan of any kind, and skipped while any scan is
-   in flight.
+3. **Automatic rescans** — full scans debounced by the "Last scan" clock below,
+   whatever started the last one (a Scan All press counts):
+   - **Background**: once the last full scan started **10+ minutes** ago, a
+     *silent* full scan: no indicators, no spinners, no Checking section (a new
+     repo appears once checked), and the error area is left alone. Rows move as
+     their statuses land. It runs for as long as the app does, with or without
+     a window, unless the OS holds it back: system sleep, App Nap, or (Tauri on
+     macOS) a minimized or hidden window's suspended WebView. A timer that
+     fires over a minute late (held back by system sleep) waits **30 seconds**
+     first, so the network is back. A run that moves nothing (no folder, every
+     scan failed) looks again 10 minutes later.
+   - **Focus**: when the app comes to the front, a window opens (macOS) or the
+     window shows again (Tauri), and the last full scan started **15+ minutes**
+     ago, a full scan with the same progress as Scan All. With the background
+     scan at 10 minutes, this happens only when the OS held that one back.
+
+   Both join scans in flight (§5.2); a visible request turns a silent scan
+   visible for what is still pending.
 
 **Last scan.** Beside the scan control, except on the board, a label reads
 "Last scan: {age}", with the absolute date and time in its tooltip. {age} is "just
 now" under a minute, then "N minute(s) ago", "N hour(s) ago", "N day(s) ago", "N
 month(s) ago" (30-day months) and "N year(s) ago", rounded down: leogit's words. It
-is the start of the last full scan, set once that scan ends: the earliest start
-among its folders, since a folder scan it joined may have started earlier. A folder
-whose scan failed does not hold it back. Per-folder scans and rechecks never move
+is the start of the last full scan, visible or silent, set once that scan ends: the
+earliest start among its folders, since a folder scan it joined may have started
+earlier. A folder whose scan failed does not hold it back. Per-folder scans and rechecks never move
 it. Hidden until the first full scan ends, and while no folder exists. The text re-renders only when it changes,
 and at once when the app comes back to the front.
 
 Every scan still fetches — ahead/behind counts are meant to be current — but the
 core skips the round-trip for any repo it fetched successfully in the last
 **30 seconds**, reusing the tracking refs from that fetch. Scans arrive in
-bursts (the recheck after a pull or clean, a focus rescan landing on the heels of
-the startup scan) that repeat the same network work for a state that cannot have
+bursts (the recheck after a pull or clean, a Scan All right after another) that repeat the same network work for a state that cannot have
 changed; a repeat scan inside the window measures **3.4 s → 1.0 s** over 76
 repos. The window is short enough that any scan following real work is a fresh
 one. A *failed* fetch is never debounced, so an unreachable remote is retried on
@@ -198,7 +210,9 @@ the next scan.
 
 A folder never has two scans at once. A request for a folder already scanning
 joins the scan in flight instead of starting another: Scan All during a
-per-folder scan starts only the other folders, and waits for all of them. Every
+per-folder scan starts only the other folders, and waits for all of them. A
+folder edited (path or toggles) since its scan in flight started is not joined:
+the new scan waits for the old one to end, so the two never fetch a repo at once. Every
 state the core sends carries a revision that grows with each change, and one no
 newer than what is shown is dropped, so a late arrival never overwrites newer
 state. There is no cancel, in the UI or in the core; the scan control is
@@ -312,8 +326,9 @@ the scan reads it fresh.
 
 One shared, non-dismissible error area shows the most recent scan/action failure.
 An action sets its message **before** its recheck, and the recheck does not
-clear it — the message clears when the next *on-demand* scan starts (Scan All
-or a per-folder Scan). Per-folder scan failures during a multi-folder pass are
+clear it — the message clears when the next visible full scan (Scan All, the
+startup auto-scan, the focus rescan) or per-folder Scan starts. A background
+scan leaves it. Per-folder scan failures during a multi-folder pass are
 silent (previous data kept).
 
 The area shows at most two lines; hovering it shows the full text. Every message
