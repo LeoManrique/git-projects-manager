@@ -2,4 +2,5 @@
 //! and the macOS `UniFFI` bridge, so neither frontend re-implements them.
 
 pub mod auth;
+pub mod folders;
 pub mod kanban;

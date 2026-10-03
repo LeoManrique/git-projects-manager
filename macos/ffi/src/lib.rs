@@ -108,6 +108,11 @@ impl From<domain::RepoStatus> for RepoStatus {
 pub struct ScanResult {
     pub scanned_path: String,
     pub total_repositories: u32,
+    pub started_at_ms: i64,
+    pub revision: u64,
+    pub pending: Vec<String>,
+    pub checking: Vec<RepoStatus>,
+    pub is_complete: bool,
     pub with_changes: Vec<RepoStatus>,
     pub with_unpushed: Vec<RepoStatus>,
     pub with_unpulled: Vec<RepoStatus>,
@@ -126,6 +131,11 @@ impl From<domain::ScanResult> for ScanResult {
         Self {
             scanned_path: s.scanned_path,
             total_repositories: u32::try_from(s.total_repositories).unwrap_or(u32::MAX),
+            started_at_ms: s.started_at_ms,
+            revision: s.revision,
+            pending: s.pending,
+            checking: map(s.checking),
+            is_complete: s.is_complete,
             with_changes: map(s.with_changes),
             with_unpushed: map(s.with_unpushed),
             with_unpulled: map(s.with_unpulled),
@@ -419,7 +429,8 @@ impl GpmCore {
         only_local_checks: bool,
         detect_uninitialized: bool,
     ) -> FfiResult<()> {
-        self.state.config_manager.update_folder(
+        services::folders::update(
+            &self.state,
             id,
             path,
             name,
@@ -432,7 +443,7 @@ impl GpmCore {
     /// # Errors
     /// Errs when `config.json` cannot be written.
     pub fn delete_monitored_folder(&self, id: String) -> FfiResult<()> {
-        self.state.config_manager.delete_folder(id)?;
+        services::folders::delete(&self.state, id)?;
         Ok(())
     }
 

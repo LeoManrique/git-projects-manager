@@ -1,15 +1,17 @@
 mod finder;
+mod registry;
 mod remote_check;
 mod status_checker;
 mod uninitialized;
 
-use crate::domain::{PublishState, RepoStatus, ScanResult};
+use crate::domain::ScanResult;
 use rayon::prelude::*;
 use std::path::Path;
 use std::sync::LazyLock;
 use std::time::Instant;
 
 use finder::RepositoryFinder;
+use registry::ScanRegistry;
 use remote_check::{RemoteCheckCtx, REMOTE_CHECK_TTL_SECS};
 use status_checker::StatusChecker;
 use uninitialized::UninitializedDetector;
@@ -42,12 +44,14 @@ static SCAN_POOL: LazyLock<Option<rayon::ThreadPool>> = LazyLock::new(|| {
 /// result partial; until that exists, offering the entry point is a promise the
 /// scanner cannot keep.
 #[derive(Default)]
-pub struct Scanner;
+pub struct Scanner {
+    registry: ScanRegistry,
+}
 
 impl Scanner {
     #[must_use]
     pub fn new() -> Self {
-        Self
+        Self::default()
     }
 
     /// Scan a folder for git repositories and check their status
@@ -62,7 +66,8 @@ impl Scanner {
         only_local_checks: bool,
         detect_uninitialized: bool,
     ) -> ScanResult {
-        let start_time = Instant::now();
+        let scan_started = Instant::now();
+        let started_at_ms = chrono::Utc::now().timestamp_millis();
         // Paired with "scan finished" below: a start with no finish is a scan
         // that hung, which is otherwise indistinguishable from a slow one.
         tracing::info!(folder = %path.display(), only_local_checks, "scan started");
@@ -79,6 +84,14 @@ impl Scanner {
             Vec::new()
         };
 
+        let first = self.registry.begin(
+            path,
+            &repositories,
+            uninitialized_folders,
+            scan_started,
+            started_at_ms,
+        );
+
         // Detecting a deleted remote requires a network fetch, so the debounce
         // cache is only loaded for online scans; local-only scans stay offline.
         let remote_ctx =
@@ -86,24 +99,25 @@ impl Scanner {
 
         // Check status of all repositories in parallel
         let check_all = || {
-            repositories
-                .par_iter()
-                .map(|repo_path| {
-                    StatusChecker::check(repo_path, only_local_checks, remote_ctx.as_ref())
-                })
-                .collect::<Vec<RepoStatus>>()
+            repositories.par_iter().for_each(|repo_path| {
+                let read_started = Instant::now();
+                let status =
+                    StatusChecker::check(repo_path, only_local_checks, remote_ctx.as_ref());
+                self.registry.apply(path, status, read_started);
+            });
         };
-        let statuses = match SCAN_POOL.as_ref() {
+        match SCAN_POOL.as_ref() {
             Some(pool) => pool.install(check_all),
             None => check_all(),
-        };
+        }
 
         if let Some(ctx) = &remote_ctx {
             ctx.persist();
         }
 
-        // Categorize results
-        let result = Self::categorize_results(path, statuses, uninitialized_folders, start_time);
+        // `None` only when the folder was forgotten mid-scan, and no frontend
+        // keeps the result of a folder it no longer monitors.
+        let result = self.registry.finish(path, scan_started).unwrap_or(first);
         tracing::info!(
             folder = %path.display(),
             repos = result.total_repositories,
@@ -115,85 +129,8 @@ impl Scanner {
         result
     }
 
-    /// Case-insensitive ordering of repos by absolute path, shared by every
-    /// category so the frontends render a stable A–Z list.
-    ///
-    /// The case-sensitive tie-break makes this a total order. Without it two
-    /// paths differing only in case compare equal and the stable sort falls
-    /// back to readdir order, which is filesystem-dependent and can differ
-    /// between two scans of the same tree.
-    fn by_path_ci(a: &RepoStatus, b: &RepoStatus) -> std::cmp::Ordering {
-        a.path
-            .to_lowercase()
-            .cmp(&b.path.to_lowercase())
-            .then_with(|| a.path.cmp(&b.path))
-    }
-
-    /// Categorize repository statuses into different groups.
-    ///
-    /// Repos are sorted case-insensitively by absolute path first, so every
-    /// category lists them in a stable A–Z order grouped by parent directory
-    /// (the directory walk itself yields OS-native readdir order). Each bucket
-    /// preserves this order because the loop below pushes in sequence.
-    fn categorize_results(
-        path: &Path,
-        mut statuses: Vec<RepoStatus>,
-        mut uninitialized_folders: Vec<RepoStatus>,
-        start_time: Instant,
-    ) -> ScanResult {
-        statuses.sort_by(Self::by_path_ci);
-        uninitialized_folders.sort_by(Self::by_path_ci);
-
-        let mut result = ScanResult {
-            scanned_path: path.display().to_string(),
-            total_repositories: statuses.len(),
-            with_changes: vec![],
-            with_unpushed: vec![],
-            with_unpulled: vec![],
-            unpublished: vec![],
-            remote_not_found: vec![],
-            remote_state_unknown: vec![],
-            clean: vec![],
-            errors: vec![],
-            uninitialized: uninitialized_folders,
-            execution_time: start_time.elapsed().as_secs_f64(),
-        };
-
-        // Only real git repos reach this loop; uninitialized folders are kept in
-        // their own list and never considered for the publish-state overlays.
-        for status in statuses {
-            // Unpublished and Remote Not Found are mutually-exclusive overlays:
-            // a repo in either also lands in one of the exclusive buckets below.
-            // Errored repos are excluded (their remote state is unknown).
-            if !status.has_error {
-                match status.publish_state {
-                    PublishState::Unpublished => result.unpublished.push(status.clone()),
-                    PublishState::RemoteNotFound => result.remote_not_found.push(status.clone()),
-                    PublishState::Published => {}
-                }
-
-                // A third overlay, on the same terms: the repo still lands in an
-                // exclusive bucket below (almost always Clean, since an unknown
-                // count cannot place it anywhere else), and this says the bucket
-                // is not the whole story.
-                if status.remote_state_unknown {
-                    result.remote_state_unknown.push(status.clone());
-                }
-            }
-
-            if status.has_error {
-                result.errors.push(status);
-            } else if status.has_changes == Some(true) {
-                result.with_changes.push(status);
-            } else if status.has_unpushed == Some(true) {
-                result.with_unpushed.push(status);
-            } else if status.has_unpulled == Some(true) {
-                result.with_unpulled.push(status);
-            } else {
-                result.clean.push(status);
-            }
-        }
-
-        result
+    /// Drop everything known about a folder that is no longer monitored.
+    pub fn forget(&self, path: &Path) {
+        self.registry.forget(path);
     }
 }

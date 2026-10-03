@@ -42,11 +42,45 @@ pub struct RepoStatus {
     pub error_message: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+impl RepoStatus {
+    /// A repo known only by its path: found on disk, nothing checked yet.
+    #[must_use]
+    pub fn unchecked(path: String) -> Self {
+        Self {
+            path,
+            branch: None,
+            has_changes: None,
+            has_unpushed: None,
+            has_unpulled: None,
+            remote_state_unknown: false,
+            publish_state: PublishState::Published,
+            has_error: false,
+            error_message: None,
+        }
+    }
+}
+
+/// One folder's state at one moment. A scan emits several of these as its
+/// repos are checked; the last one has `is_complete` set.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScanResult {
     pub scanned_path: String,
+    /// Repos found by the latest walk, `checking` included.
     pub total_repositories: usize,
+    /// Wall clock at the start of the scan this snapshot belongs to, unix ms.
+    pub started_at_ms: i64,
+    /// Increases with every change to any folder's state, so a frontend can
+    /// drop a snapshot that arrives after a newer one.
+    pub revision: u64,
+    /// Repos the scan in flight has not checked yet. Repos with a previous
+    /// status keep it in their bucket meanwhile; the rest are in `checking`.
+    pub pending: Vec<String>,
+    /// Repos found by this scan that have no status yet (path only). An
+    /// exclusive bucket, like `clean`.
+    pub checking: Vec<RepoStatus>,
+    /// True once the scan has checked every repo it found.
+    pub is_complete: bool,
     pub with_changes: Vec<RepoStatus>,
     pub with_unpushed: Vec<RepoStatus>,
     pub with_unpulled: Vec<RepoStatus>,
@@ -65,5 +99,6 @@ pub struct ScanResult {
     pub clean: Vec<RepoStatus>,
     pub errors: Vec<RepoStatus>,
     pub uninitialized: Vec<RepoStatus>,
+    /// Seconds the scan took. Zero until `is_complete`.
     pub execution_time: f64,
 }

@@ -14,9 +14,8 @@ pub struct AppState {
     pub settings_manager: Arc<SettingsManager>,
     pub kanban_manager: Arc<KanbanManager>,
     pub repos_cache: Arc<ReposCacheManager>,
-    /// Stateless, so scans share one instance and need no lock. The `RwLock`
-    /// that used to wrap it existed only so `cancel_scan` could swap in a fresh
-    /// scanner; that entry point is gone (see `Scanner`).
+    /// One instance for every scan: it holds each folder's latest state
+    /// behind its own lock.
     pub scanner: Arc<Scanner>,
     pub auth: Arc<RwLock<Option<SyncSession>>>,
     pub token_store: Arc<dyn TokenStore>,

@@ -71,6 +71,8 @@ impl ConfigManager {
         }
     }
 
+    /// Returns the folder's previous path when the update changed it.
+    ///
     /// # Errors
     /// Returns an error if no folder has the given `id`, if the new path
     /// overlaps another monitored folder, or if the config cannot be loaded or
@@ -84,32 +86,38 @@ impl ConfigManager {
         name: String,
         only_local_checks: bool,
         detect_uninitialized: bool,
-    ) -> Result<()> {
+    ) -> Result<Option<String>> {
         let mut config = self.load()?;
         Self::reject_overlap(&config, &path, Some(&id))?;
 
-        if let Some(folder) = config.folders.iter_mut().find(|f| f.id == id) {
-            folder.path = path;
-            folder.name = name;
-            folder.only_local_checks = only_local_checks;
-            folder.detect_uninitialized = detect_uninitialized;
-            self.save(&config)?;
-        } else {
+        let Some(folder) = config.folders.iter_mut().find(|f| f.id == id) else {
             return Err(anyhow::anyhow!("Folder not found"));
-        }
+        };
+        let replaced_path =
+            (folder.path != path).then(|| std::mem::replace(&mut folder.path, path));
+        folder.name = name;
+        folder.only_local_checks = only_local_checks;
+        folder.detect_uninitialized = detect_uninitialized;
+        self.save(&config)?;
 
-        Ok(())
+        Ok(replaced_path)
     }
 
+    /// Returns the removed folder, or `None` when no folder has the given `id`.
+    ///
     /// # Errors
     /// Returns an error if the config cannot be loaded or saved.
     // `id` stays owned: pub API consumed with owned Strings by the desktop crate.
     #[allow(clippy::needless_pass_by_value)]
-    pub fn delete_folder(&self, id: String) -> Result<()> {
+    pub fn delete_folder(&self, id: String) -> Result<Option<MonitoredFolder>> {
         let mut config = self.load()?;
-        config.folders.retain(|f| f.id != id);
+        let removed = config
+            .folders
+            .iter()
+            .position(|f| f.id == id)
+            .map(|i| config.folders.remove(i));
         self.save(&config)?;
-        Ok(())
+        Ok(removed)
     }
 
     /// # Errors

@@ -102,17 +102,10 @@ impl UninitializedDetector {
         if Self::directory_has_files(dir) {
             // This is a project folder (has files), mark as uninitialized
             uninitialized.push(RepoStatus {
-                path: dir.display().to_string(),
-                branch: None,
-                has_changes: None,
-                has_unpushed: None,
-                has_unpulled: None,
-                remote_state_unknown: false,
                 // Not a git repo; value is unused (uninitialized entries never
                 // enter the publish-state overlays), but the field is required.
                 publish_state: PublishState::Unpublished,
-                has_error: false,
-                error_message: None,
+                ..RepoStatus::unchecked(dir.display().to_string())
             });
         } else {
             // Only has subdirectories, recurse into them

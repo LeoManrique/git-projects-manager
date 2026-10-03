@@ -1,4 +1,5 @@
 use gpm_core::domain::MonitoredFolder;
+use gpm_core::services;
 use gpm_core::AppState;
 use tauri::State;
 
@@ -35,9 +36,7 @@ pub async fn update_monitored_folder(
     detect_uninitialized: bool,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    state
-        .config_manager
-        .update_folder(id, path, name, only_local_checks, detect_uninitialized)
+    services::folders::update(&state, id, path, name, only_local_checks, detect_uninitialized)
         .map_err(|e| e.to_string())
 }
 
@@ -46,8 +45,5 @@ pub async fn delete_monitored_folder(
     id: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    state
-        .config_manager
-        .delete_folder(id)
-        .map_err(|e| e.to_string())
+    services::folders::delete(&state, id).map_err(|e| e.to_string())
 }

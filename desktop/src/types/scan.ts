@@ -22,9 +22,21 @@ export interface RepoStatus {
   errorMessage?: string;
 }
 
+/** One folder's state at one moment (mirrors core `ScanResult`). */
 export interface ScanResult {
   scannedPath: string;
+  /** Repos found by the latest walk, `checking` included. */
   totalRepositories: number;
+  /** Wall clock at the start of the scan this snapshot belongs to, unix ms. */
+  startedAtMs: number;
+  /** Increases with every change, so an older snapshot arriving late can be dropped. */
+  revision: number;
+  /** Repos the scan in flight has not checked yet. */
+  pending: string[];
+  /** Repos found by this scan that have no status yet (path only). */
+  checking: RepoStatus[];
+  /** True once the scan has checked every repo it found. */
+  isComplete: boolean;
   withChanges: RepoStatus[];
   withUnpushed: RepoStatus[];
   withUnpulled: RepoStatus[];
@@ -37,5 +49,6 @@ export interface ScanResult {
   clean: RepoStatus[];
   errors: RepoStatus[];
   uninitialized: RepoStatus[];
+  /** Seconds the scan took. Zero until `isComplete`. */
   executionTime: number;
 }

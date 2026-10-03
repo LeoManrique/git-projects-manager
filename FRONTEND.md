@@ -43,7 +43,9 @@ RepoStatus {
 }
 
 ScanResult {
-  scannedPath, totalRepositories, executionTime (seconds, float),
+  scannedPath, totalRepositories, executionTime (seconds, float; 0 until complete),
+  startedAtMs (unix ms), revision (increases on every change), isComplete,
+  pending[] (paths not checked yet), checking[] (found, no status yet),
   withChanges[], withUnpushed[], withUnpulled[], unpublished[], remoteNotFound[],
   remoteStateUnknown[], clean[], errors[], uninitialized[]
 }

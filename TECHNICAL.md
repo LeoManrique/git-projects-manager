@@ -4,13 +4,14 @@
 
 ```
 core/            gpm-core (Rust, edition 2024) — Tauri-free shared core
-├── domain/      scan pipeline (finder → status checker → categorizer, rayon-parallel),
+├── domain/      scan pipeline (finder → status checker → registry, rayon-parallel),
 │                folder/settings/kanban/auth types
 ├── infrastructure/  git ops (git2 + git CLI), stores (JSON, atomic writes),
 │                launcher (open in terminal/editor/URL/folder), gh CLI, OAuth PKCE,
 │                sync client, keyring token store, diagnostics log (tracing)
 ├── services/    shared orchestration: kanban refresh/move/delete + cloud
-│                sync merge, Google sign-in/out (used by both frontends)
+│                sync merge, Google sign-in/out, folder edit/delete (used by
+│                both frontends)
 └── resources/   terminals.json / editors.json catalogs (compile-time embedded)
 
 desktop/         Tauri 2 app — Windows/Linux
@@ -126,6 +127,9 @@ notes merge per card, last writer wins. The crate is edition 2021 with
   paths). Ad-hoc codesigned for local builds.
 - `xcodegen generate` requires the generated bindings to exist — run
   `macos/scripts/build-rust.sh` first (`just macos-project` does both).
+- `[profile.release.build-override] strip = "none"` in `macos/ffi`: under
+  Xcode's `MACOSX_DEPLOYMENT_TARGET`, a stripped proc-macro dylib fails to load
+  and the Release build stops with E0463. The shipped staticlib is unaffected.
 
 ### App icon
 
@@ -271,8 +275,8 @@ width, matching Apple's 824/1024 icon grid).
   made behavior depend on how the app was launched.
 - **Ordering**: statuses are sorted case-insensitively by absolute path before
   categorizing, with a case-sensitive tie-break so the comparator is a total
-  order (without it, paths differing only in case fall back to readdir order,
-  which varies between runs). Every `ScanResult` bucket is a stable A–Z grouped
+  order (without it, paths differing only in case fall back to the registry's
+  hash-map order, which varies between runs). Every `ScanResult` bucket is a stable A–Z grouped
   by parent dir; sorting once in the core keeps both frontends identical.
 - **Clean** (`git clean -fdXn` dry run, filtered in Rust, survivors deleted): a
   path that fails to delete no longer aborts the repo. An already-gone path is
@@ -287,8 +291,16 @@ width, matching Apple's 824/1024 icon grid).
   reports every ordinary directory otherwise. The flag reaches the core as a
   `scan_folder` parameter, and `#[serde(default = "enabled")]` makes it `true`
   for folders stored before it existed, so an upgrade changes nothing.
-- No cancellation. `Scanner` is a stateless unit struct shared by every scan.
-  The removed flag was polled only by the directory walk, so it stopped the
+- **Registry** (`scanner/registry.rs`): the `Scanner` keeps each folder's
+  latest state. A scan seeds it after the walk (repos no longer found are
+  dropped, every found repo is `pending`, repos with no previous status are in
+  `checking`) and applies each status as it is read; every change returns a
+  whole, categorized `ScanResult` with a process-wide increasing `revision`. A
+  status is kept only if no later-started read was applied, so a slow read
+  never overwrites a fresher one. `finish` completes only the newest scan of
+  the folder. Editing a folder's path or deleting it (`services::folders`)
+  forgets its state.
+- No cancellation. The removed flag was polled only by the directory walk, so it stopped the
   cheap half and left every `git fetch` running, and it returned a `ScanResult`
   indistinguishable from a complete one that the frontends stored as
   authoritative. A cancel UI needs polling in the status loop and a partial-result

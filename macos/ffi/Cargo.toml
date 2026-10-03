@@ -21,3 +21,10 @@ anyhow = "1"
 
 [profile.release]
 lto = true
+
+# Proc-macros and build scripts only, not the shipped library. Built under
+# Xcode's MACOSX_DEPLOYMENT_TARGET (26.0), a stripped proc-macro dylib fails
+# to load ("mis-aligned LINKEDIT string pool"), and every crate using it fails
+# with E0463.
+[profile.release.build-override]
+strip = "none"
