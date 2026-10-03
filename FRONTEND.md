@@ -166,10 +166,8 @@ and in the not-scanned empty state, where they name their own target.
 
 1. **Full scan** — the scan control in the overview, and the startup auto-scan.
    Shows global + per-folder progress.
-2. **Per-folder scan** — the scan control in a folder's detail view, the
-   per-folder buttons in the overview, and the automatic rescan after a
-   pull/clean (scoped to the folders the affected repos live in, since an action
-   on one repo cannot change another folder's state). Per-folder progress only.
+2. **Per-folder scan** — the scan control in a folder's detail view and the
+   per-folder buttons in the overview. Per-folder progress only.
 3. **Focus rescan** — when the app window regains focus (after the initial scan,
    folders exist): rescan all folders as a full scan, so it shows the **same
    global + per-folder progress** as Scan All. Throttled to at most once per
@@ -179,7 +177,7 @@ and in the not-scanned empty state, where they name their own target.
 Every scan still fetches — ahead/behind counts are meant to be current — but the
 core skips the round-trip for any repo it fetched successfully in the last
 **30 seconds**, reusing the tracking refs from that fetch. Scans arrive in
-bursts (the rescan after a pull or clean, a focus rescan landing on the heels of
+bursts (the recheck after a pull or clean, a focus rescan landing on the heels of
 the startup scan) that repeat the same network work for a state that cannot have
 changed; a repeat scan inside the window measures **3.4 s → 1.0 s** over 76
 repos. The window is short enough that any scan following real work is a fresh
@@ -285,20 +283,26 @@ Per-repo actions (context/row menu):
 | Open in LMS Github | always | runs `lms-github <path>` via login shell |
 | Show in Finder | macOS only | reveals the repo directory in Finder (the Tauri app has no reveal action yet) |
 | Copy Path | always | copies the repo's absolute path to the clipboard |
-| Fetch & Pull | not for Uninitialized; disabled for Changed/Errors | `git pull --quiet` (which fetches); success → rescan of that repo's folder; failure → "Failed to pull {path}: {err}", where `{err}` is git's error alone (no progress lines); a pull still running after 5 minutes is killed and reported as timed out |
-| Clean Ignored Files | Clean section only | `git clean -fdX` dry-run filtered by exclude patterns (§6.2), survivors deleted; 0 removed → "No ignored files to clean in {name}"; rescan of that repo's folder after |
+| Fetch & Pull | not for Uninitialized; disabled for Changed/Errors | `git pull --quiet` (which fetches); failure → "Failed to pull {path}: {err}", where `{err}` is git's error alone (no progress lines); a pull still running after 5 minutes is killed and reported as timed out |
+| Clean Ignored Files | Clean section only | `git clean -fdX` dry-run filtered by exclude patterns (§6.2), survivors deleted; 0 removed → "No ignored files to clean in {name}" |
 
 Bulk **Fetch & Pull All** / **Clean All** run per-repo operations in parallel; if k
 fail, report `"Failed to pull/clean {k} repo(s): {first failure}"` — the first
-reason is included, since a bare count says neither which repo nor why. The
-folders holding the affected repos are rescanned afterwards. In-flight repos show
-a per-row spinner; bulk controls disable while running.
+reason is included, since a bare count says neither which repo nor why. Bulk
+controls disable while running.
+
+Every pull and clean, single or bulk, failed or not, ends with a **recheck** of
+exactly the repos it touched (a failed pull may still have fetched): no folder
+scan starts, and no other repo is read. A repo shows a row spinner from the
+click until its recheck lands, then moves to its new section. A recheck during
+a scan of the same folder skips a repo that scan has not started reading, since
+the scan reads it fresh.
 
 ### 5.6 Error surfacing
 
 One shared, non-dismissible error area shows the most recent scan/action failure.
-An action sets its message **before** triggering its rescan, and that rescan does
-not clear it — the message clears when the next *on-demand* scan starts (Scan All
+An action sets its message **before** its recheck, and the recheck does not
+clear it — the message clears when the next *on-demand* scan starts (Scan All
 or a per-folder Scan). Per-folder scan failures during a multi-folder pass are
 silent (previous data kept).
 

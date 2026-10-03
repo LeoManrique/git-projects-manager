@@ -271,21 +271,18 @@ final class AppModel {
         }
     }
 
-    /// The monitored folders that actually contain the given repos. Pulling or
-    /// cleaning a repo cannot change any other folder's state, so rescanning
-    /// all of them was one full network scan per action. Falls back to every
-    /// folder when a repo can't be attributed, so a miss is never a missed
-    /// refresh.
-    private func foldersForRepos(_ repoPaths: [String]) -> [MonitoredFolder] {
-        var affected: [String: MonitoredFolder] = [:]
+    /// `repoPaths` grouped by the monitored folder that contains them. A repo
+    /// no folder contains is left out: it belongs to no result on screen.
+    private func reposByFolder(_ repoPaths: [String]) -> [(folder: MonitoredFolder, repos: [String])] {
+        var groups: [String: (folder: MonitoredFolder, repos: [String])] = [:]
         for repoPath in repoPaths {
             // Longest match wins, so nested monitored folders attribute right.
             let best = folders
                 .filter { Self.isInside(repoPath, $0.path) }
                 .max { $0.path.count < $1.path.count }
-            if let best { affected[best.id] = best }
+            if let best { groups[best.id, default: (best, [])].repos.append(repoPath) }
         }
-        return affected.isEmpty ? folders : Array(affected.values)
+        return Array(groups.values)
     }
 
     private nonisolated static func isInside(_ repoPath: String, _ folderPath: String) -> Bool {
@@ -366,39 +363,59 @@ final class AppModel {
 
     // MARK: - Repo operations (FRONTEND.md §5.5)
 
+    /// Every action rechecks its repos, failed or not (a pull can fail after
+    /// its fetch moved the counts), and keeps them flagged until the recheck
+    /// lands, so the row spins from the click until it shows the new state.
     func pull(repoPath: String) async {
         pullingRepos.insert(repoPath)
+        defer { pullingRepos.remove(repoPath) }
         do {
             _ = try await core.pullRepo(path: repoPath)
-            pullingRepos.remove(repoPath)
-            await rescan(after: [repoPath])
         } catch {
-            pullingRepos.remove(repoPath)
             errorMessage = "Failed to pull \(repoPath): \(Self.message(error))"
         }
+        await recheck([repoPath])
     }
 
     func clean(repoPath: String) async {
         cleaningRepos.insert(repoPath)
+        defer { cleaningRepos.remove(repoPath) }
         do {
             let result = try await core.cleanRepo(path: repoPath)
-            cleaningRepos.remove(repoPath)
-            // Set before the rescan, not after: the message used to appear only
-            // once the rescan finished, then outlive it until the next scan.
             if result.filesRemoved.isEmpty && result.directoriesRemoved.isEmpty {
                 errorMessage = "No ignored files to clean in \(Self.repoName(repoPath))"
             }
-            await rescan(after: [repoPath])
         } catch {
-            cleaningRepos.remove(repoPath)
             errorMessage = "Failed to clean \(repoPath): \(Self.message(error))"
         }
+        await recheck([repoPath])
     }
 
-    /// The rescan that follows a repo action: only the folders those repos live
-    /// in, and never clearing the message the action just set (§5.6).
-    private func rescan(after repoPaths: [String]) async {
-        await requestScan(foldersForRepos(repoPaths), visible: true)
+    /// Read `repoPaths` again after an action changed them, each folder's in
+    /// one call (§5.5). Never starts a scan, and never clears the message the
+    /// action just set (§5.6). A folder the core has not scanned since its
+    /// path was last set returns nothing, and keeps what it shows.
+    private func recheck(_ repoPaths: [String]) async {
+        await withTaskGroup(of: (String, ScanResult?).self) { [core] group in
+            for (folder, repos) in reposByFolder(repoPaths) {
+                group.addTask {
+                    do {
+                        let snapshot = try await core.recheckRepos(
+                            folder: folder.path,
+                            repos: repos,
+                            onlyLocalChecks: folder.onlyLocalChecks
+                        )
+                        return (folder.id, snapshot)
+                    } catch {
+                        AppLog.error("recheck in \(folder.path) failed: \(Self.message(error))")
+                        return (folder.id, nil)
+                    }
+                }
+            }
+            for await (folderId, snapshot) in group {
+                if let snapshot { apply(snapshot, to: folderId) }
+            }
+        }
     }
 
     func pullAll(_ repos: [RepoStatus]) async {
@@ -410,13 +427,13 @@ final class AppModel {
         let failures = await runOnEach(paths) { [core] path in
             _ = try await core.pullRepo(path: path)
         }
-
-        pullingRepos.subtract(paths)
-        isBulkPulling = false
         if let first = failures.first {
             errorMessage = "Failed to pull \(failures.count) repo(s): \(first)"
         }
-        await rescan(after: paths)
+        await recheck(paths)
+
+        pullingRepos.subtract(paths)
+        isBulkPulling = false
     }
 
     func cleanAll(_ repos: [RepoStatus]) async {
@@ -428,13 +445,13 @@ final class AppModel {
         let failures = await runOnEach(paths) { [core] path in
             _ = try await core.cleanRepo(path: path)
         }
-
-        cleaningRepos.subtract(paths)
-        isBulkCleaning = false
         if let first = failures.first {
             errorMessage = "Failed to clean \(failures.count) repo(s): \(first)"
         }
-        await rescan(after: paths)
+        await recheck(paths)
+
+        cleaningRepos.subtract(paths)
+        isBulkCleaning = false
     }
 
     /// Run `operation` on every path concurrently and collect the failures as

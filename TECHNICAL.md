@@ -316,7 +316,8 @@ width, matching Apple's 824/1024 icon grid).
   macOS's `start_folder_scan` returns a `FolderScan` whose async `next()`
   reads a tokio `watch` channel, which keeps only the newest snapshot, so a
   busy main actor skips the ones in between. A Swift callback would have run
-  Swift code on the scan's threads. Both bridges export `recheck_repos`.
+  Swift code on the scan's threads. Both bridges export `recheck_repos`,
+  which the frontends call after every pull or clean, one call per folder.
   Each frontend keeps one scan per folder (a second request joins it) and
   drops a snapshot whose `revision` is not newer than the one shown; Tauri
   applies streamed snapshots once per animation frame.

@@ -27,9 +27,9 @@
       writes (two apps share the files), async FFI `cancel_scan` (no main-thread
       block), the focus rescan never supersedes an in-flight scan, keyring
       `vendored` dbus for Linux builds
-- [x] Focus rescans are no longer silent: the window-focus (and post-action)
-      rescan runs as a full scan in both apps, showing the same global +
-      per-folder progress as Scan All (still 20s-throttled)
+- [x] Focus rescans are no longer silent: the window-focus rescan runs as a
+      full scan in both apps, showing the same global + per-folder progress
+      as Scan All (still 20s-throttled)
 - [x] macOS releases ship the native SwiftUI app: `deploy_releases.sh` builds
       and uploads it (version bump covers `project.yml`), `install_release.sh`
       installs it (macOS 26+ check, replaces older Tauri installs)
@@ -69,7 +69,7 @@
       online scan of 76 repos **4.7s → 2.3s** via a dedicated oversubscribed
       scan thread pool (the old CPU-sized rayon pool serialized the fetches);
       fetch hardened (`gc.auto=0`, `--no-tags`, HTTP/SSH stall timeouts); `pull`
-      no longer double-fetches; pull/clean rescan only the affected folders.
+      no longer double-fetches.
       Correctness: `git clean` handles non-ASCII paths (`core.quotePath=false`)
       and no longer aborts a whole repo on one unremovable path; a `gh` missing
       from `PATH` no longer reads as "repository deleted"; failed `git remote` /
@@ -95,7 +95,7 @@
 - [x] Scanner Tier 3, from the three product decisions:
       **nested repos stay supported** (no walk pruning); **fetch stays on every
       scan** but a successful one is debounced per repo for 30s, so the bursts
-      (post-action rescan, focus rescan after startup) reuse it — a repeat scan
+      (post-action recheck, focus rescan after startup) reuse it — a repeat scan
       of 76 repos goes **3.4s → 1.0s**; and a repo whose remote comparison was
       *attempted and failed* now lands in a new **Unknown Remote State** overlay
       instead of falling through to Clean. Paired with it, a **"Local checks
@@ -160,6 +160,8 @@
       transient *Checking* section, the rest with a row spinner), folder
       headers and sidebar rows keep their counts during a scan, and a folder
       never has two scans at once (a pull and a Clean All used to stack three)
+- [x] A pull or clean rechecks only the repos it touched, not their folders,
+      and the row spins from the click until the new state lands
 
 ## Pending
 - [ ] Re-run the multi-agent adversarial code review of the migration (first

@@ -1,7 +1,7 @@
 # Plan: streamed scans, a "Last scan" indicator and a calmer schedule
 
-Status: slices 1–4 of 8 done (core, bridges, coordinator). Next: slice 5,
-post-action rechecks. The "why" is in `docs/analysis/automatic-scan-strategy.md`. Delete this file once the
+Status: slices 1–5 of 8 done (core, bridges, coordinator, rechecks). Next:
+slice 6, the "Last scan" label. The "why" is in `docs/analysis/automatic-scan-strategy.md`. Delete this file once the
 manual test script at the bottom passes.
 
 ## Decisions
@@ -51,10 +51,6 @@ manual test script at the bottom passes.
   15+ min ago. With the timer at 10 min this only happens when the OS held the
   timer back (App Nap, sleep, a throttled WebView), which is exactly when the
   screen may be stale.
-- **After a pull or clean.** Only the affected repos are rechecked, not their
-  whole folder. The row keeps its spinner from the action through the
-  recheck. Pull All / Clean All recheck exactly the repos they touched. A
-  recheck never starts a folder scan and never moves the clock.
 - **"Last scan" label.** Next to the scan button in both apps, on All Folders
   and folder detail (not on the board): "Last scan: 3 minutes ago", tooltip
   with the absolute date and time. Hidden until the first full scan starts.
@@ -92,30 +88,22 @@ frontends keep doing what they do today with it (replace the folder's entry).
 
 ## Changes by layer, core outward
 
-### 1–7. Core, bridges and coordinator (done, except rechecks)
+### 1–7. Core, bridges, coordinator and rechecks (done)
 
-TECHNICAL.md (Scanning) and FRONTEND.md §5.1–5.3 describe them. What the next
-slices need:
+TECHNICAL.md (Scanning) and FRONTEND.md §5.1–5.3 and §5.5 describe them. What
+the next slices need:
 
 - **Coordinator**: `requestScan(targets, visible)` in `AppModel` /
   `useScanner` is the one entry point; every caller passes `visible: true`
   so far. Snapshots go through `apply(_:to:)` (macOS) / `applySnapshots`
   (Tauri), which drop a gone folder or an older revision.
-- **Until slice 5**, the rescan after a pull or clean joins a scan of its
-  folder already in flight, which may have read the repo before the action;
-  the row then shows its old state until the next scan.
+- Rechecks never touch the in-flight map or the clock: a recheck is not a
+  scan, so slice 8's clock and slice 9's rules can ignore them.
 - Dropped: skipping a snapshot equal to the one shown. Every snapshot has a
   new revision, and re-rendering an unchanged screen is cheap.
 - Found on the way: with more queued repos than pool threads, a folder's jobs
   still queue behind another folder's; they wait for those to *start*, no
   longer to finish.
-
-### 7. Rest: rechecks after actions
-
-`pull`, `clean`, `pullAll`, `cleanAll` call `recheckRepos` grouped by owning
-folder (`foldersForRepos` already does the attribution), apply the returned
-snapshot through the same revision check, and keep the repo flagged until it
-returns. `recheckRepos` returns `nil`/`null` for a folder never scanned.
 
 ### 8. "Last scan" label, both frontends
 
@@ -163,19 +151,17 @@ returns. `recheckRepos` returns `nil`/`null` for a folder never scanned.
 
 ### 10. Docs
 
-Streaming, joining and the slice-4 display are already in FRONTEND.md §5.1–5.3
-and ROADMAP.md.
+Streaming, joining, the slice-4 display and rechecks are already in
+FRONTEND.md §5.1–5.3 and §5.5, and ROADMAP.md.
 
 - **FRONTEND.md**
   - §2: results are still session memory; add the clock as session memory.
   - §3: auto-scan row, new "Last scan" row, scheduler rows.
   - §5.1: triggers rewritten (launch, timer, focus 15 min, manual), visible vs
     silent (a silent scan joined by a visible request turns visible).
-  - §5.5: post-action recheck of the affected repos only.
   - §9: where the label sits in each app.
 - **DESIGN.md** :46-48: the automatic scan sentence.
-- **ROADMAP.md**: fix the stale :30-32 (post-action rescans are not full
-  scans); add the done items. The 20 s fetch item stays open.
+- **ROADMAP.md**: add the done items. The 20 s fetch item stays open.
 - **README.md**: no change.
 
 ## Out of scope
@@ -205,7 +191,7 @@ In user-flow order, both apps in each slice from step 7 on:
 3. ~~Bridges (steps 5–6).~~ Done.
 4. ~~Coordinator: streaming, spinners, Checking section, joining (step 7
    minus rechecks).~~ Done.
-5. Post-action rechecks (rest of step 7).
+5. ~~Post-action rechecks (rest of step 7).~~ Done.
 6. "Last scan" label and ticking (step 8).
 7. Scheduler (step 9).
 8. Docs (step 10).

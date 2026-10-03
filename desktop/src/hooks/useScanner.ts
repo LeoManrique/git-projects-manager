@@ -47,7 +47,7 @@ export interface UseScannerReturn {
  * Owns all scan state and repo operations (FRONTEND.md §5): streamed scans,
  * at most one per folder (a second request joins it), auto-scan on startup,
  * the throttled focus rescan, and the pull / clean actions with their
- * automatic rescan of the affected folders.
+ * recheck of the repos they touched.
  */
 export function useScanner(folders: MonitoredFolder[]): UseScannerReturn {
   const [results, setResults] = useState<Record<string, ScanResult>>({});
@@ -67,9 +67,9 @@ export function useScanner(folders: MonitoredFolder[]): UseScannerReturn {
   const flushFrameRef = useRef<number | null>(null);
   const lastScanTimeRef = useRef(0);
   const hasInitialScanRef = useRef(false);
-  // The ids monitored right now, read by scans that started before a folder
-  // was deleted.
-  const folderIdsRef = useRef(new Set<string>());
+  // The folders monitored right now, read by scans and actions that started
+  // before a folder was edited or deleted.
+  const foldersRef = useRef(folders);
 
   // Every message the shared error surface shows also goes to the log: the
   // banner is replaced by the next message, so it cannot be the only record
@@ -82,7 +82,7 @@ export function useScanner(folders: MonitoredFolder[]): UseScannerReturn {
   // of one still in flight clears its own entry when it ends.
   useEffect(() => {
     const ids = new Set(folders.map((f) => f.id));
-    folderIdsRef.current = ids;
+    foldersRef.current = folders;
     setResults((prev) => {
       const kept = Object.entries(prev).filter(([id]) => ids.has(id));
       return kept.length === Object.keys(prev).length ? prev : Object.fromEntries(kept);
@@ -102,7 +102,7 @@ export function useScanner(folders: MonitoredFolder[]): UseScannerReturn {
     setResults((prev) => {
       let next = prev;
       for (const [folderId, snapshot] of snapshots) {
-        if (!folderIdsRef.current.has(folderId)) continue;
+        if (!foldersRef.current.some((f) => f.id === folderId)) continue;
         const shown = next[folderId];
         if (shown && shown.revision >= snapshot.revision) continue;
         if (next === prev) next = { ...prev };
@@ -202,26 +202,46 @@ export function useScanner(folders: MonitoredFolder[]): UseScannerReturn {
   );
 
   /**
-   * The monitored folders that actually contain the given repos. Pulling or
-   * cleaning a repo cannot change any other folder's state, so rescanning all
-   * of them was one full network scan per action. Falls back to every folder
-   * when a repo can't be attributed, so a miss is never a missed refresh.
+   * `repoPaths` grouped by the monitored folder that contains them. A repo no
+   * folder contains is left out: it belongs to no result on screen.
    */
-  const foldersForRepos = useCallback(
-    (repoPaths: string[]) => {
-      const affected = new Map<string, MonitoredFolder>();
-      for (const repoPath of repoPaths) {
-        // Longest match wins, so nested monitored folders attribute correctly.
-        let best: MonitoredFolder | undefined;
-        for (const folder of folders) {
-          if (!isInside(repoPath, folder.path)) continue;
-          if (!best || folder.path.length > best.path.length) best = folder;
-        }
-        if (best) affected.set(best.id, best);
+  const reposByFolder = useCallback((repoPaths: string[]) => {
+    const groups = new Map<string, { folder: MonitoredFolder; repos: string[] }>();
+    for (const repoPath of repoPaths) {
+      // Longest match wins, so nested monitored folders attribute correctly.
+      let best: MonitoredFolder | undefined;
+      for (const folder of foldersRef.current) {
+        if (!isInside(repoPath, folder.path)) continue;
+        if (!best || folder.path.length > best.path.length) best = folder;
       }
-      return affected.size > 0 ? [...affected.values()] : folders;
+      if (!best) continue;
+      const group = groups.get(best.id) ?? { folder: best, repos: [] };
+      group.repos.push(repoPath);
+      groups.set(best.id, group);
+    }
+    return [...groups.values()];
+  }, []);
+
+  /**
+   * Read `repoPaths` again after an action changed them, each folder's in one
+   * call (§5.5). Never starts a scan, and never clears the message the action
+   * just set (§5.6). A folder the core has not scanned since its path was last
+   * set returns nothing, and keeps what it shows. Never rejects.
+   */
+  const recheck = useCallback(
+    async (repoPaths: string[]) => {
+      await Promise.all(
+        reposByFolder(repoPaths).map(async ({ folder, repos }) => {
+          try {
+            const snapshot = await api.recheckRepos(folder, repos);
+            if (snapshot) applySnapshots(new Map([[folder.id, snapshot]]));
+          } catch (err) {
+            logError(`Recheck failed in ${folder.path}`, err);
+          }
+        })
+      );
     },
-    [folders]
+    [reposByFolder, applySnapshots]
   );
 
   // Auto-scan all folders the first time the list becomes non-empty (§3).
@@ -261,19 +281,21 @@ export function useScanner(folders: MonitoredFolder[]): UseScannerReturn {
     });
   };
 
+  // Every action rechecks its repos, failed or not (a pull can fail after its
+  // fetch moved the counts), and keeps them flagged until the recheck lands,
+  // so the row spins from the click until it shows the new state.
   const pull = useCallback(
     async (repoPath: string) => {
       withRepoFlag(setPullingRepos, [repoPath], true);
       try {
         await api.pullRepo(repoPath);
-        void requestScan(foldersForRepos([repoPath]), true);
       } catch (err) {
         setError(`Failed to pull ${repoPath}: ${err}`);
-      } finally {
-        withRepoFlag(setPullingRepos, [repoPath], false);
       }
+      await recheck([repoPath]);
+      withRepoFlag(setPullingRepos, [repoPath], false);
     },
-    [requestScan, foldersForRepos]
+    [recheck]
   );
 
   const clean = useCallback(
@@ -284,14 +306,13 @@ export function useScanner(folders: MonitoredFolder[]): UseScannerReturn {
         if (result.filesRemoved.length + result.directoriesRemoved.length === 0) {
           setError(`No ignored files to clean in ${repoName(repoPath)}`);
         }
-        void requestScan(foldersForRepos([repoPath]), true);
       } catch (err) {
         setError(`Failed to clean ${repoPath}: ${err}`);
-      } finally {
-        withRepoFlag(setCleaningRepos, [repoPath], false);
       }
+      await recheck([repoPath]);
+      withRepoFlag(setCleaningRepos, [repoPath], false);
     },
-    [requestScan, foldersForRepos]
+    [recheck]
   );
 
   const pullAll = useCallback(
@@ -300,23 +321,20 @@ export function useScanner(folders: MonitoredFolder[]): UseScannerReturn {
       const paths = repos.map((r) => r.path);
       setIsBulkPulling(true);
       withRepoFlag(setPullingRepos, paths, true);
-      try {
-        const outcomes = await Promise.all(
-          paths.map((path) => api.pullRepo(path).then(() => null, (err) => err))
-        );
-        const failures = outcomes.filter((err) => err !== null);
-        // The first reason is included: a bare count told the user nothing
-        // about which repo failed or why.
-        if (failures.length > 0) {
-          setError(`Failed to pull ${failures.length} repo(s): ${failures[0]}`);
-        }
-        void requestScan(foldersForRepos(paths), true);
-      } finally {
-        withRepoFlag(setPullingRepos, paths, false);
-        setIsBulkPulling(false);
+      const outcomes = await Promise.all(
+        paths.map((path) => api.pullRepo(path).then(() => null, (err) => err))
+      );
+      const failures = outcomes.filter((err) => err !== null);
+      // The first reason is included: a bare count told the user nothing
+      // about which repo failed or why.
+      if (failures.length > 0) {
+        setError(`Failed to pull ${failures.length} repo(s): ${failures[0]}`);
       }
+      await recheck(paths);
+      withRepoFlag(setPullingRepos, paths, false);
+      setIsBulkPulling(false);
     },
-    [requestScan, foldersForRepos]
+    [recheck]
   );
 
   const cleanAll = useCallback(
@@ -325,21 +343,18 @@ export function useScanner(folders: MonitoredFolder[]): UseScannerReturn {
       const paths = repos.map((r) => r.path);
       setIsBulkCleaning(true);
       withRepoFlag(setCleaningRepos, paths, true);
-      try {
-        const outcomes = await Promise.all(
-          paths.map((path) => api.cleanRepo(path).then(() => null, (err) => err))
-        );
-        const failures = outcomes.filter((err) => err !== null);
-        if (failures.length > 0) {
-          setError(`Failed to clean ${failures.length} repo(s): ${failures[0]}`);
-        }
-        void requestScan(foldersForRepos(paths), true);
-      } finally {
-        withRepoFlag(setCleaningRepos, paths, false);
-        setIsBulkCleaning(false);
+      const outcomes = await Promise.all(
+        paths.map((path) => api.cleanRepo(path).then(() => null, (err) => err))
+      );
+      const failures = outcomes.filter((err) => err !== null);
+      if (failures.length > 0) {
+        setError(`Failed to clean ${failures.length} repo(s): ${failures[0]}`);
       }
+      await recheck(paths);
+      withRepoFlag(setCleaningRepos, paths, false);
+      setIsBulkCleaning(false);
     },
-    [requestScan, foldersForRepos]
+    [recheck]
   );
 
   return {
