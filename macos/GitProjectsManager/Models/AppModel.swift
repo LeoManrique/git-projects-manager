@@ -73,6 +73,8 @@ final class AppModel {
     private(set) var gitCleanPatterns: [String] = []
 
     // Scan bookkeeping (FRONTEND.md §5.1)
+    /// When the last full scan started: what "Last scan" shows.
+    private(set) var lastFullScanStartedAt: Date?
     private var lastScanStartedAt: Date?
     private var hasInitialScan = false
 
@@ -141,7 +143,8 @@ final class AppModel {
 
     /// A folder's scan in flight, and whether it shows its progress.
     private struct InFlightScan {
-        let task: Task<Void, Never>
+        /// Ends with the scan's start (unix ms), or nil if it never finished.
+        let task: Task<Int64?, Never>
         var isVisible: Bool
     }
 
@@ -149,9 +152,11 @@ final class AppModel {
     /// single entry point behind every trigger: a folder already scanning is
     /// joined instead of scanned twice, and turns visible when this request
     /// is. A visible scan shows its progress; a silent one only its results.
-    private func requestScan(_ targets: [MonitoredFolder], visible: Bool) async {
+    /// Returns when each target's scan started, nil for one that failed.
+    @discardableResult
+    private func requestScan(_ targets: [MonitoredFolder], visible: Bool) async -> [Int64?] {
         lastScanStartedAt = Date()
-        var scans: [Task<Void, Never>] = []
+        var scans: [Task<Int64?, Never>] = []
         for folder in targets {
             if let inFlight = inFlightScans[folder.id] {
                 if visible, !inFlight.isVisible { inFlightScans[folder.id]?.isVisible = true }
@@ -164,12 +169,15 @@ final class AppModel {
                 scans.append(task)
             }
         }
-        for scan in scans { await scan.value }
+        var starts: [Int64?] = []
+        for scan in scans { starts.append(await scan.value) }
+        return starts
     }
 
     /// One folder's scan: every snapshot the core streams lands on screen as
-    /// it arrives, the last one being the complete result.
-    private func runScan(_ folder: MonitoredFolder) async {
+    /// it arrives, the last one being the complete result. Returns when the
+    /// scan started, or nil if it ended before it finished.
+    private func runScan(_ folder: MonitoredFolder) async -> Int64? {
         let scan = core.startFolderScan(
             path: folder.path,
             onlyLocalChecks: folder.onlyLocalChecks,
@@ -183,9 +191,11 @@ final class AppModel {
         inFlightScans[folder.id] = nil
         // Ends early only when the core's scan thread died. The folder keeps
         // what it had (§5.1), so the log is the only place this shows up.
-        if last?.isComplete != true, self.folder(withId: folder.id) != nil {
-            AppLog.error("scan of \(folder.path) ended before it finished")
+        guard let last, last.isComplete else {
+            if self.folder(withId: folder.id) != nil { AppLog.error("scan of \(folder.path) ended before it finished") }
+            return nil
         }
+        return last.startedAtMs
     }
 
     /// Show `snapshot` as `folderId`'s result, unless the folder is gone or
@@ -217,8 +227,18 @@ final class AppModel {
     func scanAll() async {
         errorMessage = nil
         visibleFullScans += 1
-        await requestScan(folders, visible: true)
+        recordFullScan(startedAt: await requestScan(folders, visible: true))
         visibleFullScans -= 1
+    }
+
+    /// Move the "Last scan" clock to the start of a full scan that just
+    /// ended: the earliest of its folders' scans, joined ones included, so the
+    /// label never claims a folder is fresher than it is. A folder whose scan
+    /// failed does not hold it back, and it never moves back.
+    private func recordFullScan(startedAt starts: [Int64?]) {
+        guard let earliest = starts.compactMap(\.self).min() else { return }
+        let startedAt = Date(timeIntervalSince1970: Double(earliest) / 1000)
+        if lastFullScanStartedAt.map({ startedAt > $0 }) ?? true { lastFullScanStartedAt = startedAt }
     }
 
     /// Scan a single folder (per-folder Scan control). On-demand, so it

@@ -98,8 +98,8 @@ camelCase keys, written atomically (temp file + rename) by the core.
 | OS keychain (`git-projects-manager` / `sync_session`) | sync session | shared by both apps (macOS may prompt once before the other app may read the item) |
 | `logs/macos.<date>.log`, `logs/desktop.<date>.log` | diagnostics log (§6.4) | one file per app per day, so two apps running at once never share a file |
 
-Frontend-only state (scan results, expansion, search text, selected view) is **session
-memory** — never persisted. Every launch starts fresh and rescans.
+Frontend-only state (scan results, the last-scan time, expansion, search text, selected
+view) is **session memory** — never persisted. Every launch starts fresh and rescans.
 
 ## 3. Application shell
 
@@ -173,6 +173,16 @@ and in the not-scanned empty state, where they name their own target.
    global + per-folder progress** as Scan All. Throttled to at most once per
    **20 seconds** since the last scan of any kind, and skipped while any scan is
    in flight.
+
+**Last scan.** Beside the scan control, except on the board, a label reads
+"Last scan: {age}", with the absolute date and time in its tooltip. {age} is "just
+now" under a minute, then "N minute(s) ago", "N hour(s) ago", "N day(s) ago", "N
+month(s) ago" (30-day months) and "N year(s) ago", rounded down: leogit's words. It
+is the start of the last full scan, set once that scan ends: the earliest start
+among its folders, since a folder scan it joined may have started earlier. A folder
+whose scan failed does not hold it back. Per-folder scans and rechecks never move
+it. Hidden until the first full scan ends, and while no folder exists. The text re-renders only when it changes,
+and at once when the app comes back to the front.
 
 Every scan still fetches — ahead/behind counts are meant to be current — but the
 core skips the round-trip for any repo it fetched successfully in the last
@@ -459,7 +469,7 @@ A sidebar view organizing the user's **GitHub repositories** as cards.
 
 | Concern | Tauri (Win/Linux) | SwiftUI (macOS 26+) |
 |---|---|---|
-| Chrome | Custom sidebar (§5.3) + content header (title, search, scan control); dark-only dense UI | `NavigationSplitView` sidebar (§5.3); Liquid Glass toolbar with the scan control. Registers a 350 ms `NSInitialToolTipDelay` so toolbar help text appears promptly and at the same speed everywhere |
+| Chrome | Custom sidebar (§5.3) + content header (title, search, local-checks chip, last scan, scan control); dark-only dense UI | `NavigationSplitView` sidebar (§5.3); Liquid Glass toolbar with the local-checks chip, last scan and scan control. Registers a 350 ms `NSInitialToolTipDelay` so toolbar help text appears promptly and at the same speed everywhere |
 | Appearance | Fixed dark palette | System light & dark, accent-aware; semantic colors for badge roles (green/yellow/orange/purple/blue/pink/gray/red) |
 | Folder CRUD | Settings modal → "Monitored Folders" panel; sidebar **Add Folder** opens it | Main window: sidebar add button + sheet; edit via context menu/sheet |
 | Settings | In-app modal via sidebar gear (Monitored Folders / Default Apps / Git Clean / Account / Logs) | Native Settings scene (⌘,): Default Apps, Git Clean, Account, Logs |

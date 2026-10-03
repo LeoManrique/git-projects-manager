@@ -1,7 +1,7 @@
 # Plan: streamed scans, a "Last scan" indicator and a calmer schedule
 
-Status: slices 1–5 of 8 done (core, bridges, coordinator, rechecks). Next:
-slice 6, the "Last scan" label. The "why" is in `docs/analysis/automatic-scan-strategy.md`. Delete this file once the
+Status: slices 1–6 of 8 done (core, bridges, coordinator, rechecks, "Last
+scan" label). Next: slice 7, the scheduler. The "why" is in `docs/analysis/automatic-scan-strategy.md`. Delete this file once the
 manual test script at the bottom passes.
 
 ## Decisions
@@ -51,14 +51,6 @@ manual test script at the bottom passes.
   15+ min ago. With the timer at 10 min this only happens when the OS held the
   timer back (App Nap, sleep, a throttled WebView), which is exactly when the
   screen may be stale.
-- **"Last scan" label.** Next to the scan button in both apps, on All Folders
-  and folder detail (not on the board): "Last scan: 3 minutes ago", tooltip
-  with the absolute date and time. Hidden until the first full scan starts.
-- **Vocabulary** (leogit's, so the two projects read the same): "just now"
-  under a minute, then "N minute(s) ago", "N hour(s) ago", "N day(s) ago",
-  "N month(s) ago" (30-day months), "N year(s) ago". Floor rounding, singular
-  at 1. Tooltip: macOS `.abbreviated` date + `.shortened` time; Tauri
-  `toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })`.
 
 ## Data flow
 
@@ -88,7 +80,7 @@ frontends keep doing what they do today with it (replace the folder's entry).
 
 ## Changes by layer, core outward
 
-### 1–7. Core, bridges, coordinator and rechecks (done)
+### 1–8. Core, bridges, coordinator, rechecks and "Last scan" (done)
 
 TECHNICAL.md (Scanning) and FRONTEND.md §5.1–5.3 and §5.5 describe them. What
 the next slices need:
@@ -97,33 +89,19 @@ the next slices need:
   `useScanner` is the one entry point; every caller passes `visible: true`
   so far. Snapshots go through `apply(_:to:)` (macOS) / `applySnapshots`
   (Tauri), which drop a gone folder or an older revision.
+- **Clock** `lastFullScanStartedAt` (`AppModel` / `useScanner`): set by
+  `scanAll` / `fullScan` when the request *ends*, from the starts
+  `requestScan` now returns (min across folders, joined ones included, never
+  backwards). Set at the end rather than on the first snapshot, so the label
+  never claims a refresh still running; the timer below re-arms after a run
+  settles anyway. Step 9's silent full request must record it the same way.
 - Rechecks never touch the in-flight map or the clock: a recheck is not a
-  scan, so slice 8's clock and slice 9's rules can ignore them.
+  scan, so step 9's rules can ignore them.
 - Dropped: skipping a snapshot equal to the one shown. Every snapshot has a
   new revision, and re-rendering an unchanged screen is cheap.
 - Found on the way: with more queued repos than pool threads, a folder's jobs
   still queue behind another folder's; they wait for those to *start*, no
   longer to finish.
-
-### 8. "Last scan" label, both frontends
-
-- **Global clock** `lastFullScanStartedAt`: set from the first snapshot's
-  `startedAtMs` of a scan that covers every folder (the earliest across
-  them). Feeds the label and both automatic rules. A full request that only
-  joins scans already in flight does not move it.
-- **Helper** `relativeAge(date, now) -> (text, nextChangeAt)`: the vocabulary
-  above, plus the instant the text next changes (the next minute boundary
-  under an hour, the next hour boundary under a day, and so on). macOS:
-  `Models/RelativeAge.swift`; Tauri: `lib/relativeAge.ts`. The kanban's own
-  day-only formatters stay as they are.
-- **View**: macOS a `.secondaryAction` toolbar item next to `ScanButton`
-  (where `LocalChecksChip` sits); Tauri a chip next to `ScanButton` in the
-  `App.tsx` header. Hidden on the board and before the first full scan.
-- **Ticking**: one timer that sleeps until `nextChangeAt`, re-armed when the
-  clock changes and immediately on app focus / visibility. macOS: a
-  `.task(id: lastFullScanStartedAt)` loop with `Task.sleep(until:)`; Tauri: a
-  `setTimeout` chain plus `visibilitychange` / `focus` listeners. Under a
-  minute it ticks once (at 60 s), then once a minute, then once an hour.
 
 ### 9. Scheduler, both frontends
 
@@ -151,15 +129,13 @@ the next slices need:
 
 ### 10. Docs
 
-Streaming, joining, the slice-4 display and rechecks are already in
-FRONTEND.md §5.1–5.3 and §5.5, and ROADMAP.md.
+Streaming, joining, the slice-4 display, rechecks and the label are already
+in FRONTEND.md §2, §5.1–5.3, §5.5 and §9, and ROADMAP.md.
 
 - **FRONTEND.md**
-  - §2: results are still session memory; add the clock as session memory.
-  - §3: auto-scan row, new "Last scan" row, scheduler rows.
+  - §3: auto-scan row, scheduler rows.
   - §5.1: triggers rewritten (launch, timer, focus 15 min, manual), visible vs
     silent (a silent scan joined by a visible request turns visible).
-  - §9: where the label sits in each app.
 - **DESIGN.md** :46-48: the automatic scan sentence.
 - **ROADMAP.md**: add the done items. The 20 s fetch item stays open.
 - **README.md**: no change.
@@ -192,7 +168,7 @@ In user-flow order, both apps in each slice from step 7 on:
 4. ~~Coordinator: streaming, spinners, Checking section, joining (step 7
    minus rechecks).~~ Done.
 5. ~~Post-action rechecks (rest of step 7).~~ Done.
-6. "Last scan" label and ticking (step 8).
+6. ~~"Last scan" label and ticking (step 8).~~ Done.
 7. Scheduler (step 9).
 8. Docs (step 10).
 
@@ -201,7 +177,7 @@ In user-flow order, both apps in each slice from step 7 on:
 1. Launch with `Dev` and `Documents`. Expect every repo under *Checking* with
    spinners within a second, repos moving into sections one by one,
    `Documents` done in about a second, and ryujinx the last spinner in `Dev`.
-   "Last scan: just now" appears next to the scan button.
+   "Last scan: just now" appears next to the scan button once it ends.
 2. Press Scan All. Expect every repo to stay in its section with a spinner
    (no *Checking* section this time), and the `Dev` header and sidebar row to
    keep showing their counts next to a spinner, the counts changing as repos

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { FolderManager } from './components/folders';
-import { AllFoldersOverview, FolderDetail, ScanButton, RepoActionHandlers } from './components/scan';
+import { AllFoldersOverview, FolderDetail, ScanButton, LastScanLabel, RepoActionHandlers } from './components/scan';
 import DefaultAppsSettings from './components/settings/DefaultAppsSettings';
 import GitCleanSettings from './components/settings/GitCleanSettings';
 import AccountSettings from './components/settings/AccountSettings';
@@ -274,6 +274,9 @@ function App() {
                 >
                   {localChecksNotice}
                 </span>
+              )}
+              {folders.length > 0 && scanner.lastFullScanStartedAt !== null && (
+                <LastScanLabel key={scanner.lastFullScanStartedAt} startedAtMs={scanner.lastFullScanStartedAt} />
               )}
               <ScanButton
                 folder={selectedFolder}

@@ -1,6 +1,7 @@
 export { AllFoldersOverview } from './AllFoldersOverview';
 export { FolderDetail } from './FolderDetail';
 export { ScanButton } from './ScanButton';
+export { LastScanLabel } from './LastScanLabel';
 export { RepoSection } from './RepoSection';
 export type { RepoSectionProps } from './RepoSection';
 export { RepoRow } from './RepoRow';

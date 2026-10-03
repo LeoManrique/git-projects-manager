@@ -162,6 +162,8 @@
       never has two scans at once (a pull and a Clean All used to stack three)
 - [x] A pull or clean rechecks only the repos it touched, not their folders,
       and the row spins from the click until the new state lands
+- [x] "Last scan: 3 minutes ago" beside the scan control in both apps: the
+      start of the last full scan, re-rendered only when its text changes
 
 ## Pending
 - [ ] Re-run the multi-agent adversarial code review of the migration (first

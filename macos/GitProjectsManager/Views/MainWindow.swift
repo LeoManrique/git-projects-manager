@@ -54,6 +54,11 @@ struct DetailView: View {
                         LocalChecksChip(notice: notice)
                     }
                 }
+                if let lastScan = model.lastFullScanStartedAt, !model.folders.isEmpty {
+                    ToolbarItem(placement: .secondaryAction) {
+                        LastScanLabel(date: lastScan)
+                    }
+                }
                 ToolbarItem(placement: .primaryAction) {
                     ScanButton()
                 }
@@ -91,8 +96,6 @@ struct DetailView: View {
     }
 }
 
-/// Toolbar chip showing the kanban sync status; its menu hosts the
-/// sign-in/out shortcuts (full account management lives in Settings).
 /// Toolbar indicator for folders configured with "Only local checks", so that
 /// "no unpushed commits" is never read as a finding when the scan never asked
 /// (FRONTEND.md §5.4).
@@ -106,6 +109,8 @@ struct LocalChecksChip: View {
     }
 }
 
+/// Toolbar chip showing the kanban sync status; its menu hosts the
+/// sign-in/out shortcuts (full account management lives in Settings).
 struct SyncStatusChip: View {
     @Environment(AppModel.self) private var model
 

@@ -18,7 +18,8 @@ function isInside(repoPath: string, folderPath: string): boolean {
 
 /** A folder's scan in flight, and whether it shows its progress. */
 interface InFlightScan {
-  done: Promise<void>;
+  /** Resolves to the scan's start (unix ms), or null if it failed. */
+  done: Promise<number | null>;
   visible: boolean;
 }
 
@@ -29,6 +30,8 @@ export interface UseScannerReturn {
   /** Repos a visible scan has not checked yet; their rows show a spinner. */
   checkingRepos: Set<string>;
   isFullScanning: boolean;
+  /** When the last full scan started (unix ms): what "Last scan" shows. */
+  lastFullScanStartedAt: number | null;
   error: string;
   setError: (message: string) => void;
   pullingRepos: Set<string>;
@@ -54,6 +57,7 @@ export function useScanner(folders: MonitoredFolder[]): UseScannerReturn {
   const [scanningFolders, setScanningFolders] = useState<Set<string>>(new Set());
   // Scan All presses (and other visible full scans) still running.
   const [visibleFullScans, setVisibleFullScans] = useState(0);
+  const [lastFullScanStartedAt, setLastFullScanStartedAt] = useState<number | null>(null);
   const [error, setError] = useState('');
   const [pullingRepos, setPullingRepos] = useState<Set<string>>(new Set());
   const [cleaningRepos, setCleaningRepos] = useState<Set<string>>(new Set());
@@ -137,16 +141,22 @@ export function useScanner(folders: MonitoredFolder[]): UseScannerReturn {
     );
   }, []);
 
-  /** One folder's scan, streaming its snapshots onto the screen. Never rejects. */
+  /**
+   * One folder's scan, streaming its snapshots onto the screen. Resolves to
+   * when the scan started, or null if it failed. Never rejects.
+   */
   const runScan = useCallback(
     async (folder: MonitoredFolder) => {
       try {
         const final = await api.scanFolder(folder, (snapshot) => queueSnapshot(folder.id, snapshot));
         applySnapshots(new Map([[folder.id, final]]));
+        // Unfinished only when the folder was edited or deleted meanwhile.
+        return final.isComplete ? final.startedAtMs : null;
       } catch (err) {
         // The folder keeps what it had (§5.1), so the log is the only place
         // this shows up.
         logError(`Scan failed for ${folder.path}`, err);
+        return null;
       } finally {
         inFlightRef.current.delete(folder.id);
         publishInFlight();
@@ -160,6 +170,7 @@ export function useScanner(folders: MonitoredFolder[]): UseScannerReturn {
    * single entry point behind every trigger: a folder already scanning is
    * joined instead of scanned twice, and turns visible when this request is.
    * A visible scan shows its progress; a silent one only its results.
+   * Resolves to when each target's scan started, null for one that failed.
    */
   const requestScan = useCallback(
     async (targets: MonitoredFolder[], visible: boolean) => {
@@ -176,18 +187,31 @@ export function useScanner(folders: MonitoredFolder[]): UseScannerReturn {
         return done;
       });
       publishInFlight();
-      await Promise.all(scans);
+      return Promise.all(scans);
     },
     [runScan, publishInFlight]
   );
+
+  /**
+   * Move the "Last scan" clock to the start of a full scan that just ended:
+   * the earliest of its folders' scans, joined ones included, so the label
+   * never claims a folder is fresher than it is. A folder whose scan failed
+   * does not hold it back, and it never moves back.
+   */
+  const recordFullScan = useCallback((starts: (number | null)[]) => {
+    const known = starts.filter((start) => start !== null);
+    if (known.length === 0) return;
+    const earliest = Math.min(...known);
+    setLastFullScanStartedAt((prev) => (prev === null || earliest > prev ? earliest : prev));
+  }, []);
 
   /** On-demand, so it clears the shared error surface (§5.6). */
   const fullScan = useCallback(async () => {
     setError('');
     setVisibleFullScans((n) => n + 1);
-    await requestScan(folders, true);
+    recordFullScan(await requestScan(folders, true));
     setVisibleFullScans((n) => n - 1);
-  }, [requestScan, folders]);
+  }, [requestScan, recordFullScan, folders]);
 
   const scanAll = useCallback(() => {
     void fullScan();
@@ -362,6 +386,7 @@ export function useScanner(folders: MonitoredFolder[]): UseScannerReturn {
     scanningFolders,
     checkingRepos,
     isFullScanning: visibleFullScans > 0,
+    lastFullScanStartedAt,
     error,
     setError,
     pullingRepos,
