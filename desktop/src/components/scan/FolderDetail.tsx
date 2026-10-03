@@ -2,7 +2,8 @@ import { MonitoredFolder } from '../../types';
 import { UseScannerReturn } from '../../hooks/useScanner';
 import { RepoSection } from './RepoSection';
 import { RepoActionHandlers } from './RepoRow';
-import { SECTIONS, visibleSections } from './sections';
+import { visibleSections } from './sections';
+import { Spinner } from '../ui/Spinner';
 
 interface FolderDetailProps {
   folder: MonitoredFolder;
@@ -12,9 +13,9 @@ interface FolderDetailProps {
 }
 
 /**
- * Scan results for a single monitored folder: all six category sections in
- * fixed order, including Clean with its bulk action, plus the execution-time
- * footer (FRONTEND.md §5.3).
+ * Scan results for a single monitored folder: its category sections in fixed
+ * order, including Clean with its bulk action, plus the execution-time footer
+ * once the scan is complete (FRONTEND.md §5.3).
  */
 export function FolderDetail({ folder, scanner, searchQuery, handlers }: FolderDetailProps) {
   const result = scanner.results[folder.id];
@@ -25,7 +26,7 @@ export function FolderDetail({ folder, scanner, searchQuery, handlers }: FolderD
       <div className="h-full flex flex-col items-center justify-center gap-3 text-center">
         {isScanning ? (
           <>
-            <span className="w-5 h-5 border-2 border-text-muted border-t-transparent rounded-full animate-spin" />
+            <Spinner size="lg" />
             <p className="text-xs text-text-muted">Scanning…</p>
           </>
         ) : (
@@ -46,7 +47,7 @@ export function FolderDetail({ folder, scanner, searchQuery, handlers }: FolderD
     );
   }
 
-  const sections = visibleSections(SECTIONS, result, searchQuery);
+  const sections = visibleSections(result, searchQuery, isScanning);
 
   if (sections.length === 0 && searchQuery.trim()) {
     return (
@@ -72,9 +73,12 @@ export function FolderDetail({ folder, scanner, searchQuery, handlers }: FolderD
           />
         ))}
       </div>
-      <div className="flex-shrink-0 px-4 py-2 border-t border-dark-borderSubtle text-[11px] text-text-muted">
-        Completed in {(result.executionTime ?? 0).toFixed(2)}s
-      </div>
+      {/* A scan in flight has no duration yet. */}
+      {result.isComplete && (
+        <div className="flex-shrink-0 px-4 py-2 border-t border-dark-borderSubtle text-[11px] text-text-muted">
+          Completed in {result.executionTime.toFixed(2)}s
+        </div>
+      )}
     </div>
   );
 }

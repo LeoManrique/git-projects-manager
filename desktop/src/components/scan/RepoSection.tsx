@@ -4,6 +4,7 @@ import { colorStyles } from './colorStyles';
 import { SectionSpec } from './sections';
 import { RepoRow, RepoActionHandlers } from './RepoRow';
 import { DotsIcon } from '../icons';
+import { Spinner } from '../ui/Spinner';
 
 export interface RepoSectionProps {
   spec: SectionSpec;
@@ -54,7 +55,7 @@ export function RepoSection({
               title="Section actions"
             >
               {bulkInFlight ? (
-                <span className="w-3.5 h-3.5 block border-2 border-text-muted border-t-transparent rounded-full animate-spin" />
+                <Spinner size="sm" />
               ) : (
                 <DotsIcon />
               )}

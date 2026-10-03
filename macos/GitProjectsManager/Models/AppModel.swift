@@ -32,11 +32,21 @@ final class AppModel {
 
     // Data
     private(set) var folders: [MonitoredFolder] = []
-    private(set) var results: [String: ScanResult] = [:]
+    private(set) var results: [String: ScanResult] = [:] {
+        didSet { updateCheckingRepos() }
+    }
 
     // Scan / operation state
-    private(set) var scanningFolders: Set<String> = []
-    private(set) var isFullScanning = false
+    /// One entry per folder with a scan in flight: never two scans of one
+    /// folder (FRONTEND.md §5.2).
+    private var inFlightScans: [String: InFlightScan] = [:] {
+        didSet { updateCheckingRepos() }
+    }
+    /// Scan All presses (and other visible full scans) still running.
+    private var visibleFullScans = 0
+    var isFullScanning: Bool { visibleFullScans > 0 }
+    /// Repos a visible scan has not checked yet; their rows show a spinner.
+    private var checkingRepos: Set<String> = []
     private(set) var pullingRepos: Set<String> = []
     private(set) var cleaningRepos: Set<String> = []
     private(set) var isBulkPulling = false
@@ -62,8 +72,7 @@ final class AppModel {
     private(set) var defaultEditorId: String?
     private(set) var gitCleanPatterns: [String] = []
 
-    // Scan bookkeeping (FRONTEND.md §5.1–5.2)
-    private var scanVersion = 0
+    // Scan bookkeeping (FRONTEND.md §5.1)
     private var lastScanStartedAt: Date?
     private var hasInitialScan = false
 
@@ -94,15 +103,12 @@ final class AppModel {
         }
     }
 
-    /// Drop the scan state of folders that are no longer monitored (§5.2). A
-    /// folder deleted mid-scan used to stay in `scanningFolders` forever once a
-    /// full scan superseded its own, and a non-empty set turns off the focus
-    /// rescan for the rest of the session.
+    /// Drop the results of folders that are no longer monitored (§5.2). A scan
+    /// of one still in flight clears its own entry when it ends.
     private func forgetRemovedFolders() {
         let ids = Set(folders.map(\.id))
         // Assigned only on a real change: every write to an observed property
         // invalidates the views reading it.
-        if !scanningFolders.isSubset(of: ids) { scanningFolders.formIntersection(ids) }
         if !results.keys.allSatisfy(ids.contains) { results = results.filter { ids.contains($0.key) } }
     }
 
@@ -133,75 +139,93 @@ final class AppModel {
 
     // MARK: - Scanning (FRONTEND.md §5)
 
-    /// Scan the given folders concurrently, merging each result as it lands
-    /// (§5.1). The single implementation behind every scan mode.
-    ///
-    /// - `isFullScan` bumps the supersession version and drives the global
-    ///   indicator.
-    /// - `clearError` is false for the rescans that follow a pull or clean, so
-    ///   the action's own message survives the scan it triggers; per §5.6 the
-    ///   error surface clears when the next *on-demand* scan starts.
-    private func scan(
-        folders targets: [MonitoredFolder],
-        isFullScan: Bool,
-        clearError: Bool
-    ) async {
-        guard !targets.isEmpty else { return }
+    /// A folder's scan in flight, and whether it shows its progress.
+    private struct InFlightScan {
+        let task: Task<Void, Never>
+        var isVisible: Bool
+    }
 
-        if isFullScan {
-            scanVersion += 1
-            isFullScanning = true
-        }
-        let version = scanVersion
+    /// Scan `targets` concurrently and wait for all of them (§5.1–5.2). The
+    /// single entry point behind every trigger: a folder already scanning is
+    /// joined instead of scanned twice, and turns visible when this request
+    /// is. A visible scan shows its progress; a silent one only its results.
+    private func requestScan(_ targets: [MonitoredFolder], visible: Bool) async {
         lastScanStartedAt = Date()
-        if clearError { errorMessage = nil }
-        scanningFolders.formUnion(targets.map(\.id))
-
-        await withTaskGroup(of: (String, ScanResult?).self) { group in
-            for folder in targets {
-                group.addTask { [core] in
-                    do {
-                        let result = try await core.scanFolder(
-                            path: folder.path,
-                            onlyLocalChecks: folder.onlyLocalChecks,
-                            detectUninitialized: folder.detectUninitialized
-                        )
-                        return (folder.id, result)
-                    } catch {
-                        // The folder keeps its previous result silently (§5.1),
-                        // so the log is the only place this shows up.
-                        AppLog.error("scan failed for \(folder.path): \(Self.message(error))")
-                        return (folder.id, nil)
-                    }
-                }
-            }
-            for await (folderId, result) in group {
-                // Supersession: a newer full scan owns the UI now, including
-                // this folder's spinner — which is why the guard comes before
-                // the removal below and not after it (§5.2).
-                guard scanVersion == version else { continue }
-                // A folder deleted while it was scanning must not get its
-                // result back.
-                if let result, folder(withId: folderId) != nil { results[folderId] = result }
-                scanningFolders.remove(folderId)
+        var scans: [Task<Void, Never>] = []
+        for folder in targets {
+            if let inFlight = inFlightScans[folder.id] {
+                if visible, !inFlight.isVisible { inFlightScans[folder.id]?.isVisible = true }
+                scans.append(inFlight.task)
+            } else {
+                // Runs on the main actor once this loop yields, so its entry
+                // is in place before the scan can end and remove it.
+                let task = Task { await runScan(folder) }
+                inFlightScans[folder.id] = InFlightScan(task: task, isVisible: visible)
+                scans.append(task)
             }
         }
+        for scan in scans { await scan.value }
+    }
 
-        guard scanVersion == version else { return }
-        scanningFolders.subtract(targets.map(\.id))
-        if isFullScan { isFullScanning = false }
+    /// One folder's scan: every snapshot the core streams lands on screen as
+    /// it arrives, the last one being the complete result.
+    private func runScan(_ folder: MonitoredFolder) async {
+        let scan = core.startFolderScan(
+            path: folder.path,
+            onlyLocalChecks: folder.onlyLocalChecks,
+            detectUninitialized: folder.detectUninitialized
+        )
+        var last: ScanResult?
+        while let snapshot = await scan.next() {
+            apply(snapshot, to: folder.id)
+            last = snapshot
+        }
+        inFlightScans[folder.id] = nil
+        // Ends early only when the core's scan thread died. The folder keeps
+        // what it had (§5.1), so the log is the only place this shows up.
+        if last?.isComplete != true, self.folder(withId: folder.id) != nil {
+            AppLog.error("scan of \(folder.path) ended before it finished")
+        }
+    }
+
+    /// Show `snapshot` as `folderId`'s result, unless the folder is gone or
+    /// what is shown is already as new.
+    private func apply(_ snapshot: ScanResult, to folderId: String) {
+        guard folder(withId: folderId) != nil else { return }
+        if let shown = results[folderId], shown.revision >= snapshot.revision { return }
+        results[folderId] = snapshot
+    }
+
+    private func updateCheckingRepos() {
+        let visible = inFlightScans.filter { $0.value.isVisible }.keys
+        let pending = Set(visible.flatMap { results[$0]?.pending ?? [] })
+        if pending != checkingRepos { checkingRepos = pending }
+    }
+
+    /// Whether `folderId` has a visible scan in flight.
+    func isScanning(_ folderId: String) -> Bool {
+        inFlightScans[folderId]?.isVisible == true
+    }
+
+    func isChecking(repoPath: String) -> Bool {
+        checkingRepos.contains(repoPath)
     }
 
     /// Full scan of all folders, with global + per-folder progress indicators.
     /// Drives Scan All, the startup auto-scan and the window-focus rescan.
+    /// On-demand, so it clears the shared error surface (§5.6).
     func scanAll() async {
-        await scan(folders: folders, isFullScan: true, clearError: true)
+        errorMessage = nil
+        visibleFullScans += 1
+        await requestScan(folders, visible: true)
+        visibleFullScans -= 1
     }
 
     /// Scan a single folder (per-folder Scan control). On-demand, so it
     /// clears the shared error surface (§5.6).
     func scan(folder: MonitoredFolder) async {
-        await scan(folders: [folder], isFullScan: false, clearError: true)
+        errorMessage = nil
+        await requestScan([folder], visible: true)
     }
 
     // MARK: - The scan control (FRONTEND.md §5.1)
@@ -221,9 +245,9 @@ final class AppModel {
     }
 
     /// Whether the folders in view are being scanned — by their own scan or by
-    /// a full one, which is why the folder case asks the per-folder set.
+    /// a full one, which is why the folder case asks about the folder.
     var isScanningSelection: Bool {
-        selectedFolder.map { scanningFolders.contains($0.id) } ?? isFullScanning
+        selectedFolder.map { isScanning($0.id) } ?? isFullScanning
     }
 
     var scanActionTitle: String {
@@ -272,12 +296,11 @@ final class AppModel {
 
     /// Window regained focus: rescan all folders with the normal scan
     /// indicators, throttled to once per 20s since the last scan of any kind
-    /// (§5.1). Skipped while a scan is already in flight so it never supersedes
-    /// one whose progress the user is watching.
+    /// (§5.1). Skipped while any scan is in flight.
     func appDidBecomeActive() {
         kanban.appDidBecomeActive()
         guard hasInitialScan, !folders.isEmpty else { return }
-        guard !isFullScanning, scanningFolders.isEmpty else { return }
+        guard inFlightScans.isEmpty else { return }
         if let last = lastScanStartedAt, Date().timeIntervalSince(last) < 20 { return }
         Task { await scanAll() }
     }
@@ -373,9 +396,9 @@ final class AppModel {
     }
 
     /// The rescan that follows a repo action: only the folders those repos live
-    /// in, and never clearing the message the action just set.
+    /// in, and never clearing the message the action just set (§5.6).
     private func rescan(after repoPaths: [String]) async {
-        await scan(folders: foldersForRepos(repoPaths), isFullScan: false, clearError: false)
+        await requestScan(foldersForRepos(repoPaths), visible: true)
     }
 
     func pullAll(_ repos: [RepoStatus]) async {
@@ -559,6 +582,19 @@ final class AppModel {
         guard let result = results[folderId] else { return 0 }
         return result.withChanges.count + result.withUnpushed.count
             + result.withUnpulled.count + result.errors.count
+    }
+
+    /// A folder's sections in display order: search-filtered, empty ones
+    /// dropped, and Checking only while a visible scan is checking them
+    /// (FRONTEND.md §5.3).
+    func visibleSections(of folderId: String) -> [(category: RepoCategory, repos: [RepoStatus])] {
+        guard let result = results[folderId] else { return [] }
+        let isScanning = isScanning(folderId)
+        return RepoCategory.allCases.compactMap { category in
+            guard isScanning || !category.onlyWhileScanning else { return nil }
+            let repos = filtered(category.repos(in: result))
+            return repos.isEmpty ? nil : (category, repos)
+        }
     }
 
     /// Search filter (FRONTEND.md §5.4): case-insensitive substring on repo

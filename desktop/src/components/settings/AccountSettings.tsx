@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '../../hooks';
 import { describeError } from '../../lib/log';
+import { Spinner } from '../ui/Spinner';
 
 export default function AccountSettings() {
   const { user, status, signIn, signOut } = useAuth();
@@ -34,7 +35,7 @@ export default function AccountSettings() {
   if (status === 'loading') {
     return (
       <div className="flex items-center justify-center py-8">
-        <span className="w-4 h-4 border-2 border-text-muted border-t-transparent rounded-full animate-spin" />
+        <Spinner size="md" />
       </div>
     );
   }

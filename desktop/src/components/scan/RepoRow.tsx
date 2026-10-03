@@ -3,6 +3,7 @@ import { useContextMenu } from '../../hooks';
 import { colorStyles, ColorVariant } from './colorStyles';
 import { PathText } from './PathText';
 import { DotsIcon } from '../icons';
+import { Spinner } from '../ui/Spinner';
 
 /** Per-repo action callbacks and in-flight state, shared by every section. */
 export interface RepoActionHandlers {
@@ -16,6 +17,7 @@ export interface RepoActionHandlers {
   defaultEditorName?: string;
   pullingRepos: Set<string>;
   cleaningRepos: Set<string>;
+  checkingRepos: Set<string>;
 }
 
 interface RepoRowProps {
@@ -46,7 +48,12 @@ export function RepoRow({
 }: RepoRowProps) {
   const menu = useContextMenu({ menuWidth: 170 });
   const styles = colorStyles[color];
-  const isBusy = handlers.pullingRepos.has(repo.path) || handlers.cleaningRepos.has(repo.path);
+  // A pull or clean in flight, or a visible scan that has not checked the repo
+  // yet. Its actions stay in the context menu either way.
+  const showsSpinner =
+    handlers.pullingRepos.has(repo.path) ||
+    handlers.cleaningRepos.has(repo.path) ||
+    handlers.checkingRepos.has(repo.path);
 
   const menuItem = (label: string, action: () => void, disabled = false) => (
     <button
@@ -85,24 +92,28 @@ export function RepoRow({
         )}
       </div>
 
-      {isBusy ? (
-        <span className="mt-[3px] w-3.5 h-3.5 flex-shrink-0 border-2 border-text-muted border-t-transparent rounded-full animate-spin" />
-      ) : (
-        <button
-          ref={menu.buttonRef}
-          onClick={(e) => {
-            e.stopPropagation();
-            menu.toggle();
-            (e.currentTarget as HTMLButtonElement).blur();
-          }}
-          className={`p-0.5 rounded flex-shrink-0 hover:bg-dark-border transition-colors ${
-            menu.isOpen ? 'bg-dark-border' : 'opacity-0 group-hover:opacity-100'
-          }`}
-          title="Actions"
-        >
-          <DotsIcon />
-        </button>
-      )}
+      {/* Always mounted, spinner or not: the menu positions itself from this
+          button and closes on clicks outside it, so unmounting it left a
+          right-click menu invisible and an open menu stuck. While spinning it
+          lets clicks through to the row, whose right-click menu still works. */}
+      <button
+        ref={menu.buttonRef}
+        onClick={(e) => {
+          e.stopPropagation();
+          menu.toggle();
+          (e.currentTarget as HTMLButtonElement).blur();
+        }}
+        className={`p-0.5 rounded flex-shrink-0 hover:bg-dark-border transition-colors ${
+          showsSpinner
+            ? 'pointer-events-none'
+            : menu.isOpen
+              ? 'bg-dark-border'
+              : 'opacity-0 group-hover:opacity-100'
+        }`}
+        title="Actions"
+      >
+        {showsSpinner ? <Spinner size="sm" /> : <DotsIcon />}
+      </button>
 
       {menu.isOpen && menu.position && (
         <div

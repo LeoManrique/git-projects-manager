@@ -156,6 +156,11 @@
 - [x] "Too many open files" on Clean All: the core raises the open files limit
       at startup (256 → 10240 on macOS)
 
+- [x] Streamed scans in both apps: repos fill in one by one (new ones under a
+      transient *Checking* section, the rest with a row spinner), folder
+      headers and sidebar rows keep their counts during a scan, and a folder
+      never has two scans at once (a pull and a Clean All used to stack three)
+
 ## Pending
 - [ ] Re-run the multi-agent adversarial code review of the migration (first
       attempt aborted on session usage limits; a manual review pass was done instead)
@@ -169,8 +174,6 @@
 - [ ] Bound the one-time `gh` lookup (`github_cli::resolve_gh`): it runs the
       user's login shell with no timeout, so a hanging profile blocks every scan
       thread that reaches `gh`
-- [ ] A post-action rescan starts even when that folder is already scanning, so
-      a pull and a Clean All stacked three concurrent scans of one folder
 - [ ] A repo whose fetch needs more than 20 s never completes one (the killed
       fetch keeps nothing) and holds every scan of its folder for 21 s
 - [ ] Tauri bulk pull/clean message omits the repo name the macOS app includes

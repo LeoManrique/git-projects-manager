@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { api } from '../../lib/api';
 import { logError } from '../../lib/log';
 import { TrashIcon } from '../icons';
+import { Spinner } from '../ui/Spinner';
 
 interface GitCleanSettingsProps {
   onSettingsChange: () => void;
@@ -74,7 +75,7 @@ export default function GitCleanSettings({ onSettingsChange }: GitCleanSettingsP
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-8">
-        <span className="w-4 h-4 border-2 border-text-muted border-t-transparent rounded-full animate-spin" />
+        <Spinner size="md" />
       </div>
     );
   }

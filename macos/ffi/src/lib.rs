@@ -597,30 +597,6 @@ impl GpmCore {
 // never block the caller; the heavy lifting is offloaded to blocking threads.
 #[uniffi::export(async_runtime = "tokio")]
 impl GpmCore {
-    /// Scan one monitored folder for git repositories and their status.
-    ///
-    /// # Errors
-    /// Errs when the scan worker thread panics or is cancelled by runtime
-    /// shutdown; per-repo failures are reported inside the result instead.
-    pub async fn scan_folder(
-        &self,
-        path: String,
-        only_local_checks: bool,
-        detect_uninitialized: bool,
-    ) -> FfiResult<ScanResult> {
-        let scanner = Arc::clone(&self.state.scanner);
-        let result = tokio::task::spawn_blocking(move || {
-            scanner.scan_folder(
-                Path::new(&path),
-                only_local_checks,
-                detect_uninitialized,
-            )
-        })
-        .await
-        .map_err(|e| GpmError::Failure(format!("scan task failed: {e}")))?;
-        Ok(result.into())
-    }
-
     /// Start scanning one monitored folder and return the handle its
     /// snapshots arrive through ([`FolderScan::next`]). Returns at once; the
     /// scan blocks a thread of its own.

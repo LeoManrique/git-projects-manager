@@ -317,6 +317,9 @@ width, matching Apple's 824/1024 icon grid).
   reads a tokio `watch` channel, which keeps only the newest snapshot, so a
   busy main actor skips the ones in between. A Swift callback would have run
   Swift code on the scan's threads. Both bridges export `recheck_repos`.
+  Each frontend keeps one scan per folder (a second request joins it) and
+  drops a snapshot whose `revision` is not newer than the one shown; Tauri
+  applies streamed snapshots once per animation frame.
 - No cancellation. The removed flag was polled only by the directory walk, so it stopped the
   cheap half and left every `git fetch` running, and it returned a `ScanResult`
   indistinguishable from a complete one that the frontends stored as

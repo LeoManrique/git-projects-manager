@@ -1,8 +1,7 @@
 # Plan: streamed scans, a "Last scan" indicator and a calmer schedule
 
-Status: slices 1–3 of 8 done (core and bridges). Next: slice 4, the
-coordinator. The "why"
-is in `docs/analysis/automatic-scan-strategy.md`. Delete this file once the
+Status: slices 1–4 of 8 done (core, bridges, coordinator). Next: slice 5,
+post-action rechecks. The "why" is in `docs/analysis/automatic-scan-strategy.md`. Delete this file once the
 manual test script at the bottom passes.
 
 ## Decisions
@@ -44,8 +43,7 @@ manual test script at the bottom passes.
   today, since there is nothing to count yet.
 - **Silent scan** (the 10 min timer): no indicators of any kind. Rows move
   between sections as their new status arrives. The *Checking* section stays
-  hidden; a new repo appears once checked. A snapshot equal to what is on
-  screen publishes nothing.
+  hidden; a new repo appears once checked.
 - **Joining.** Pressing Scan All during a silent scan does not start a second
   one: the folders already scanning switch to visible (indicators and
   spinners appear for the repos still pending), and only idle folders start.
@@ -94,75 +92,37 @@ frontends keep doing what they do today with it (replace the folder's entry).
 
 ## Changes by layer, core outward
 
-### 1–6. Core and bridges (done)
+### 1–7. Core, bridges and coordinator (done, except rechecks)
 
-TECHNICAL.md (Scanning → Scan thread pool, Registry, Streaming, Fetch
-debounce) and FRONTEND.md's data model describe them. What the coordinator
-needs:
+TECHNICAL.md (Scanning) and FRONTEND.md §5.1–5.3 describe them. What the next
+slices need:
 
-- **Tauri**: `api.scanFolder(folder, onSnapshot)` resolves with the final
-  snapshot; `onSnapshot` gets every one before it. `useScanner` passes
-  `() => {}` for now.
-- **macOS**: `core.startFolderScan(path:onlyLocalChecks:detectUninitialized:)`
-  is synchronous and returns a `FolderScan`; loop on `await scan.next()`
-  until `nil`. The old async `scanFolder` export is still there because
-  `AppModel` calls it; delete it when slice 4 switches over.
-- **Both**: `recheckRepos(folder, repos, onlyLocalChecks)` returns the
-  folder's snapshot, `nil`/`null` for a folder never scanned.
-- A scan that dies (a panic) ends without a complete snapshot: `next()`
-  returns `nil` early, and the Tauri promise rejects. Clear the folder's
-  in-flight entry either way.
-- A recheck's snapshot and a scan's stream arrive separately, so the
-  revision check in step 7 is what keeps the newer one on screen.
-- Until slice 4, two scans of one folder can still overlap; the older one
-  then ends with `is_complete == false`.
+- **Coordinator**: `requestScan(targets, visible)` in `AppModel` /
+  `useScanner` is the one entry point; every caller passes `visible: true`
+  so far. Snapshots go through `apply(_:to:)` (macOS) / `applySnapshots`
+  (Tauri), which drop a gone folder or an older revision.
+- **Until slice 5**, the rescan after a pull or clean joins a scan of its
+  folder already in flight, which may have read the repo before the action;
+  the row then shows its old state until the next scan.
+- Dropped: skipping a snapshot equal to the one shown. Every snapshot has a
+  new revision, and re-rendering an unchanged screen is cheap.
 - Found on the way: with more queued repos than pool threads, a folder's jobs
   still queue behind another folder's; they wait for those to *start*, no
   longer to finish.
-- `FolderScan` is unit-tested with a hand-built channel. Nothing tests the
-  bridges end to end: `GpmCore::new` uses the real app-data folder.
 
-### 7. Scan coordinator, both frontends
+### 7. Rest: rechecks after actions
 
-Replaces the version counter and supersession (FRONTEND.md §5.2): with one
-scan per folder there is nothing to supersede.
-
-- **In-flight map** `folderId → { visible: Bool }`, owned by `AppModel` /
-  `useScanner`. `scanningFolders` (what drives today's indicators) becomes
-  the ids whose entry is visible, so every existing indicator keeps working.
-- **`requestScan(folders, visible)`**: for each folder, if in flight, upgrade
-  to visible when asked; otherwise start it. One function for every trigger.
-- **Applying a snapshot**: drop it if the folder is gone or its `revision` is
-  not newer than the one on screen, and skip the write when it equals what is
-  shown (no needless re-render). Tauri keeps the latest snapshot per folder in
-  a ref and flushes once per `requestAnimationFrame`; macOS gets coalescing
-  from the watch channel.
-- **Global clock** `lastFullScanStartedAt`: set from the first snapshot's
-  `started_at_ms` of a scan that covers every folder (the earliest across
-  them). Feeds the label and both automatic rules. A full request that only
-  joins scans already in flight does not move it.
-- **Rechecks after actions**: `pull`, `clean`, `pullAll`, `cleanAll` call
-  `recheckRepos` grouped by owning folder (`foldersForRepos` already does the
-  attribution) and keep the repo flagged until it returns. This closes the
-  ROADMAP item about post-action rescans overlapping a scan in flight.
-- **Per-repo spinner**: a row shows a spinner when its path is in the
-  folder's `pending` and the folder is in flight visibly, reusing the
-  pull/clean spinner and the existing busy check (`isBusy(repoPath:)` /
-  `RepoActionHandlers`). Actions on a pending row stay enabled, as they are
-  for every row during today's scans.
-- **Folder header and sidebar row**: `FolderSummaryHeader` and the sidebar
-  folder row show their counts whenever a result exists, and add the spinner
-  next to them while the folder is in flight visibly, instead of choosing
-  between the two (macOS `AllFoldersView.swift` / `SidebarView.swift`,
-  Tauri `AllFoldersOverview.tsx` / `Sidebar.tsx`).
-- **Checking section**: a new `RepoCategory` / `SECTIONS` entry mapping
-  `result.checking`, first in order, hidden when empty or when the folder's
-  scan is silent.
-- Tauri: extract the spinner span copied 7 times into one `Spinner`
-  component, since the row spinner adds an eighth.
+`pull`, `clean`, `pullAll`, `cleanAll` call `recheckRepos` grouped by owning
+folder (`foldersForRepos` already does the attribution), apply the returned
+snapshot through the same revision check, and keep the repo flagged until it
+returns. `recheckRepos` returns `nil`/`null` for a folder never scanned.
 
 ### 8. "Last scan" label, both frontends
 
+- **Global clock** `lastFullScanStartedAt`: set from the first snapshot's
+  `startedAtMs` of a scan that covers every folder (the earliest across
+  them). Feeds the label and both automatic rules. A full request that only
+  joins scans already in flight does not move it.
 - **Helper** `relativeAge(date, now) -> (text, nextChangeAt)`: the vocabulary
   above, plus the instant the text next changes (the next minute boundary
   under an hour, the next hour boundary under a day, and so on). macOS:
@@ -195,25 +155,27 @@ scan per folder there is nothing to supersede.
   timer fires late or not at all, and the focus rule covers the return.
 - **Constants** next to each other in each app: `BACKGROUND_SCAN_INTERVAL` =
   10 min, `FOCUS_SCAN_MIN_AGE` = 15 min. The 20 s throttle goes away.
+- **Joining after an edit**: a join matches by folder id, so once silent scans
+  exist, Scan Folder right after editing a folder joins a scan still running
+  with its old path or settings. Wait for that scan, then start a new one.
 - **No window (macOS)**: the timer keeps running in `AppModel` only while a
   window exists; with none, it parks until one opens.
 
 ### 10. Docs
 
+Streaming, joining and the slice-4 display are already in FRONTEND.md §5.1–5.3
+and ROADMAP.md.
+
 - **FRONTEND.md**
   - §2: results are still session memory; add the clock as session memory.
   - §3: auto-scan row, new "Last scan" row, scheduler rows.
   - §5.1: triggers rewritten (launch, timer, focus 15 min, manual), visible vs
-    silent, joining, streaming.
-  - §5.2: supersession replaced by "one scan per folder".
-  - §5.3: per-repo spinner, Checking section, live counts with a spinner in
-    the folder header and sidebar row.
+    silent (a silent scan joined by a visible request turns visible).
   - §5.5: post-action recheck of the affected repos only.
   - §9: where the label sits in each app.
 - **DESIGN.md** :46-48: the automatic scan sentence.
-- **ROADMAP.md**: tick the overlap item (:172-173); fix the stale :30-32
-  (post-action rescans are not full scans); add the done items. The 20 s
-  fetch item (:174-175) stays open.
+- **ROADMAP.md**: fix the stale :30-32 (post-action rescans are not full
+  scans); add the done items. The 20 s fetch item stays open.
 - **README.md**: no change.
 
 ## Out of scope
@@ -241,8 +203,8 @@ In user-flow order, both apps in each slice from step 7 on:
 2. ~~Core streaming scan, recheck and pull's `record_fetch` (steps 3–4).~~
    Done.
 3. ~~Bridges (steps 5–6).~~ Done.
-4. Coordinator: streaming, spinners, Checking section, joining (step 7
-   minus rechecks).
+4. ~~Coordinator: streaming, spinners, Checking section, joining (step 7
+   minus rechecks).~~ Done.
 5. Post-action rechecks (rest of step 7).
 6. "Last scan" label and ticking (step 8).
 7. Scheduler (step 9).

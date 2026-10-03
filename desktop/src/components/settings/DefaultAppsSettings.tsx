@@ -3,6 +3,7 @@ import { api } from '../../lib/api';
 import { logError } from '../../lib/log';
 import { TerminalApp, EditorApp } from '../../types';
 import { Select, SelectOption } from '../ui/Select';
+import { Spinner } from '../ui/Spinner';
 
 interface DefaultAppsSettingsProps {
   onSettingsChange: () => void;
@@ -87,7 +88,7 @@ export default function DefaultAppsSettings({ onSettingsChange }: DefaultAppsSet
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-8">
-        <span className="w-4 h-4 border-2 border-text-muted border-t-transparent rounded-full animate-spin" />
+        <Spinner size="md" />
       </div>
     );
   }

@@ -1,6 +1,7 @@
 import { MonitoredFolder } from '../../types';
 import { UseScannerReturn } from '../../hooks/useScanner';
 import { RefreshIcon } from '../icons';
+import { Spinner } from '../ui/Spinner';
 
 interface ScanButtonProps {
   /** The folder in view, or `undefined` in the All Folders overview. */
@@ -19,9 +20,7 @@ interface ScanButtonProps {
  * Scan All scanned every folder even while a single folder was open.
  */
 export function ScanButton({ folder, hasFolders, scanner }: ScanButtonProps) {
-  const isScanning = folder
-    ? scanner.scanningFolders.has(folder.id)
-    : scanner.isFullScanning;
+  const isScanning = folder ? scanner.scanningFolders.has(folder.id) : scanner.isFullScanning;
 
   return (
     <button
@@ -32,7 +31,7 @@ export function ScanButton({ folder, hasFolders, scanner }: ScanButtonProps) {
     >
       {isScanning ? (
         <>
-          <span className="w-3 h-3 border-2 border-white/70 border-t-transparent rounded-full animate-spin" />
+          <Spinner light />
           Scanning…
         </>
       ) : (

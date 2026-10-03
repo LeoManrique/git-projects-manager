@@ -3,11 +3,11 @@ import { filterRepos } from '../../lib/repoUtils';
 import { ColorVariant } from './colorStyles';
 
 /**
- * The nine fixed repo categories (FRONTEND.md §5.3), mirroring the macOS
- * app's RepoCategory: display order (Clean last), colors, badge labels, and
- * which row / bulk actions each section offers. Unpublished, Remote Not Found
- * and Unknown Remote State are overlays — a repo in any of them also appears in
- * its primary section.
+ * The repo categories (FRONTEND.md §5.3), mirroring the macOS app's
+ * RepoCategory: display order (the transient Checking first, Clean last),
+ * colors, badge labels, and which row / bulk actions each section offers.
+ * Unpublished, Remote Not Found and Unknown Remote State are overlays — a repo
+ * in any of them also appears in its primary section.
  */
 export interface SectionSpec {
   key: string;
@@ -15,6 +15,8 @@ export interface SectionSpec {
   badgeLabel: string;
   color: ColorVariant;
   muted: boolean;
+  /** Shown only while the folder scans visibly. */
+  onlyWhileScanning: boolean;
   showError: boolean;
   showPull: boolean;
   pullDisabled: boolean;
@@ -26,6 +28,7 @@ export interface SectionSpec {
 
 const defaults = {
   muted: false,
+  onlyWhileScanning: false,
   showError: false,
   showPull: true,
   pullDisabled: false,
@@ -34,7 +37,20 @@ const defaults = {
   hasBulkClean: false,
 };
 
-export const SECTIONS: SectionSpec[] = [
+const SECTIONS: SectionSpec[] = [
+  {
+    ...defaults,
+    key: 'checking',
+    title: 'Checking',
+    badgeLabel: 'checking',
+    color: 'gray',
+    muted: true,
+    // Repos a scan found but has no status for yet, so a silent scan keeps
+    // them out of sight until their status lands.
+    onlyWhileScanning: true,
+    showPull: false,
+    repos: (r) => r.checking,
+  },
   {
     ...defaults,
     key: 'changes',
@@ -123,15 +139,16 @@ export const SECTIONS: SectionSpec[] = [
 ];
 
 /**
- * The given sections with their search-filtered repos, empty ones dropped
- * (FRONTEND.md §5.4: sections filtered to zero disappear).
+ * A folder's sections with their search-filtered repos, empty ones dropped
+ * (FRONTEND.md §5.4: sections filtered to zero disappear), and Checking only
+ * while `isScanning` (the folder scans visibly).
  */
 export function visibleSections(
-  specs: SectionSpec[],
   result: ScanResult,
-  query: string
+  query: string,
+  isScanning: boolean
 ): [SectionSpec, RepoStatus[]][] {
-  return specs
+  return SECTIONS.filter((spec) => isScanning || !spec.onlyWhileScanning)
     .map((spec): [SectionSpec, RepoStatus[]] => [spec, filterRepos(spec.repos(result), query)])
     .filter(([, repos]) => repos.length > 0);
 }

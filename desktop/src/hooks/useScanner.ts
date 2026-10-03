@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { api } from '../lib/api';
 import { MonitoredFolder, ScanResult, RepoStatus } from '../types';
 import { repoName } from '../lib/repoUtils';
@@ -16,9 +16,18 @@ function isInside(repoPath: string, folderPath: string): boolean {
   return separator === '/' || separator === '\\';
 }
 
+/** A folder's scan in flight, and whether it shows its progress. */
+interface InFlightScan {
+  done: Promise<void>;
+  visible: boolean;
+}
+
 export interface UseScannerReturn {
   results: Record<string, ScanResult>;
+  /** Folders with a visible scan in flight. */
   scanningFolders: Set<string>;
+  /** Repos a visible scan has not checked yet; their rows show a spinner. */
+  checkingRepos: Set<string>;
   isFullScanning: boolean;
   error: string;
   setError: (message: string) => void;
@@ -35,22 +44,27 @@ export interface UseScannerReturn {
 }
 
 /**
- * Owns all scan state and repo operations (FRONTEND.md §5): full / per-folder
- * scans with supersession, auto-scan on startup, the throttled focus rescan
- * (a full scan, so it shows the normal indicators), and the pull / clean
- * actions with their automatic rescan of the affected folders.
+ * Owns all scan state and repo operations (FRONTEND.md §5): streamed scans,
+ * at most one per folder (a second request joins it), auto-scan on startup,
+ * the throttled focus rescan, and the pull / clean actions with their
+ * automatic rescan of the affected folders.
  */
 export function useScanner(folders: MonitoredFolder[]): UseScannerReturn {
   const [results, setResults] = useState<Record<string, ScanResult>>({});
   const [scanningFolders, setScanningFolders] = useState<Set<string>>(new Set());
-  const [isFullScanning, setIsFullScanning] = useState(false);
+  // Scan All presses (and other visible full scans) still running.
+  const [visibleFullScans, setVisibleFullScans] = useState(0);
   const [error, setError] = useState('');
   const [pullingRepos, setPullingRepos] = useState<Set<string>>(new Set());
   const [cleaningRepos, setCleaningRepos] = useState<Set<string>>(new Set());
   const [isBulkPulling, setIsBulkPulling] = useState(false);
   const [isBulkCleaning, setIsBulkCleaning] = useState(false);
 
-  const scanVersionRef = useRef(0);
+  // A ref, not state, so a request sees a scan started a moment earlier.
+  // `scanningFolders` mirrors its visible entries for rendering (§5.2).
+  const inFlightRef = useRef(new Map<string, InFlightScan>());
+  const queuedSnapshotsRef = useRef(new Map<string, ScanResult>());
+  const flushFrameRef = useRef<number | null>(null);
   const lastScanTimeRef = useRef(0);
   const hasInitialScanRef = useRef(false);
   // The ids monitored right now, read by scans that started before a folder
@@ -64,90 +78,127 @@ export function useScanner(folders: MonitoredFolder[]): UseScannerReturn {
     if (error) log('warn', `banner: ${error}`);
   }, [error]);
 
-  // Drop the scan state of folders that are no longer monitored (§5.2). A
-  // folder deleted mid-scan used to stay in `scanningFolders` forever once a
-  // full scan superseded its own, and a non-empty set turns off the focus
-  // rescan for the rest of the session.
+  // Drop the results of folders that are no longer monitored (§5.2). A scan
+  // of one still in flight clears its own entry when it ends.
   useEffect(() => {
     const ids = new Set(folders.map((f) => f.id));
     folderIdsRef.current = ids;
-    setScanningFolders((prev) => {
-      const next = new Set([...prev].filter((id) => ids.has(id)));
-      return next.size === prev.size ? prev : next;
-    });
     setResults((prev) => {
       const kept = Object.entries(prev).filter(([id]) => ids.has(id));
       return kept.length === Object.keys(prev).length ? prev : Object.fromEntries(kept);
     });
   }, [folders]);
 
-  /**
-   * Scan with UI indicators. Full scans bump the version; a folder whose
-   * version is stale on completion discards its result (§5.2).
-   *
-   * `clearError` is false for the rescans that follow a pull/clean, so the
-   * action's own message survives the scan it triggers. Per §5.6 the error
-   * surface clears when the next *on-demand* scan starts.
-   */
-  const scan = useCallback(
-    async (foldersToScan: MonitoredFolder[], isFullScan: boolean, clearError = true) => {
-      if (foldersToScan.length === 0) return;
-      let version = scanVersionRef.current;
-      if (isFullScan) {
-        version = ++scanVersionRef.current;
-        setIsFullScanning(true);
-      }
-      if (clearError) setError('');
-      setScanningFolders((prev) => {
-        const next = new Set(prev);
-        for (const folder of foldersToScan) next.add(folder.id);
-        return next;
-      });
-
-      // Each folder merges into the results map as it completes (§5.1) rather
-      // than the whole batch landing at once behind the slowest folder.
-      await Promise.all(
-        foldersToScan.map(async (folder) => {
-          const result = await api
-            .scanFolder(folder, () => {})
-            .catch((err: unknown) => {
-              // Folder keeps its previous result silently (§5.1), so the log
-              // is the only place this shows up.
-              logError(`Scan failed for ${folder.path}`, err);
-              return null;
-            });
-
-          // Superseded by a newer full scan: discard, and leave the indicators
-          // to the scan that owns them now (§5.2).
-          if (version !== scanVersionRef.current) return;
-
-          // A folder deleted while it was scanning must not get its result back.
-          if (result && folderIdsRef.current.has(folder.id)) {
-            setResults((prev) => ({ ...prev, [folder.id]: result }));
-          }
-          setScanningFolders((prev) => {
-            const next = new Set(prev);
-            next.delete(folder.id);
-            return next;
-          });
-        })
-      );
-
-      lastScanTimeRef.current = Date.now();
-      if (isFullScan && version === scanVersionRef.current) setIsFullScanning(false);
-    },
-    []
+  const checkingRepos = useMemo(
+    () => new Set([...scanningFolders].flatMap((id) => results[id]?.pending ?? [])),
+    [scanningFolders, results]
   );
 
+  /**
+   * Show each snapshot as its folder's result, unless the folder is gone or
+   * what is shown is already as new.
+   */
+  const applySnapshots = useCallback((snapshots: Map<string, ScanResult>) => {
+    setResults((prev) => {
+      let next = prev;
+      for (const [folderId, snapshot] of snapshots) {
+        if (!folderIdsRef.current.has(folderId)) continue;
+        const shown = next[folderId];
+        if (shown && shown.revision >= snapshot.revision) continue;
+        if (next === prev) next = { ...prev };
+        next[folderId] = snapshot;
+      }
+      return next;
+    });
+  }, []);
+
+  /**
+   * Streamed snapshots land once per frame, the newest per folder, so repos
+   * finishing in a burst render once.
+   */
+  const queueSnapshot = useCallback(
+    (folderId: string, snapshot: ScanResult) => {
+      queuedSnapshotsRef.current.set(folderId, snapshot);
+      if (flushFrameRef.current !== null) return;
+      flushFrameRef.current = requestAnimationFrame(() => {
+        flushFrameRef.current = null;
+        const snapshots = queuedSnapshotsRef.current;
+        queuedSnapshotsRef.current = new Map();
+        applySnapshots(snapshots);
+      });
+    },
+    [applySnapshots]
+  );
+
+  const publishInFlight = useCallback(() => {
+    const visible = [...inFlightRef.current].filter(([, scan]) => scan.visible).map(([id]) => id);
+    setScanningFolders((prev) =>
+      prev.size === visible.length && visible.every((id) => prev.has(id)) ? prev : new Set(visible)
+    );
+  }, []);
+
+  /** One folder's scan, streaming its snapshots onto the screen. Never rejects. */
+  const runScan = useCallback(
+    async (folder: MonitoredFolder) => {
+      try {
+        const final = await api.scanFolder(folder, (snapshot) => queueSnapshot(folder.id, snapshot));
+        applySnapshots(new Map([[folder.id, final]]));
+      } catch (err) {
+        // The folder keeps what it had (§5.1), so the log is the only place
+        // this shows up.
+        logError(`Scan failed for ${folder.path}`, err);
+      } finally {
+        inFlightRef.current.delete(folder.id);
+        publishInFlight();
+      }
+    },
+    [queueSnapshot, applySnapshots, publishInFlight]
+  );
+
+  /**
+   * Scan `targets` concurrently and wait for all of them (§5.1–5.2). The
+   * single entry point behind every trigger: a folder already scanning is
+   * joined instead of scanned twice, and turns visible when this request is.
+   * A visible scan shows its progress; a silent one only its results.
+   */
+  const requestScan = useCallback(
+    async (targets: MonitoredFolder[], visible: boolean) => {
+      lastScanTimeRef.current = Date.now();
+      const scans = targets.map((folder) => {
+        const inFlight = inFlightRef.current.get(folder.id);
+        if (inFlight) {
+          if (visible) inFlight.visible = true;
+          return inFlight.done;
+        }
+        // `runScan` removes the entry only after an await, so it is in place first.
+        const done = runScan(folder);
+        inFlightRef.current.set(folder.id, { done, visible });
+        return done;
+      });
+      publishInFlight();
+      await Promise.all(scans);
+    },
+    [runScan, publishInFlight]
+  );
+
+  /** On-demand, so it clears the shared error surface (§5.6). */
+  const fullScan = useCallback(async () => {
+    setError('');
+    setVisibleFullScans((n) => n + 1);
+    await requestScan(folders, true);
+    setVisibleFullScans((n) => n - 1);
+  }, [requestScan, folders]);
+
   const scanAll = useCallback(() => {
-    void scan(folders, true);
-  }, [scan, folders]);
+    void fullScan();
+  }, [fullScan]);
 
   const scanFolder = useCallback(
     (folder: MonitoredFolder) => {
-      void scan([folder], false);
+      setError('');
+      void requestScan([folder], true);
     },
-    [scan]
+    [requestScan]
   );
 
   /**
@@ -177,23 +228,23 @@ export function useScanner(folders: MonitoredFolder[]): UseScannerReturn {
   useEffect(() => {
     if (folders.length > 0 && !hasInitialScanRef.current) {
       hasInitialScanRef.current = true;
-      void scan(folders, true);
+      void fullScan();
     }
-  }, [folders, scan]);
+  }, [folders, fullScan]);
 
   // Rescan when the window regains focus: a normal full scan (so it shows the
   // usual global + per-folder indicators), throttled to once per 20s and
-  // skipped while a scan is already in flight (§5.1).
+  // skipped while any scan is in flight (§5.1).
   useEffect(() => {
     const handleFocus = () => {
       if (!hasInitialScanRef.current || folders.length === 0) return;
-      if (isFullScanning || scanningFolders.size > 0) return;
+      if (inFlightRef.current.size > 0) return;
       if (Date.now() - lastScanTimeRef.current < FOCUS_SCAN_MIN_INTERVAL_MS) return;
-      void scan(folders, true);
+      void fullScan();
     };
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
-  }, [folders, scan, isFullScanning, scanningFolders]);
+  }, [folders, fullScan]);
 
   const withRepoFlag = (
     setFlagged: React.Dispatch<React.SetStateAction<Set<string>>>,
@@ -215,14 +266,14 @@ export function useScanner(folders: MonitoredFolder[]): UseScannerReturn {
       withRepoFlag(setPullingRepos, [repoPath], true);
       try {
         await api.pullRepo(repoPath);
-        void scan(foldersForRepos([repoPath]), false, false);
+        void requestScan(foldersForRepos([repoPath]), true);
       } catch (err) {
         setError(`Failed to pull ${repoPath}: ${err}`);
       } finally {
         withRepoFlag(setPullingRepos, [repoPath], false);
       }
     },
-    [scan, foldersForRepos]
+    [requestScan, foldersForRepos]
   );
 
   const clean = useCallback(
@@ -233,14 +284,14 @@ export function useScanner(folders: MonitoredFolder[]): UseScannerReturn {
         if (result.filesRemoved.length + result.directoriesRemoved.length === 0) {
           setError(`No ignored files to clean in ${repoName(repoPath)}`);
         }
-        void scan(foldersForRepos([repoPath]), false, false);
+        void requestScan(foldersForRepos([repoPath]), true);
       } catch (err) {
         setError(`Failed to clean ${repoPath}: ${err}`);
       } finally {
         withRepoFlag(setCleaningRepos, [repoPath], false);
       }
     },
-    [scan, foldersForRepos]
+    [requestScan, foldersForRepos]
   );
 
   const pullAll = useCallback(
@@ -259,13 +310,13 @@ export function useScanner(folders: MonitoredFolder[]): UseScannerReturn {
         if (failures.length > 0) {
           setError(`Failed to pull ${failures.length} repo(s): ${failures[0]}`);
         }
-        void scan(foldersForRepos(paths), false, false);
+        void requestScan(foldersForRepos(paths), true);
       } finally {
         withRepoFlag(setPullingRepos, paths, false);
         setIsBulkPulling(false);
       }
     },
-    [scan, foldersForRepos]
+    [requestScan, foldersForRepos]
   );
 
   const cleanAll = useCallback(
@@ -282,19 +333,20 @@ export function useScanner(folders: MonitoredFolder[]): UseScannerReturn {
         if (failures.length > 0) {
           setError(`Failed to clean ${failures.length} repo(s): ${failures[0]}`);
         }
-        void scan(foldersForRepos(paths), false, false);
+        void requestScan(foldersForRepos(paths), true);
       } finally {
         withRepoFlag(setCleaningRepos, paths, false);
         setIsBulkCleaning(false);
       }
     },
-    [scan, foldersForRepos]
+    [requestScan, foldersForRepos]
   );
 
   return {
     results,
     scanningFolders,
-    isFullScanning,
+    checkingRepos,
+    isFullScanning: visibleFullScans > 0,
     error,
     setError,
     pullingRepos,

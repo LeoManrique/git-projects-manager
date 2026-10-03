@@ -216,7 +216,8 @@ function App() {
     defaultEditorName: defaultEditor?.displayName,
     pullingRepos: scanner.pullingRepos,
     cleaningRepos: scanner.cleaningRepos,
-  }), [scanner.pull, scanner.clean, scanner.pullingRepos, scanner.cleaningRepos, setError, defaultTerminal, defaultEditor]);
+    checkingRepos: scanner.checkingRepos,
+  }), [scanner.pull, scanner.clean, scanner.pullingRepos, scanner.cleaningRepos, scanner.checkingRepos, setError, defaultTerminal, defaultEditor]);
 
   const openSettings = (category: SettingsCategory) => setSettings({ open: true, category });
 

@@ -1,9 +1,11 @@
 import SwiftUI
 
-/// The nine fixed repo categories, in display order — Clean last
-/// (FRONTEND.md §5.3). Unpublished, Remote Not Found and Unknown Remote State
-/// are overlays: a repo in any of them also appears in its primary category.
+/// The repo categories, in display order — the transient Checking first,
+/// Clean last (FRONTEND.md §5.3). Unpublished, Remote Not Found and Unknown
+/// Remote State are overlays: a repo in any of them also appears in its
+/// primary category.
 enum RepoCategory: String, CaseIterable, Identifiable {
+    case checking
     case changes
     case unpushed
     case unpulled
@@ -18,6 +20,7 @@ enum RepoCategory: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
+        case .checking: "Checking"
         case .changes: "Uncommitted Changes"
         case .unpushed: "Unpushed Commits"
         case .unpulled: "Unpulled Commits"
@@ -33,6 +36,7 @@ enum RepoCategory: String, CaseIterable, Identifiable {
     /// Short label used in folder badge summaries.
     var badgeLabel: String {
         switch self {
+        case .checking: "checking"
         case .changes: "changed"
         case .unpushed: "unpushed"
         case .unpulled: "unpulled"
@@ -47,6 +51,7 @@ enum RepoCategory: String, CaseIterable, Identifiable {
 
     var color: Color {
         switch self {
+        case .checking: .gray
         case .changes: .yellow
         case .unpushed: .orange
         case .unpulled: .purple
@@ -59,13 +64,18 @@ enum RepoCategory: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Clean and Uninitialized render dimmed (FRONTEND.md §5.3).
-    var isMuted: Bool { self == .clean || self == .uninitialized }
+    /// Checking, Clean and Uninitialized render dimmed (FRONTEND.md §5.3).
+    var isMuted: Bool { self == .checking || self == .clean || self == .uninitialized }
 
-    /// Fetch & Pull is hidden for Uninitialized, Unpublished (no remote), and
-    /// Remote Not Found (remote is gone), visible-but-disabled for
-    /// Changes/Errors, enabled elsewhere (FRONTEND.md §5.5).
-    var showsPull: Bool { self != .uninitialized && self != .unpublished && self != .remoteNotFound }
+    /// Checking holds the repos a scan found but has no status for yet, so a
+    /// silent scan keeps them out of sight until their status lands.
+    var onlyWhileScanning: Bool { self == .checking }
+
+    /// Fetch & Pull is hidden for Checking (no status yet), Uninitialized,
+    /// Unpublished (no remote), and Remote Not Found (remote is gone),
+    /// visible-but-disabled for Changes/Errors, enabled elsewhere
+    /// (FRONTEND.md §5.5).
+    var showsPull: Bool { ![.checking, .uninitialized, .unpublished, .remoteNotFound].contains(self) }
     /// Pull stays enabled for Unknown Remote State: the comparison failed, but
     /// pulling is how a user resolves it and `git pull` reports its own errors.
     var pullEnabled: Bool { self == .unpushed || self == .unpulled || self == .clean || self == .remoteStateUnknown }
@@ -82,6 +92,7 @@ enum RepoCategory: String, CaseIterable, Identifiable {
 
     func repos(in result: ScanResult) -> [RepoStatus] {
         switch self {
+        case .checking: result.checking
         case .changes: result.withChanges
         case .unpushed: result.withUnpushed
         case .unpulled: result.withUnpulled

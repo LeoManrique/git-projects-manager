@@ -48,16 +48,11 @@ struct FolderOverviewSection: View {
     @Environment(AppModel.self) private var model
     let folder: MonitoredFolder
 
-    private var isScanning: Bool { model.scanningFolders.contains(folder.id) }
+    private var isScanning: Bool { model.isScanning(folder.id) }
 
-    /// Categories that still have repos after the active search filter, in
-    /// display order.
     private var visibleGroups: [FolderCategoryGroup] {
-        guard let result = model.results[folder.id] else { return [] }
-        return RepoCategory.allCases.compactMap { category in
-            let repos = model.filtered(category.repos(in: result))
-            guard !repos.isEmpty else { return nil }
-            return FolderCategoryGroup(folderID: folder.id, category: category, repos: repos)
+        model.visibleSections(of: folder.id).map {
+            FolderCategoryGroup(folderID: folder.id, category: $0.category, repos: $0.repos)
         }
     }
 
@@ -106,7 +101,7 @@ struct FolderSummaryHeader: View {
     @Environment(AppModel.self) private var model
     let folder: MonitoredFolder
 
-    private var isScanning: Bool { model.scanningFolders.contains(folder.id) }
+    private var isScanning: Bool { model.isScanning(folder.id) }
 
     var body: some View {
         HStack(spacing: 10) {
@@ -156,21 +151,24 @@ struct FolderSummaryHeader: View {
         }
     }
 
+    /// The counts whenever there are any, updating live, with a spinner beside
+    /// them while the folder scans visibly (FRONTEND.md §5.3).
     @ViewBuilder
     private var statusArea: some View {
-        if isScanning {
+        if let result = model.results[folder.id] {
+            HStack(spacing: 8) {
+                if isScanning { ProgressView().controlSize(.small) }
+                Text("\(result.totalRepositories) repos")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                CategoryBadge(count: result.clean.count, category: .clean)
+            }
+        } else if isScanning {
             HStack(spacing: 6) {
                 ProgressView().controlSize(.small)
                 Text("Scanning…")
                     .font(.callout)
                     .foregroundStyle(.secondary)
-            }
-        } else if let result = model.results[folder.id] {
-            HStack(spacing: 8) {
-                Text("\(result.totalRepositories) repos")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                CategoryBadge(count: result.clean.count, category: .clean)
             }
         } else {
             Text("Not scanned")

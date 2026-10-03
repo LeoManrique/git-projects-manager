@@ -33,7 +33,11 @@ struct RepoRowView: View {
 
     @State private var isHovering = false
 
-    private var isBusy: Bool { model.isBusy(repoPath: repo.path) }
+    /// A pull or clean in flight, or a visible scan that has not checked the
+    /// repo yet. Its actions stay in the context menu either way.
+    private var showsSpinner: Bool {
+        model.isBusy(repoPath: repo.path) || model.isChecking(repoPath: repo.path)
+    }
 
     var body: some View {
         HStack(spacing: 10) {
@@ -57,7 +61,7 @@ struct RepoRowView: View {
 
             Spacer(minLength: 8)
 
-            if isBusy {
+            if showsSpinner {
                 ProgressView().controlSize(.small)
             } else if isHovering {
                 Menu {

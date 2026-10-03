@@ -29,19 +29,20 @@ struct SidebarView: View {
             Label(folder.name, systemImage: "folder")
                 .lineLimit(1)
             Spacer()
-            if model.scanningFolders.contains(folder.id) {
+            // The badge keeps updating during a scan, with the spinner beside
+            // it (FRONTEND.md §5.3).
+            if model.isScanning(folder.id) {
                 ProgressView()
                     .controlSize(.mini)
-            } else {
-                let attention = model.attentionCount(for: folder.id)
-                if attention > 0 {
-                    Text("\(attention)")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 1)
-                        .background(.quaternary, in: Capsule())
-                }
+            }
+            let attention = model.attentionCount(for: folder.id)
+            if attention > 0 {
+                Text("\(attention)")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1)
+                    .background(.quaternary, in: Capsule())
             }
         }
         .tag(SidebarItem.folder(folder.id))
@@ -49,7 +50,7 @@ struct SidebarView: View {
             Button("Scan") {
                 Task { await model.scan(folder: folder) }
             }
-            .disabled(model.scanningFolders.contains(folder.id))
+            .disabled(model.isScanning(folder.id))
             Button("Edit…") { model.folderForm = .edit(folder) }
             Button("Show in Finder") { model.revealInFinder(folder.path) }
             Divider()

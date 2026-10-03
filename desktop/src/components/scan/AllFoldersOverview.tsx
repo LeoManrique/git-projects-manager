@@ -3,7 +3,8 @@ import { UseScannerReturn } from '../../hooks/useScanner';
 import { StatusBadge } from './StatusBadge';
 import { RepoSection } from './RepoSection';
 import { RepoActionHandlers } from './RepoRow';
-import { SECTIONS, visibleSections } from './sections';
+import { visibleSections } from './sections';
+import { Spinner } from '../ui/Spinner';
 import { FolderIcon, OpenDetailIcon, RefreshIcon } from '../icons';
 
 interface AllFoldersOverviewProps {
@@ -97,13 +98,14 @@ function FolderOverviewGroup({
         {result ? (
           <FolderOverviewBody
             result={result}
+            isScanning={isScanning}
             searchQuery={searchQuery}
             scanner={scanner}
             handlers={handlers}
           />
         ) : isScanning ? (
           <div className="flex items-center gap-2 px-2 py-1 text-xs text-text-muted">
-            <span className="w-3.5 h-3.5 border-2 border-text-muted border-t-transparent rounded-full animate-spin" />
+            <Spinner size="sm" />
             Scanning…
           </div>
         ) : (
@@ -121,16 +123,18 @@ function FolderOverviewGroup({
 
 function FolderOverviewBody({
   result,
+  isScanning,
   searchQuery,
   scanner,
   handlers,
 }: {
   result: ScanResult;
+  isScanning: boolean;
   searchQuery: string;
   scanner: UseScannerReturn;
   handlers: RepoActionHandlers;
 }) {
-  const groups = visibleSections(SECTIONS, result, searchQuery);
+  const groups = visibleSections(result, searchQuery, isScanning);
 
   if (groups.length === 0) {
     return (
@@ -168,7 +172,8 @@ interface FolderSummaryHeaderProps {
 
 /**
  * Sticky per-folder header: name, path, `{total} repos` + clean badge
- * summary (counts always unfiltered, §5.4), and scan / open-detail controls.
+ * summary (counts always unfiltered, §5.4, and updating live, with a spinner
+ * beside them while the folder scans), and scan / open-detail controls.
  */
 function FolderSummaryHeader({ folder, result, isScanning, onScan, onOpen }: FolderSummaryHeaderProps) {
   return (
@@ -178,15 +183,16 @@ function FolderSummaryHeader({ folder, result, isScanning, onScan, onOpen }: Fol
         <p className="text-[11px] leading-4 font-mono text-text-muted truncate">{folder.path}</p>
       </div>
 
-      {isScanning ? (
-        <span className="flex items-center gap-1.5 text-xs text-text-muted">
-          <span className="w-3 h-3 border-2 border-text-muted border-t-transparent rounded-full animate-spin" />
-          Scanning…
-        </span>
-      ) : result ? (
+      {result ? (
         <span className="flex items-center gap-2">
+          {isScanning && <Spinner />}
           <span className="text-xs text-text-secondary">{result.totalRepositories} repos</span>
           <StatusBadge count={result.clean.length} label="clean" color="green" />
+        </span>
+      ) : isScanning ? (
+        <span className="flex items-center gap-1.5 text-xs text-text-muted">
+          <Spinner />
+          Scanning…
         </span>
       ) : (
         <span className="text-xs text-text-muted">Not scanned</span>

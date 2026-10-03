@@ -1,17 +1,17 @@
 import SwiftUI
 
-/// Scan results for a single monitored folder: the eight fixed category
-/// sections (FRONTEND.md §5.3).
+/// Scan results for a single monitored folder: its category sections
+/// (FRONTEND.md §5.3).
 struct FolderDetailView: View {
     @Environment(AppModel.self) private var model
     let folder: MonitoredFolder
 
-    private var isScanning: Bool { model.scanningFolders.contains(folder.id) }
+    private var isScanning: Bool { model.isScanning(folder.id) }
 
     var body: some View {
         Group {
             if let result = model.results[folder.id] {
-                RepoSectionsView(result: result)
+                RepoSectionsView(folderId: folder.id, result: result)
             } else if isScanning {
                 VStack(spacing: 12) {
                     ProgressView()
@@ -40,17 +40,11 @@ struct FolderDetailView: View {
 
 struct RepoSectionsView: View {
     @Environment(AppModel.self) private var model
+    let folderId: String
     let result: ScanResult
 
-    private var visibleSections: [(RepoCategory, [RepoStatus])] {
-        RepoCategory.allCases.compactMap { category in
-            let repos = model.filtered(category.repos(in: result))
-            return repos.isEmpty ? nil : (category, repos)
-        }
-    }
-
     var body: some View {
-        let sections = visibleSections
+        let sections = model.visibleSections(of: folderId)
         if sections.isEmpty, !model.searchText.isEmpty {
             ContentUnavailableView.search(text: model.searchText)
         } else {
@@ -63,11 +57,14 @@ struct RepoSectionsView: View {
                     }
                 }
 
-                Section {
-                    Text("Completed in \(result.executionTime, specifier: "%.2f")s")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                        .listRowSeparator(.hidden)
+                // A scan in flight has no duration yet.
+                if result.isComplete {
+                    Section {
+                        Text("Completed in \(result.executionTime, specifier: "%.2f")s")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                            .listRowSeparator(.hidden)
+                    }
                 }
             }
             .scrollEdgeEffectStyle(.soft, for: .top)

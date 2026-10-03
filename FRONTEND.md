@@ -152,9 +152,10 @@ memory** — never persisted. Every launch starts fresh and rescans.
 
 ### 5.1 Scan modes
 
-All modes call the core scan once per target folder, **concurrently**; each folder's
-result merges into the results map on completion. A folder whose scan fails keeps its
-previous result; the failure is shown nowhere but the diagnostics log (§6.4).
+All modes scan every target folder **concurrently**, and each folder's state streams
+onto the screen as the scan goes: once the walk has found its repos, then each time a
+repo's status lands (§5.3). A folder whose scan fails keeps what it had; the failure is
+shown nowhere but the diagnostics log (§6.4).
 
 There is **one** scan control, in the toolbar/header, and what it scans follows
 the view: the All Folders overview scans every folder, a folder's detail view
@@ -172,8 +173,8 @@ and in the not-scanned empty state, where they name their own target.
 3. **Focus rescan** — when the app window regains focus (after the initial scan,
    folders exist): rescan all folders as a full scan, so it shows the **same
    global + per-folder progress** as Scan All. Throttled to at most once per
-   **20 seconds** since the last scan of any kind, and skipped while a scan is
-   already in flight (so it never supersedes one the user is watching).
+   **20 seconds** since the last scan of any kind, and skipped while any scan is
+   in flight.
 
 Every scan still fetches — ahead/behind counts are meant to be current — but the
 core skips the round-trip for any repo it fetched successfully in the last
@@ -185,45 +186,45 @@ repos. The window is short enough that any scan following real work is a fresh
 one. A *failed* fetch is never debounced, so an unreachable remote is retried on
 the next scan.
 
-### 5.2 Supersession (concurrency rule)
+### 5.2 One scan per folder (concurrency rule)
 
-Full scans carry a version. When a scan completes but a newer full scan started
-meanwhile, its results are **discarded**, not merged. Per-folder scans are likewise
-discarded if a full scan started after them. A superseded scan also leaves the
-progress indicators alone — the newer scan owns them and will clear them — so a
-late finisher can never wipe a spinner the running scan is still showing. There
-is no cancel, in the UI or in the core. The scan control is instead disabled
-while its own target is scanning, so a second click cannot start a scan that
-would only supersede the one on screen.
+A folder never has two scans at once. A request for a folder already scanning
+joins the scan in flight instead of starting another: Scan All during a
+per-folder scan starts only the other folders, and waits for all of them. Every
+state the core sends carries a revision that grows with each change, and one no
+newer than what is shown is dropped, so a late arrival never overwrites newer
+state. There is no cancel, in the UI or in the core; the scan control is
+disabled while its own target is scanning.
 
-A folder deleted while it is scanning leaves no trace: its result is not stored
-when its scan completes, and the folder-list re-fetch (§4) removes it from the
-scanning set. Without the second rule, a deleted folder whose scan was
-superseded stayed "scanning" forever, and since the focus rescan waits for an
-empty set (§5.1), focus rescans stopped for the rest of the session.
+A folder deleted while it is scanning leaves no trace: nothing more of it is
+stored, and its scan stops counting as in flight when it ends.
 
 ### 5.3 Results display
 
 Navigation is a sidebar + detail split, the same in both apps:
 
 - **Sidebar**: an **All Folders** entry and a **Kanban** entry (§7), then the
-  monitored folders (stored order), each showing a scanning spinner or, when
-  > 0, an attention badge (changed + unpushed + unpulled + errors; always
-  unfiltered). The Tauri app pins Add Folder + Settings at the bottom (§9).
+  monitored folders (stored order), each showing, when > 0, an attention
+  badge (changed + unpushed + unpulled + errors; always unfiltered), with a
+  spinner beside it while the folder scans. The Tauri app pins Add Folder +
+  Settings at the bottom (§9).
 - **All Folders overview** (default view) — per folder, a sticky header:
-  folder name + monospace path; status area showing "Scanning…", "Not
-  scanned", or `"{total} repos"` plus a clean count badge (unfiltered); a
+  folder name + monospace path; status area showing `"{total} repos"` plus a
+  clean count badge (unfiltered, with a spinner beside them while the folder
+  scans), "Scanning…" before the folder's first result, or "Not scanned"; a
   per-folder **Scan** control (disabled while that folder scans) and an
   open-detail control. Below the header all of the folder's sections render
-  expanded inline (fixed order, Clean last), so pending commit/pull work is
-  visible without opening a folder. A folder with no visible sections shows
+  expanded inline (fixed order, Checking first, Clean last), so pending
+  commit/pull work is visible without opening a folder. A folder with no visible sections shows
   "No repositories found" ("No matching repositories" while a search filters
   everything out).
-- **Per-folder detail** — all nine sections, fixed order, empty sections
-  hidden, plus a footer `"Completed in {executionTime, 2 decimals}s"`:
+- **Per-folder detail** — all sections, fixed order, empty sections hidden,
+  plus a footer `"Completed in {executionTime, 2 decimals}s"` once the scan is
+  complete:
 
   | Section | Color | Row actions |
   |---|---|---|
+  | Checking | gray (muted rows) | open actions only; repos the scan found with no status yet, shown only while the folder scans |
   | Uncommitted Changes | yellow | open actions; Fetch & Pull visible but disabled |
   | Unpushed Commits | orange | open actions; Fetch & Pull |
   | Unpulled Commits | purple | open actions; Fetch & Pull; section bulk "Fetch & Pull All (n)" |
@@ -247,7 +248,9 @@ accent-colored chip after it. When too narrow, the path truncates
 `…/` bridge — never below a first-letter hint, so a nested repo can't be
 mistaken for a root one — and the repo name middle-truncates only once the
 hint plus the full name no longer fit; the full path becomes a tooltip.
-Error rows add the errorMessage on a second line. Section headers show
+Error rows add the errorMessage on a second line. A repo the folder's scan has
+not checked yet shows a spinner in place of its action menu, as during a pull
+or clean, and stays in its section until its new status moves it. Section headers show
 `TITLE (filtered count)` in the category color, with a leading category dot
 in the same column as the row dots.
 

@@ -1,6 +1,7 @@
 import { MonitoredFolder, ScanResult } from '../../types';
 import { attentionCount } from '../../lib/repoUtils';
 import { FolderIcon, GearIcon, GridIcon, KanbanIcon, PlusCircleIcon } from '../icons';
+import { Spinner } from '../ui/Spinner';
 
 /** What the main content area shows, driven by the sidebar. */
 export type Selection =
@@ -60,12 +61,13 @@ export function Sidebar({
             label={folder.name}
             selected={selection.view === 'folder' && selection.folderId === folder.id}
             onClick={() => onSelect({ view: 'folder', folderId: folder.id })}
+            // The badge keeps updating during a scan, with the spinner beside
+            // it (FRONTEND.md §5.3).
             trailing={
-              scanningFolders.has(folder.id) ? (
-                <span className="w-3 h-3 border-2 border-text-muted border-t-transparent rounded-full animate-spin" />
-              ) : (
-                folderBadge(attentionCount(results[folder.id]))
-              )
+              <>
+                {scanningFolders.has(folder.id) && <Spinner />}
+                {folderBadge(attentionCount(results[folder.id]))}
+              </>
             }
           />
         ))}
@@ -123,7 +125,7 @@ function SidebarItem({ icon, label, selected, onClick, trailing }: SidebarItemPr
     >
       <span className={selected ? 'text-white' : 'text-text-muted'}>{icon}</span>
       <span className="flex-1 min-w-0 truncate text-xs font-medium">{label}</span>
-      {trailing}
+      {trailing && <span className="flex items-center gap-1.5">{trailing}</span>}
     </button>
   );
 }
