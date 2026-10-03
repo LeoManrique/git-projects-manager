@@ -187,8 +187,8 @@ and in the not-scanned empty state, where they name their own target.
    Both join scans in flight (§5.2); a visible request turns a silent scan
    visible for what is still pending.
 
-**Last scan.** Beside the scan control, except on the board, a label reads
-"Last scan: {age}", with the absolute date and time in its tooltip. {age} is "just
+**Last scan.** Beside the scan control, except on the board, small muted text
+(no chip or capsule) reads "Last scan: {age}", with the absolute date and time in its tooltip. {age} is "just
 now" under a minute, then "N minute(s) ago", "N hour(s) ago", "N day(s) ago", "N
 month(s) ago" (30-day months) and "N year(s) ago", rounded down: leogit's words. It
 is the start of the last full scan, visible or silent, set once that scan ends: the

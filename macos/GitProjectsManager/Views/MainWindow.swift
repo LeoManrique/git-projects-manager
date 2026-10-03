@@ -55,9 +55,11 @@ struct DetailView: View {
                     }
                 }
                 if let lastScan = model.lastFullScanStartedAt, !model.folders.isEmpty {
+                    // Plain text beside the button, not a glass capsule.
                     ToolbarItem(placement: .secondaryAction) {
                         LastScanLabel(date: lastScan)
                     }
+                    .sharedBackgroundVisibility(.hidden)
                 }
                 ToolbarItem(placement: .primaryAction) {
                     ScanButton()

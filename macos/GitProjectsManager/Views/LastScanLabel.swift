@@ -15,6 +15,7 @@ struct LastScanLabel: View {
     var body: some View {
         let age = RelativeAge(of: date, now: now)
         Text("Last scan: \(age.text)")
+            .font(.subheadline)
             .foregroundStyle(.secondary)
             .help(date.formatted(date: .abbreviated, time: .shortened))
             // Keyed by `now`, so every wake arms the next sleep, even one that
