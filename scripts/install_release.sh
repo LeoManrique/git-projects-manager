@@ -8,8 +8,8 @@ set -euo pipefail
 # Intended to be curlable:
 #   curl -fsSL https://raw.githubusercontent.com/LeoManrique/git-projects-manager/master/scripts/install_release.sh | bash
 #
-# Unlike install_macos.sh / install_arch.sh (which install a locally built
-# bundle), this script downloads a published release artifact — the same ones
+# Unlike install_local.sh / install_windows.py (which build and install on this
+# machine), this script downloads a published release artifact — the same ones
 # deploy_releases.sh uploads.
 
 # ── Colors ──
@@ -151,7 +151,7 @@ else
   # /usr/bin/git-projects-manager and registers a .desktop launcher + icons,
   # so there's nothing to wire up by hand.
   command -v dpkg >/dev/null 2>&1 \
-    || error "dpkg not found. The Linux release is a .deb (Debian/Ubuntu). On Arch, build locally with scripts/install_arch.sh instead."
+    || error "dpkg not found. The Linux release is a .deb (Debian/Ubuntu). On Arch, build locally with scripts/install_local.sh instead."
 
   SUDO=""
   if [ "$(id -u)" -ne 0 ]; then

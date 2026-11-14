@@ -46,8 +46,13 @@
       section (blue, no Fetch & Pull); backed by a `hasRemote` flag on
       `RepoStatus` and a core integration test
 
+- [x] `scripts/install_local.sh` — one local-build installer for macOS and
+      Linux (replaces `install_macos.sh` / `install_arch.sh`): builds by default
+      (`--no-build` skips), Linux builds `--no-bundle`, reads the version from
+      `package.json`, and stops the running instance before installing
+
 - [x] `scripts/install_windows.py` — local-build installer for Windows, matching
-      the arch/macOS ones (build `--bundles nsis`, stop running instance, silent
+      `install_local.sh` (build `--bundles nsis`, stop running instance, silent
       `/S` install, registry-verified)
 
 - [x] Repo row/context actions: added **Copy Path** in both apps, and gave every

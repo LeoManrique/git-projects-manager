@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """Installs the Tauri Git Projects Manager (desktop/) from a *local* build.
 
-Windows counterpart to install_arch.sh / install_macos.sh: it installs a bundle
-you build on this machine, not a published release artifact (install_release.sh
-downloads those, and only covers macOS and Linux).
+Windows counterpart to install_local.sh (macOS + Linux): it builds the app on
+this machine and installs that build, not a published release artifact
+(install_release.sh downloads those, and only covers macOS and Linux).
 
-Pass --build to (re)build first; without it, this installs the NSIS installer
-already sitting in desktop/src-tauri/target/release/bundle/nsis/ whose version
-matches desktop/package.json.
+Pass --no-build to skip the build and install the NSIS installer already
+sitting in desktop/src-tauri/target/release/bundle/nsis/ whose version matches
+desktop/package.json.
 
-    python scripts/install_windows.py --build
+    python scripts/install_windows.py [--no-build]
 
 The NSIS installer is the same bundle deploy_releases.sh ships for Windows, so
 it registers the Start menu entry, the uninstaller and the WebView2 runtime
@@ -136,9 +136,9 @@ def find_installer(version: str) -> Path:
         names = ", ".join(path.name for path in others)
         error(
             f"No installer for v{version} in {NSIS_DIR}. Found: {names}. "
-            "Re-run with --build."
+            "Re-run without --no-build."
         )
-    error(f"No NSIS installer found in {NSIS_DIR}. Re-run with --build.")
+    error(f"No NSIS installer found in {NSIS_DIR}. Re-run without --no-build.")
 
 
 def is_running() -> bool:
@@ -201,9 +201,10 @@ def main() -> None:
         description=f"Install {APP_NAME} on Windows from a local build.",
     )
     parser.add_argument(
-        "--build",
-        action="store_true",
-        help="rebuild the app before installing (default: use the existing build)",
+        "--no-build",
+        dest="build",
+        action="store_false",
+        help="skip the build and install the existing one (default: build first)",
     )
     args = parser.parse_args()
 
@@ -230,7 +231,7 @@ def main() -> None:
         run([tools["pnpm"], "tauri", "build", "--bundles", "nsis"], DESKTOP_DIR, "Build")
         success("Build complete")
     else:
-        success("Skipped (using existing build; pass --build to rebuild)")
+        success("Skipped (--no-build; using the existing build)")
 
     installer = find_installer(version)
 

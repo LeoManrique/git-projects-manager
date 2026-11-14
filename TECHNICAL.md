@@ -376,11 +376,15 @@ older Tauri install, which it replaces at the same
 registers with Launch Services. Bundles are ad-hoc signed
 (signing/notarization: see ROADMAP.md).
 
-Local installs (a build made on this machine, not a published artifact) have
-one script per platform, all with the same shape — check platform, optionally
-build, stop the running instance, install: `install_arch.sh` (binary +
-`.desktop` entry + icons under `/usr/local`), `install_macos.sh --build`
-(`.app` → `/Applications`, ad-hoc re-signed), and `install_windows.py --build`
+Local installs (a build made on this machine, not a published artifact) share
+one shape — check platform, build (skipped with `--no-build`), stop the running
+instance, install — across two scripts. `install_local.sh` covers macOS and
+Linux: on macOS it builds the SwiftUI app and copies the `.app` to
+`/Applications` (ad-hoc re-signed); on Linux (written for Arch, where the
+release `.deb` doesn't fit) it builds with `tauri build --no-bundle` and copies
+the binary, a `.desktop` entry and hicolor icons under `/usr/local`, all named
+`git-projects-manager` because GTK uses the binary name as the Wayland app_id /
+X11 `WM_CLASS`. `install_windows.py` covers Windows
 (Python 3, stdlib only; builds `--bundles nsis`, runs the installer with `/S`,
 then confirms the install via the `com.gitprojectsmanager.app` uninstall
 registry key). The NSIS bundle owns the Start menu shortcut, uninstaller and
